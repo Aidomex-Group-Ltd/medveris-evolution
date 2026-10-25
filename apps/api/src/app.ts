@@ -17,6 +17,15 @@ import { consentRoutes } from "./routes/consent.js";
 import { credentialRoutes } from "./routes/credentials.js";
 import { fhirRoutes } from "./fhir/router.js";
 import { terminologyRoutes } from "./terminology/router.js";
+import { inpatientRoutes } from "./routes/inpatient.js";
+import { theatreRoutes } from "./routes/theatre.js";
+import { diagnosticsRoutes } from "./routes/diagnostics.js";
+import { pharmacyRoutes } from "./routes/pharmacy.js";
+import { financeRoutes } from "./routes/finance.js";
+import { programmeRoutes } from "./routes/programmes.js";
+import { telehealthRoutes } from "./routes/telehealth.js";
+import { deviceRoutes } from "./routes/devices.js";
+import { aiRoutes } from "./routes/ai.js";
 
 function isFhirPath(path: string): boolean {
   return path.startsWith("/fhir/") || path.startsWith("/terminology/fhir/");
@@ -79,6 +88,15 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   app.route("/api/v1", clinicalRoutes);
   app.route("/api/v1", consentRoutes);
   app.route("/api/v1", credentialRoutes);
+  app.route("/api/v1", inpatientRoutes);
+  app.route("/api/v1", theatreRoutes);
+  app.route("/api/v1", diagnosticsRoutes);
+  app.route("/api/v1", pharmacyRoutes);
+  app.route("/api/v1", financeRoutes);
+  app.route("/api/v1", programmeRoutes);
+  app.route("/api/v1", telehealthRoutes);
+  app.route("/api/v1", deviceRoutes);
+  app.route("/api/v1", aiRoutes);
 
   app.notFound((c) => {
     if (isFhirPath(c.req.path)) {

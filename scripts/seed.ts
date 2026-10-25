@@ -24,6 +24,11 @@ const users = {
   clinicianB: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
   reviewer: "ffffffff-ffff-4fff-8fff-ffffffffffff",
   patient: "99999999-9999-4999-8999-999999999999",
+  finance: "abababab-abab-4aba-8aba-abababababab",
+  pharmacist: "bcbcbcbc-bcbc-4bcb-8bcb-bcbcbcbcbcbc",
+  laboratory: "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd",
+  radiology: "dededede-dede-4ded-8ded-dededededede",
+  publicHealth: "efefefef-efef-4efe-8efe-efefefefefef",
 } as const;
 const patients = {
   amina: "a0000000-0000-4000-8000-000000000001",
@@ -38,6 +43,16 @@ const entryA = "ce000000-0000-4000-8000-000000000001";
 const queueA = "c0000000-0000-4000-8000-000000000001";
 const queueB = "c0000000-0000-4000-8000-000000000002";
 const grantA = "90000000-0000-4000-8000-000000000001";
+const wardA = "a1000000-0000-4000-8000-000000000001";
+const bedA1 = "a1000000-0000-4000-8000-000000000101";
+const bedA2 = "a1000000-0000-4000-8000-000000000102";
+const theatreA = "a2000000-0000-4000-8000-000000000001";
+const medicineA = "a3000000-0000-4000-8000-000000000001";
+const lotA = "a3000000-0000-4000-8000-000000000101";
+const labTestA = "a4000000-0000-4000-8000-000000000001";
+const programmeA = "a5000000-0000-4000-8000-000000000001";
+const serviceA = "a6000000-0000-4000-8000-000000000001";
+const encounterGrace = "e0000000-0000-4000-8000-000000000004";
 
 function hashId(value: string): string {
   const hex = createHash("sha256").update(value).digest("hex");
@@ -91,12 +106,22 @@ try {
     await person(tx, users.clinicianB, "clinician.b@medveris.local", "Dr Peter Ssemakula", "Peter", "Ssemakula", true);
     await person(tx, users.reviewer, "reviewer@medveris.local", "Independent Reviewer", "Irene", "Kagoya", true);
     await person(tx, users.patient, "patient@medveris.local", "Amina Nakato", "Amina", "Nakato", false);
+    await person(tx, users.finance, "finance@medveris.local", "Faith Finance", "Faith", "Namuli", true);
+    await person(tx, users.pharmacist, "pharmacist@medveris.local", "Paul Pharmacist", "Paul", "Wasswa", true);
+    await person(tx, users.laboratory, "lab@medveris.local", "Lydia Laboratory", "Lydia", "Nakimuli", true);
+    await person(tx, users.radiology, "radiology@medveris.local", "Dr Ruth Radiologist", "Ruth", "Auma", true);
+    await person(tx, users.publicHealth, "publichealth@medveris.local", "Patrick Public Health", "Patrick", "Opio", true);
 
     await context(tx, tenantA, users.admin, ["facility_admin"], null);
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-admin-a")}, ${tenantA}, ${users.admin}, ${["facility_admin"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-clinician-a")}, ${tenantA}, ${users.clinician}, ${["clinician"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-nurse-a")}, ${tenantA}, ${users.nurse}, ${["nurse"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-reception-a")}, ${tenantA}, ${users.reception}, ${["receptionist"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-finance-a")}, ${tenantA}, ${users.finance}, ${["finance"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-pharmacist-a")}, ${tenantA}, ${users.pharmacist}, ${["pharmacist"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-lab-a")}, ${tenantA}, ${users.laboratory}, ${["laboratory"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-radiology-a")}, ${tenantA}, ${users.radiology}, ${["radiology"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-public-health-a")}, ${tenantA}, ${users.publicHealth}, ${["public_health"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
 
     await context(tx, tenantB, users.admin, ["facility_admin"], null);
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-clinician-b")}, ${tenantB}, ${users.clinicianB}, ${["clinician"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
@@ -148,7 +173,9 @@ try {
       values (${encounterA}, ${tenantA}, ${patients.amina}, ${users.clinician}, 'follow-up', 'completed', 3,
         'Hypertension review (synthetic)', ${new Date(Date.now() - 7 * 86_400_000)}, ${new Date(Date.now() - 7 * 86_400_000 + 3_600_000)}, ${users.clinician}),
         (${encounterA2}, ${tenantA}, ${patients.joseph}, ${users.clinician}, 'walk-in', 'arrived', 1,
-        'Cough and fever (synthetic)', now(), null, ${users.reception})
+        'Cough and fever (synthetic)', now(), null, ${users.reception}),
+        (${encounterGrace}, ${tenantA}, ${patients.grace}, ${users.clinician}, 'inpatient', 'in-progress', 2,
+        'Abdominal pain admission (synthetic)', now(), null, ${users.clinician})
       on conflict (id) do nothing
     `;
     await tx`insert into queue_entries (id, tenant_id, queue_id, patient_id, encounter_id, status, priority) values (${hashId("qe-joseph")}, ${tenantA}, ${queueA}, ${patients.joseph}, ${encounterA2}, 'waiting', 'routine') on conflict (id) do nothing`;
@@ -269,6 +296,71 @@ try {
 
     await context(tx, tenantA, users.admin, ["facility_admin"], null);
     await tx`
+      insert into wards (id, tenant_id, name, ward_type, description, created_by)
+      values (${wardA}, ${tenantA}, 'General Ward A', 'general', 'Synthetic general inpatient ward', ${users.admin})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into beds (id, tenant_id, ward_id, label, features)
+      values (${bedA1}, ${tenantA}, ${wardA}, 'A-01', ${tx.json({ oxygen: true, monitor: true })}),
+        (${bedA2}, ${tenantA}, ${wardA}, 'A-02', ${tx.json({ oxygen: true })})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into theatres (id, tenant_id, name, status)
+      values (${theatreA}, ${tenantA}, 'Theatre 1', 'available') on conflict (id) do nothing
+    `;
+    await tx`
+      insert into service_catalog (id, tenant_id, code, name, category, price, currency, created_by)
+      values (${serviceA}, ${tenantA}, 'CONS-OPD', 'Outpatient consultation', 'consultation', 50000, 'UGX', ${users.admin})
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.laboratory, ["laboratory"], null);
+    await tx`
+      insert into lab_tests (id, tenant_id, name, loinc_version, loinc_code, specimen_type, unit_code, mapped_reviewed, created_by)
+      values (${labTestA}, ${tenantA}, 'Blood glucose', '2.80-medveris-synthetic', '2339-0', 'capillary blood', 'mg/dL', true, ${users.laboratory})
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.pharmacist, ["pharmacist"], null);
+    await tx`
+      insert into medicines (id, tenant_id, name, strength, form, route, knowledge_source, created_by)
+      values (${medicineA}, ${tenantA}, 'Amlodipine', '5 mg', 'tablet', 'oral', 'Synthetic formulary entry; no real dosing advice', ${users.pharmacist})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into stock_lots (id, tenant_id, medicine_id, lot_number, expires_on, quantity, location)
+      values (${lotA}, ${tenantA}, ${medicineA}, 'LOT-SYNTH-001', ${new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10)}, 100, 'Pharmacy main')
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.clinician, ["clinician"], null);
+    await tx`
+      insert into programmes (id, tenant_id, name, programme_type, description, created_by)
+      values (${programmeA}, ${tenantA}, 'Hypertension continuing care', 'chronic', 'Synthetic chronic-care programme', ${users.clinician})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into programme_enrolments (id, tenant_id, patient_id, programme_id, notes, enrolled_by)
+      values (${hashId("enrol-amina-htn")}, ${tenantA}, ${patients.amina}, ${programmeA}, 'Synthetic continuing-care enrolment', ${users.clinician})
+      on conflict (tenant_id, patient_id, programme_id) do nothing
+    `;
+    await tx`
+      insert into theatre_cases (id, tenant_id, patient_id, encounter_id, procedure_name, procedure_coding, laterality, site, urgency, scheduled_at, theatre_id, surgeon_user_id, anesthetist_user_id, created_by)
+      values (${hashId("theatre-grace")}, ${tenantA}, ${patients.grace}, ${encounterGrace}, 'Diagnostic laparoscopy',
+        ${tx.json({ system: "http://snomed.info/sct", code: "103693007", display: "Diagnostic procedure" })}, 'not-applicable',
+        'Abdomen', 'routine', ${new Date(Date.now() + 2 * 86_400_000)}, ${theatreA}, ${users.clinician}, ${users.clinician}, ${users.clinician})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into telehealth_sessions (id, tenant_id, patient_id, clinician_user_id, scheduled_at, created_by)
+      values (${hashId("telehealth-amina")}, ${tenantA}, ${patients.amina}, ${users.clinician}, ${new Date(Date.now() + 3 * 86_400_000)}, ${users.clinician})
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.admin, ["facility_admin"], null);
+    await tx`
       insert into integration_configs (id, tenant_id, adapter, enabled, config, configured_by)
       values (${hashId("integration-lab")}, ${tenantA}, 'laboratory', false, ${tx.json({ status: "disabled", displayName: "Laboratory results", note: "Integration unavailable in this release" })}, ${users.admin})
       on conflict (id) do nothing
@@ -288,6 +380,11 @@ try {
       clinicianB: "clinician.b@medveris.local",
       reviewer: "reviewer@medveris.local",
       patient: "patient@medveris.local",
+      finance: "finance@medveris.local",
+      pharmacist: "pharmacist@medveris.local",
+      laboratory: "lab@medveris.local",
+      radiology: "radiology@medveris.local",
+      publicHealth: "publichealth@medveris.local",
     },
     patients: {
       amina: "MV-7K2M-9QX4-4T2A-8Z3N",

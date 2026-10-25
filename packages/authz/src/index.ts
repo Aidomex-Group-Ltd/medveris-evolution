@@ -7,6 +7,10 @@ export const ROLES = [
   "finance",
   "auditor",
   "credential_reviewer",
+  "pharmacist",
+  "laboratory",
+  "radiology",
+  "public_health",
 ] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -24,6 +28,10 @@ export interface ActorContext {
 const clinicalRoles: Role[] = ["clinician", "nurse"];
 const signRoles: Role[] = ["clinician"];
 const adminRoles: Role[] = ["facility_admin"];
+const wardRoles: Role[] = ["clinician", "nurse"];
+const diagnosticsRoles: Role[] = ["clinician", "nurse", "laboratory", "radiology"];
+const financeRoles: Role[] = ["finance", "facility_admin"];
+const programmeRoles: Role[] = ["clinician", "nurse"];
 
 export function hasRole(actor: ActorContext, ...roles: Role[]): boolean {
   return roles.some((r) => actor.roles.includes(r));
@@ -53,6 +61,34 @@ export function canAudit(actor: ActorContext): boolean {
   return hasRole(actor, "auditor", "facility_admin");
 }
 
+export function canManageWardCare(actor: ActorContext): boolean {
+  return hasRole(actor, ...wardRoles);
+}
+
+export function canManageDiagnostics(actor: ActorContext): boolean {
+  return hasRole(actor, ...diagnosticsRoles);
+}
+
+export function canDispenseMedication(actor: ActorContext): boolean {
+  return hasRole(actor, "pharmacist");
+}
+
+export function canAdministerMedication(actor: ActorContext): boolean {
+  return hasRole(actor, "nurse", "clinician");
+}
+
+export function canManageFinance(actor: ActorContext): boolean {
+  return hasRole(actor, ...financeRoles);
+}
+
+export function canManageProgrammes(actor: ActorContext): boolean {
+  return hasRole(actor, ...programmeRoles);
+}
+
+export function canManagePublicHealth(actor: ActorContext): boolean {
+  return hasRole(actor, "public_health", "facility_admin");
+}
+
 export function canUseEmergencyOverride(actor: ActorContext): boolean {
   return hasRole(actor, "clinician", "nurse") && actor.mfaVerified && actor.mfaEnrolled;
 }
@@ -75,6 +111,26 @@ export function assertMembershipAdmin(actor: ActorContext): void {
 
 export function assertCredentialReviewer(actor: ActorContext): void {
   if (!canReviewCredentials(actor)) throw new AuthzError("Independent credential reviewer permission is required");
+}
+
+export function assertWardAccess(actor: ActorContext): void {
+  if (!canManageWardCare(actor)) throw new AuthzError("Ward access is not permitted for this role");
+}
+
+export function assertDiagnostics(actor: ActorContext): void {
+  if (!canManageDiagnostics(actor)) throw new AuthzError("Diagnostics access is not permitted for this role");
+}
+
+export function assertFinance(actor: ActorContext): void {
+  if (!canManageFinance(actor)) throw new AuthzError("Finance access is not permitted for this role");
+}
+
+export function assertProgrammeAccess(actor: ActorContext): void {
+  if (!canManageProgrammes(actor)) throw new AuthzError("Programme access is not permitted for this role");
+}
+
+export function assertPublicHealth(actor: ActorContext): void {
+  if (!canManagePublicHealth(actor)) throw new AuthzError("Public-health reporting access is not permitted for this role");
 }
 
 export function assertAuditAccess(actor: ActorContext): void {
