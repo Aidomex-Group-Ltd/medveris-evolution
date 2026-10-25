@@ -21,6 +21,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/patients", label: "Patients", roles: ["receptionist", "nurse", "clinician", "facility_admin"] },
       { to: "/queues", label: "Queues", roles: ["receptionist", "nurse", "clinician", "facility_admin"] },
       { to: "/worklist", label: "Clinical worklist", roles: ["nurse", "clinician"] },
+      { to: "/emergency", label: "Emergency", roles: ["nurse", "clinician"] },
       { to: "/exchange", label: "Record exchange", roles: ["nurse", "clinician"] },
       { to: "/wards", label: "Wards and beds", roles: ["nurse", "clinician", "facility_admin"] },
       { to: "/theatre", label: "Theatre", roles: ["nurse", "clinician", "facility_admin"] },

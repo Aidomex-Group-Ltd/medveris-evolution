@@ -769,3 +769,36 @@ export const labResultFinalizeSchema = z.object({
   expectedVersion: z.number().int().min(1),
   note: z.string().trim().max(2000).optional().or(z.literal("")),
 });
+
+// Emergency care.
+export const emergencyCaseSchema = z
+  .object({
+    patientId: uuidSchema.optional().nullable(),
+    temporaryPatient: z
+      .object({
+        givenName: z.string().trim().min(1).max(120).default("Unknown"),
+        familyName: z.string().trim().min(1).max(120).default("Emergency"),
+        dateOfBirth: z.string().date(),
+        sex: z.enum(["female", "male", "other", "unknown"]).default("unknown"),
+      })
+      .optional()
+      .nullable(),
+    reason: z.string().trim().min(1).max(2000),
+    arrivalMode: z.enum(["walk-in", "ambulance", "referral", "police", "other"]).default("walk-in"),
+    location: z.string().trim().max(120).optional().or(z.literal("")),
+    assignedUserId: uuidSchema.optional().nullable(),
+  })
+  .refine((value) => Boolean(value.patientId) !== Boolean(value.temporaryPatient), {
+    message: "Provide either an existing patient or temporary patient details, not both",
+    path: ["patientId"],
+  });
+
+export const emergencyObservationSchema = observationSchema;
+
+export const emergencyHandoffSchema = handoffSchema;
+
+export const emergencyDispositionSchema = z.object({
+  disposition: z.enum(["admitted", "discharged", "transferred", "deceased", "left-without-seen", "cancelled"]),
+  note: z.string().trim().min(5).max(4000),
+  expectedVersion: z.number().int().min(1),
+});

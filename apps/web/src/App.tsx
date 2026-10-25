@@ -31,6 +31,8 @@ import { PublicHealthPage } from "./pages/PublicHealthPage";
 import { TelehealthPage } from "./pages/TelehealthPage";
 import { DevicesPage } from "./pages/DevicesPage";
 import { AIPage } from "./pages/AIPage";
+import { EmergencyPage } from "./pages/EmergencyPage";
+import { EmergencyCasePage } from "./pages/EmergencyCasePage";
 
 function NotFoundPage() {
   return (
@@ -51,6 +53,8 @@ export function App() {
         <Route path="patients" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><PatientsPage /></ProtectedRoute>} />
         <Route path="queues" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><QueuesPage /></ProtectedRoute>} />
         <Route path="worklist" element={<ProtectedRoute roles={["nurse", "clinician"]}><WorklistPage /></ProtectedRoute>} />
+        <Route path="emergency" element={<ProtectedRoute roles={["nurse", "clinician"]}><EmergencyPage /></ProtectedRoute>} />
+        <Route path="emergency/:id" element={<ProtectedRoute roles={["nurse", "clinician"]}><EmergencyCasePage /></ProtectedRoute>} />
         <Route path="encounters/:id" element={<ProtectedRoute roles={["nurse", "clinician", "receptionist", "facility_admin"]}><EncounterPage /></ProtectedRoute>} />
         <Route path="exchange" element={<ProtectedRoute roles={["nurse", "clinician"]}><ExchangePage /></ProtectedRoute>} />
         <Route path="wards" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin"]}><WardsPage /></ProtectedRoute>} />

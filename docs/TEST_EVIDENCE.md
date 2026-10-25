@@ -8,13 +8,13 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 |---|---|
 | `npm run lint` | Passed, zero warnings |
 | `npm run typecheck` | Passed |
-| `npm test` | 5 files, 40 tests passed |
-| `npm run test:e2e` | 10 Playwright tests passed (smoke 3, departmental 7) |
+| `npm test` | 6 files, 43 tests passed |
+| `npm run test:e2e` | 11 Playwright tests passed (smoke 3, departmental 8) |
 | `npm run smoke:clinical` | Draft → sign → amend → versions: `[[1,"signed"],[2,"amended"]]` |
 | `npm run smoke:workers` | Event processed once; dedup row present; signed Merkle checkpoint present |
-| `npm run build` | Web 66 modules / 463.15 kB JS; API server bundle 374.2 kB; worker bundle 1.2 MB |
+| `npm run build` | Web 68 modules / 479.87 kB JS; API server bundle 390.2 kB; worker bundle 1.2 MB |
 | `PORT=8788 node apps/api/dist/server.mjs` | Started successfully; `/api/v1/health/ready` returned `{"status":"ready","database":"reachable"}`; clean SIGTERM shutdown |
-| `npm run db:migrate` | 001–004 applied cleanly on the development database |
+| `npm run db:migrate` | 001–005 applied cleanly on the development database |
 
 ## Unit tests
 
@@ -49,6 +49,15 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 - FHIR metadata is public; FHIR writes return 405; FHIR Patient reads are facility-link scoped.
 - Synthetic terminology expansion returns a labelled ValueSet.
 
+## Emergency API tests
+
+`tests/integration/emergency.test.ts` runs the emergency workflow through the real API:
+
+- Registers an unidentified patient, records triage and serial observations, hands off to a named clinician and discharges with a disposition.
+- Rejects a stale disposition with 409 rather than overwriting the earlier decision.
+- Requires a real admission before an `admitted` disposition is recorded.
+- Denies emergency access to a role without clinical emergency permission.
+
 ## Departmental API tests
 
 `tests/integration/departments.test.ts` runs the full synthetic departmental flows through the real API:
@@ -67,7 +76,7 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 2. Receptionist signs in but cannot see or open the clinical worklist.
 3. Patient signs in without MFA and reaches their portal with released records and consent navigation.
 
-`tests/e2e/departments.spec.ts` additionally verifies that each departmental workspace opens with the correct roles, that a clinician can place a laboratory order, and that a clinician can schedule and open a theatre case with its safety-checkpoint surface. It also covers the pharmacist, finance and public-health permission boundaries, and the left-side mobile navigation drawer (open, anchor at the left edge, focus trap, Escape restore, collapse a stacked group, choose a link, auto-close).
+`tests/e2e/departments.spec.ts` additionally verifies that each departmental workspace opens with the correct roles, that a clinician can place a laboratory order, and that a clinician can schedule and open a theatre case with its safety-checkpoint surface. It also covers the pharmacist, finance and public-health permission boundaries, and an emergency journey that registers, triages and hands off an unidentified patient. The navigation test covers the left-side mobile drawer (open, anchor at the left edge, focus trap, Escape restore, collapse a stacked group, choose a link, auto-close).
 
 ## Worker smoke
 

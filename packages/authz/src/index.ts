@@ -65,6 +65,10 @@ export function canManageWardCare(actor: ActorContext): boolean {
   return hasRole(actor, ...wardRoles);
 }
 
+export function canManageEmergencyCare(actor: ActorContext): boolean {
+  return hasRole(actor, ...wardRoles);
+}
+
 export function canViewWardOperations(actor: ActorContext): boolean {
   return hasRole(actor, "clinician", "nurse", "facility_admin");
 }
@@ -119,6 +123,10 @@ export function assertCredentialReviewer(actor: ActorContext): void {
 
 export function assertWardAccess(actor: ActorContext): void {
   if (!canManageWardCare(actor)) throw new AuthzError("Ward access is not permitted for this role");
+}
+
+export function assertEmergencyAccess(actor: ActorContext): void {
+  if (!canManageEmergencyCare(actor)) throw new AuthzError("Emergency care access requires a clinical or nursing role");
 }
 
 export function assertWardView(actor: ActorContext): void {

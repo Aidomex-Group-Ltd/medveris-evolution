@@ -176,3 +176,21 @@ test.describe("mobile navigation", () => {
     await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
   });
 });
+
+test("clinician can register and triage an unidentified emergency patient", async ({ page }) => {
+  await signInStaff(page, "clinician@medveris.local");
+  await page.getByRole("link", { name: "Emergency", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Emergency care board" })).toBeVisible();
+  await page.getByRole("tab", { name: "Temporary / unidentified" }).click();
+  await page.getByLabel("Family name").fill(`EmergencyE2E${Date.now()}`);
+  await page.getByLabel("Approximate date of birth").fill("1990-01-01");
+  await page.getByLabel("Presenting problem").fill("Synthetic emergency arrival for browser verification.");
+  await page.getByRole("button", { name: "Register emergency case" }).click();
+  await expect(page).toHaveURL(/\/emergency\/[0-9a-f-]+$/);
+  await expect(page.getByText("Temporary identity")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Record triage" })).toBeVisible();
+  await page.getByLabel("Presenting complaint").fill("Collapsed at home (synthetic browser check).");
+  await page.getByRole("button", { name: "Save triage" }).click();
+  await expect(page.getByText("Triage saved. The encounter moved to triaged.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Serial observations" })).toBeVisible();
+});

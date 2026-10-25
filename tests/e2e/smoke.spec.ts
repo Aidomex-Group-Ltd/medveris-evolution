@@ -24,8 +24,9 @@ test("clinician signs in with MFA and opens the clinical worklist", async ({ pag
   await expect(page.getByRole("link", { name: "Clinical worklist", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Clinical worklist", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Clinical worklist" })).toBeVisible();
-  await expect(page.getByRole("cell", { name: /Joseph Mukasa/ })).toBeVisible();
-  await page.getByRole("link", { name: "Open" }).first().click();
+  const row = page.getByRole("row", { name: /Joseph Mukasa/ });
+  await expect(row).toBeVisible();
+  await row.getByRole("link", { name: "Open" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Joseph Mukasa");
 });
 

@@ -11,6 +11,7 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Authentication, staff MFA, patient sessions, CSRF | Working | `tests/integration/http.test.ts`, Playwright sign-in flows |
 | Patient registration, assisted registration and exact-ID resolution | Working | API routes + browser flows |
 | Appointments, walk-in encounters, queues and triage | Working | API + UI; seeded Kampala/Entebbe tenants |
+| Emergency temporary identity, triage, serial observations, handoff and disposition | Working | `tests/integration/emergency.test.ts`; emergency board + case UI; Playwright emergency journey |
 | Signed clinical notes, amendments, entered-in-error and versions | Working | `scripts/clinical-smoke.mjs`, `tests/unit/domain.test.ts` |
 | Append-only hash-chained audit + transactional outbox | Working | audit writes in every command path; `scripts/workers-smoke.mjs` |
 | Outbox worker with deduplication, retry and dead-lettering | Working | `apps/jobs`, `smoke:workers` |
@@ -32,7 +33,7 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Telehealth sessions, consent and completion | Working, metadata only | no media transport; join is disabled |
 | Device registry, assignment, observation ingestion and alerts | Working, synthetic | no vendor gateway or real device data |
 | Assistive AI job history and clinician review surface | Read-only placeholder | jobs run synthetically; no model inference |
-| React web workspace | Working | 66-module Vite build; stacked/collapsible sidebar, left-side mobile navigation drawer with keyboard focus management, desktop and mobile Playwright flows |
+| React web workspace | Working | Vite build; emergency workspace; stacked/collapsible sidebar, left-side mobile navigation drawer with keyboard focus management, desktop and mobile Playwright flows |
 | Worker bundle | Builds | `apps/api/dist/worker.mjs` produced by esbuild |
 
 ## Explicitly not delivered
