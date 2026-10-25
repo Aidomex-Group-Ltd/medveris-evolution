@@ -15,7 +15,7 @@ This file separates harmless local-development gaps from items that block produc
 9. **Rate limiting.** The in-memory limiter is per-process only and is not suitable for multi-instance deployment.
 10. **Email and uploads.** Local `.eml` sink and local filesystem storage are development adapters. Resend/R2 paths are not exercised.
 11. **Audit anchoring.** Checkpoints are HMAC-signed and stored locally. No external ledger/WORM anchoring or independent verification job exists.
-12. **Patient identity proofing.** Registration verifies email only. Production identity confidence, duplicates, merges and temporary emergency identities need an approved operational policy.
+12. **Patient identity proofing.** Registration verifies email only. Duplicate candidates are tenant-scoped and never auto-merged, but production identity confidence, merge/reconciliation and temporary emergency identities still need an approved operational policy.
 13. **Access reviews.** Emergency overrides create review tasks, but there is no automated escalation or periodic access recertification.
 
 ## Accepted local-development limitations

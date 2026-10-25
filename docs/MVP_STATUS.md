@@ -9,7 +9,7 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Local PostgreSQL provisioning | Working | `npm run db:setup`, `db:migrate`, `db:seed` |
 | Separate DB roles and forced RLS | Working | `tests/integration/rls.test.ts` |
 | Authentication, staff MFA, patient sessions, CSRF | Working | `tests/integration/http.test.ts`, Playwright sign-in flows |
-| Patient registration, assisted registration and exact-ID resolution | Working | API routes + browser flows |
+| Patient registration, assisted registration, exact-ID resolution and facility-scoped duplicate review | Working | API routes + browser flows; `tests/integration/patients.test.ts`; no automatic merge |
 | Appointments, walk-in encounters, queues and triage | Working | API + UI; seeded Kampala/Entebbe tenants |
 | Emergency temporary identity, triage, serial observations, handoff and disposition | Working | `tests/integration/emergency.test.ts`; emergency board + case UI; Playwright emergency journey |
 | Signed clinical notes, amendments, entered-in-error and versions | Working | `scripts/clinical-smoke.mjs`, `tests/unit/domain.test.ts` |

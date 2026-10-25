@@ -149,6 +149,7 @@ adminRoutes.get("/facility", async (c) => {
 });
 
 adminRoutes.get("/duplicate-candidates", async (c) => {
+  const auth = c.get("auth")!;
   assertMembershipAdmin(actor(c));
   const rows = await withStaffActor(c, async (tx) => tx`
     select d.id, d.reason, d.status, d.created_at,
@@ -157,7 +158,7 @@ adminRoutes.get("/duplicate-candidates", async (c) => {
       from patient_duplicate_candidates d
       join patients p on p.id = d.primary_patient_id
       join patients c on c.id = d.candidate_patient_id
-     where d.status = 'pending'
+     where d.tenant_id = ${auth.activeTenant!.id} and d.status = 'pending'
      order by d.created_at
   `);
   return c.json({ candidates: rows, automaticMerge: false });
@@ -176,7 +177,7 @@ adminRoutes.post("/duplicate-candidates/:id/review", async (c) => {
     const rows = await tx`
       update patient_duplicate_candidates
          set status = ${status}, reviewed_by = ${auth.user.id}, reviewed_at = now(), review_note = ${note}
-       where id = ${id} and status = 'pending' returning id
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id} and status = 'pending' returning id
     `;
     if (!rows[0]) throw new NotFoundError("Candidate not found");
     await writeAudit(tx, c.get("deps").config, {

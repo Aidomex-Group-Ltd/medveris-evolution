@@ -8,13 +8,13 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 |---|---|
 | `npm run lint` | Passed, zero warnings |
 | `npm run typecheck` | Passed |
-| `npm test` | 6 files, 43 tests passed |
+| `npm test` | 7 files, 45 tests passed |
 | `npm run test:e2e` | 11 Playwright tests passed (smoke 3, departmental 8) |
 | `npm run smoke:clinical` | Draft → sign → amend → versions: `[[1,"signed"],[2,"amended"]]` |
 | `npm run smoke:workers` | Event processed once; dedup row present; signed Merkle checkpoint present |
-| `npm run build` | Web 68 modules / 479.87 kB JS; API server bundle 390.2 kB; worker bundle 1.2 MB |
+| `npm run build` | Web 68 modules / 479.90 kB JS; API server bundle 390.5 kB; worker bundle 1.2 MB |
 | `PORT=8788 node apps/api/dist/server.mjs` | Started successfully; `/api/v1/health/ready` returned `{"status":"ready","database":"reachable"}`; clean SIGTERM shutdown |
-| `npm run db:migrate` | 001–005 applied cleanly on the development database |
+| `npm run db:migrate` | 001–006 applied cleanly on the development database |
 
 ## Unit tests
 
@@ -48,6 +48,15 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 - Malformed UUIDs return 422 (previously an unhandled 500).
 - FHIR metadata is public; FHIR writes return 405; FHIR Patient reads are facility-link scoped.
 - Synthetic terminology expansion returns a labelled ValueSet.
+
+## Patient registration tests
+
+`tests/integration/patients.test.ts` verifies:
+
+- Registering the same family name and date of birth twice at one facility queues exactly one review candidate.
+- Registering the same identity at another facility queues no candidate and exposes no cross-facility candidate to the first facility's administrator.
+- Duplicate review is audited, removes the candidate from the pending list and explicitly reports that no automatic merge occurred.
+- Migration 006 scopes candidate rows and RLS to the active facility.
 
 ## Emergency API tests
 

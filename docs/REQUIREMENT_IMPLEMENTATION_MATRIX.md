@@ -35,7 +35,7 @@ Status definitions:
 | PAT-01 | Self-registration and unique Medveris ID | 01, 06 | Patients create an account and receive a non-sequential public ID | Registration APIs; domain public-ID tests; patient portal Playwright flow | Verified |
 | PAT-02 | Assisted registration and temporary/emergency identity | 06, 07 | Reception and emergency staff register patients without a device | Assisted registration UI/API; temporary emergency identity in `tests/integration/emergency.test.ts` | Verified |
 | PAT-03 | Exact-ID resolution and identity confirmation | 02, 06 | Staff cannot open a chart from a public ID alone | Exact ID + family name + DOB resolution; lookup audited | Verified |
-| PAT-04 | Duplicate review without automatic merge | 02, 06, 15 (AT26) | Administrators review reversible linkage | Duplicate candidates and review console; no automatic merge | Implemented; merge workflow remains review-only by design |
+| PAT-04 | Facility-scoped duplicate review without automatic merge | 02, 06, 15 (AT26) | Administrators review same-facility candidates; another facility cannot inspect or review them | `tests/integration/patients.test.ts`; migration 006 adds `tenant_id` and tenant RLS; review console records a decision only | Verified; identity merge remains deliberately disabled |
 | PAT-05 | Patient profile and permitted medical history | 05, 06, 07 | Patients see released records from linked facilities | Patient portal records, observations, conditions, allergies, appointments | Verified for signed/released records |
 | PAT-06 | Appointments, follow-ups and referrals | 05, 06 | Reception schedules; clinicians record follow-up and referral | Appointment API/UI; follow-up and referral commands on encounters | Implemented; referral is a local record, not an external transmission |
 | PAT-07 | Consent and record-access management | 02, 07 | Patients grant, inspect and revoke scoped access | Consent API and patient portal consent screen | Implemented |
@@ -162,7 +162,7 @@ Executed after the emergency increment:
 
 - `npm run typecheck` — passed.
 - `npm run lint` — passed.
-- `npm test` — unit, PostgreSQL isolation, HTTP and departmental suites, including 3 new emergency tests.
+- `npm test` — unit, PostgreSQL isolation, HTTP, departmental and patient-registration suites, including emergency and duplicate-isolation tests.
 - `npm run test:e2e` — browser journeys, including the emergency registration/triage journey.
 - `npm run build` — web, API server and worker bundles.
 - `npm run smoke:clinical`, `npm run smoke:workers` — see `docs/TEST_EVIDENCE.md`.

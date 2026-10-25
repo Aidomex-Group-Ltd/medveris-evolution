@@ -70,14 +70,17 @@ receptionRoutes.post("/reception/patients", async (c) => {
         ${`MRN-${auth.activeTenant!.slug.slice(0, 8).toUpperCase()}-${publicId.slice(-4)}`})
     `;
     const possible = await tx`
-      select id, public_id from patients
-       where lower(family_name) = lower(${body.familyName}) and date_of_birth = ${body.dateOfBirth} and id <> ${patientId}
+      select p.id, p.public_id from patients p
+        join tenant_patient_links l on l.patient_id = p.id and l.tenant_id = ${auth.activeTenant!.id}
+       where lower(p.family_name) = lower(${body.familyName}) and p.date_of_birth = ${body.dateOfBirth}
+         and p.id <> ${patientId} and p.merged_into is null
        limit 5
     `;
     for (const candidate of possible) {
       await tx`
-        insert into patient_duplicate_candidates (id, primary_patient_id, candidate_patient_id, reason)
-        values (${crypto.randomUUID()}, ${candidate.id}, ${patientId}, 'Exact family name and date of birth; review required')
+        insert into patient_duplicate_candidates (id, tenant_id, primary_patient_id, candidate_patient_id, reason)
+        values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${candidate.id}, ${patientId},
+          'Exact family name and date of birth in this facility; review required')
       `;
     }
     await writeAudit(tx, deps.config, {

@@ -187,8 +187,8 @@ test("clinician can register and triage an unidentified emergency patient", asyn
   await page.getByLabel("Presenting problem").fill("Synthetic emergency arrival for browser verification.");
   await page.getByRole("button", { name: "Register emergency case" }).click();
   await expect(page).toHaveURL(/\/emergency\/[0-9a-f-]+$/);
-  await expect(page.getByText("Temporary identity")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Record triage" })).toBeVisible();
+  await expect(page.getByText(/^Temporary identity\. Reconcile/)).toBeVisible();
   await page.getByLabel("Presenting complaint").fill("Collapsed at home (synthetic browser check).");
   await page.getByRole("button", { name: "Save triage" }).click();
   await expect(page.getByText("Triage saved. The encounter moved to triaged.")).toBeVisible();

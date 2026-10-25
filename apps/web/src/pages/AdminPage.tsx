@@ -159,7 +159,7 @@ function Duplicates() {
   return (
     <div className="mv-stack">
       {error ? <ErrorState message={error} /> : null}
-      <Notice tone="info" title="Manual review required">Automatic patient merges are disabled. Review is audited and does not destroy either identity.</Notice>
+      <Notice tone="info" title="Manual review required">Automatic patient merges are disabled. Review is audited, is limited to this facility and does not merge either identity.</Notice>
       <Card title="Pending duplicate candidates">
         {duplicates.loading ? <LoadingState /> : duplicates.error ? <ErrorState message={duplicates.error} onRetry={duplicates.reload} /> : !duplicates.data?.candidates.length ? <EmptyState title="No candidates" description="No unresolved duplicate candidates require review." /> : (
           <Table head={["Primary", "Candidate", "Reason", "Actions"]}>
@@ -168,7 +168,7 @@ function Duplicates() {
                 <td>{candidate.primaryGivenName} {candidate.primaryFamilyName}<div className="mv-small mv-muted mv-id">{candidate.primaryPublicId}</div></td>
                 <td>{candidate.candidateGivenName} {candidate.candidateFamilyName}<div className="mv-small mv-muted mv-id">{candidate.candidatePublicId}</div></td>
                 <td className="mv-small">{candidate.reason}</td>
-                <td><div className="mv-row"><Button size="sm" variant="secondary" onClick={() => void review(candidate.id, "reviewed-no-merge")}>No merge</Button><Button size="sm" onClick={() => void review(candidate.id, "linked")}>Link reviewed</Button></div></td>
+                <td><div className="mv-row"><Button size="sm" variant="secondary" onClick={() => void review(candidate.id, "reviewed-no-merge")}>No merge</Button><Button size="sm" onClick={() => void review(candidate.id, "linked")}>Confirmed duplicate</Button></div></td>
               </tr>
             ))}
           </Table>
