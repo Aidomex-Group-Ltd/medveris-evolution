@@ -32,7 +32,7 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Telehealth sessions, consent and completion | Working, metadata only | no media transport; join is disabled |
 | Device registry, assignment, observation ingestion and alerts | Working, synthetic | no vendor gateway or real device data |
 | Assistive AI job history and clinician review surface | Read-only placeholder | jobs run synthetically; no model inference |
-| React web workspace | Working | 66-module Vite build; desktop Playwright smoke + departmental flows |
+| React web workspace | Working | 66-module Vite build; stacked/collapsible sidebar, left-side mobile navigation drawer with keyboard focus management, desktop and mobile Playwright flows |
 | Worker bundle | Builds | `apps/api/dist/worker.mjs` produced by esbuild |
 
 ## Explicitly not delivered

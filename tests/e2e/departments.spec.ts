@@ -144,3 +144,35 @@ test("clinician can schedule and open a theatre case with safety checkpoints", a
   await expect(page.getByRole("heading", { name: "Safety checklists" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Mark preop-ready" })).toBeVisible();
 });
+
+test.describe("mobile navigation", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("hamburger opens the stacked navigation and closes after a link is chosen", async ({ page }) => {
+    await signInStaff(page, "clinician@medveris.local");
+    const nav = page.getByRole("navigation", { name: "Primary navigation" });
+    const menu = page.getByRole("button", { name: "Open navigation" });
+    await expect(menu).toBeVisible();
+    const menuBox = await menu.boundingBox();
+    expect(menuBox?.x ?? 999).toBeLessThan(40);
+    await expect(nav).toBeHidden();
+    await menu.click();
+    await expect(nav).toBeVisible();
+    const drawer = page.locator("#app-sidebar");
+    const drawerBox = await drawer.boundingBox();
+    expect(drawerBox?.x ?? 999).toBeLessThan(2);
+    await expect(drawer.getByRole("button", { name: "Close navigation" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(nav).toBeHidden();
+    await expect(menu).toBeFocused();
+    await menu.click();
+    await expect(nav).toBeVisible();
+    await nav.getByRole("button", { name: "Workspace" }).click();
+    await expect(nav.getByRole("link", { name: "Clinical worklist" })).toBeHidden();
+    await nav.getByRole("button", { name: "Workspace" }).click();
+    await nav.getByRole("link", { name: "Clinical worklist" }).click();
+    await expect(page).toHaveURL(/\/worklist/);
+    await expect(nav).toBeHidden();
+    await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+  });
+});

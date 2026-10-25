@@ -1,4 +1,5 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Badge, Button } from "@medveris/ui";
 import { useAuth } from "../lib/auth";
 import type { Role } from "../lib/types";
@@ -55,6 +56,53 @@ const groups: { label: string; items: NavItem[] }[] = [
 export function AppShell() {
   const { me, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const sidebar = document.getElementById("app-sidebar");
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNavOpen(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
+      if (event.key !== "Tab" || !sidebar) return;
+      const focusable = Array.from(
+        sidebar.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute("hidden") && element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKey);
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus({ preventScroll: true }), 260);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [navOpen]);
+
   if (!me) return null;
   const roles = me.activeTenant?.roles ?? [];
   const can = (item: NavItem) => {
@@ -64,36 +112,87 @@ export function AppShell() {
     if (item.roles) return item.roles.some((role) => roles.includes(role));
     return true;
   };
+
+  function closeNavigation() {
+    setNavOpen(false);
+    menuButtonRef.current?.focus();
+  }
+
+  async function signOut() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <div className="mv-app">
-      <aside className="mv-sidebar">
-        <NavLink to="/" className="mv-brand" aria-label="Medveris home">
-          <span className="mv-brand__mark" aria-hidden="true">M</span>
-          <span>Medveris<small>Outpatient foundation</small></span>
-        </NavLink>
+      {navOpen ? <button type="button" className="mv-scrim" aria-label="Close navigation" tabIndex={-1} onClick={closeNavigation} /> : null}
+      <aside id="app-sidebar" className={`mv-sidebar${navOpen ? " mv-sidebar--open" : ""}`}>
+        <div className="mv-sidebar__head">
+          <NavLink to="/" className="mv-brand" aria-label="Medveris home">
+            <span className="mv-brand__mark" aria-hidden="true">M</span>
+            <span>Medveris<small>Outpatient foundation</small></span>
+          </NavLink>
+          <button ref={closeButtonRef} type="button" className="mv-nav-close" aria-label="Close navigation" onClick={closeNavigation}>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+        </div>
         <nav className="mv-nav" aria-label="Primary navigation">
           {groups.map((group) => {
             const visible = group.items.filter(can);
             if (!visible.length) return null;
+            const expanded = !collapsedGroups[group.label];
+            const panelId = `nav-group-${group.label.toLowerCase().replaceAll(" ", "-")}`;
             return (
-              <div key={group.label}>
-                <p className="mv-nav__label">{group.label}</p>
-                {visible.map((item) => (
-                  <NavLink key={item.to} to={item.to} end={item.to === "/"}>
-                    {item.label}
-                  </NavLink>
-                ))}
-              </div>
+              <section className="mv-nav__group" key={group.label}>
+                <button
+                  type="button"
+                  className="mv-nav__toggle"
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  onClick={() => setCollapsedGroups((previous) => ({ ...previous, [group.label]: expanded }))}
+                >
+                  <span>{group.label}</span>
+                  <svg className={`mv-nav__chevron${expanded ? " mv-nav__chevron--open" : ""}`} viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <div id={panelId} className="mv-nav__items" hidden={!expanded}>
+                  {visible.map((item) => (
+                    <NavLink key={item.to} to={item.to} end={item.to === "/"}>
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              </section>
             );
           })}
         </nav>
         <div className="mv-sidebar__footer">
           <div>{me.user.displayName}</div>
           <div className="mv-small">{me.activeTenant ? me.activeTenant.name : me.patientId ? "Patient account" : "No active role"}</div>
+          <div className="mv-sidebar__actions">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/security")}>Security</Button>
+            <Button variant="secondary" size="sm" onClick={() => void signOut()}>Sign out</Button>
+          </div>
         </div>
       </aside>
       <div className="mv-main">
         <header className="mv-topbar">
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className="mv-menu-button"
+            aria-label={navOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={navOpen}
+            aria-controls="app-sidebar"
+            onClick={() => (navOpen ? closeNavigation() : setNavOpen(true))}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+          <NavLink to="/" className="mv-mobile-brand" aria-label="Medveris home">
+            <span className="mv-brand__mark" aria-hidden="true">M</span>
+            <span>Medveris</span>
+          </NavLink>
           <div className="context">
             <div className="mv-context">
               <Badge tone={me.activeTenant ? "success" : "info"}>{me.activeTenant ? "Staff session" : me.patientId ? "Patient session" : "Unassigned"}</Badge>
@@ -101,18 +200,9 @@ export function AppShell() {
               {me.user.mfaEnrolled ? <Badge tone="neutral">MFA enrolled</Badge> : null}
             </div>
           </div>
-          <div className="mv-row">
+          <div className="mv-row mv-topbar__actions">
             <Button variant="ghost" size="sm" onClick={() => navigate("/security")}>Security</Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={async () => {
-                await logout();
-                navigate("/login", { replace: true });
-              }}
-            >
-              Sign out
-            </Button>
+            <Button variant="secondary" size="sm" onClick={() => void signOut()}>Sign out</Button>
           </div>
         </header>
         <main className="mv-content">
