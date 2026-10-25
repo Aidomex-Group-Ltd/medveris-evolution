@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@medveris/auth": ["packages/auth/src/index.ts"],
+      "@medveris/authz": ["packages/authz/src/index.ts"],
+      "@medveris/contracts": ["packages/contracts/src/index.ts"],
+      "@medveris/db": ["packages/db/src/index.ts"],
+      "@medveris/domain": ["packages/domain/src/index.ts"],
+      "@medveris/ui": ["packages/ui/src/index.ts"]
+    }
+  },
+  "include": [
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "eslint.config.js"
+  ],
+  "exclude": ["**/dist/**", "**/node_modules/**"]
+}

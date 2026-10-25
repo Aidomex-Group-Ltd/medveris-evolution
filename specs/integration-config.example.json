@@ -1,0 +1,60 @@
+{
+  "description": "Design example only. Implement config validation; secret references are names, never values.",
+  "fhir": {
+    "basePath": "/fhir/r4",
+    "release": "4.0.1",
+    "profilePackages": [],
+    "externalWritesEnabled": false,
+    "bulkExportEnabled": false
+  },
+  "terminology": {
+    "basePath": "/terminology/fhir/r4",
+    "providerBaseUrl": null,
+    "credentialSecretRef": "TERMINOLOGY_PROVIDER_CREDENTIAL",
+    "snomedEditionVersionUri": null,
+    "loincRelease": null,
+    "approvedValueSets": [],
+    "licenseReviewStatus": "pending",
+    "productionEnabled": false,
+    "timeoutMs": 5000,
+    "maxAttempts": 3
+  },
+  "dicomweb": {
+    "logicalBasePath": "/dicomweb",
+    "pacsBaseUrl": null,
+    "credentialSecretRef": "PACS_CREDENTIAL",
+    "conformanceEdition": null,
+    "supportedSopClasses": [],
+    "supportedTransferSyntaxes": [],
+    "productionEnabled": false
+  },
+  "adapters": {
+    "identity": {
+      "provider": null
+    },
+    "laboratory": {
+      "enabled": false
+    },
+    "credentialVerification": {
+      "enabled": false
+    },
+    "video": {
+      "enabled": false
+    },
+    "payments": {
+      "enabled": false
+    },
+    "publicHealth": {
+      "enabled": false
+    },
+    "devices": {
+      "enabled": false
+    },
+    "ai": {
+      "enabled": false
+    },
+    "ledger": {
+      "enabled": false
+    }
+  }
+}

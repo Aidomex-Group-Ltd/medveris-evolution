@@ -1,0 +1,5 @@
+.mv-client-fields { display: grid; gap: 2px; }
+fieldset.mv-note { border: 1px solid var(--mv-border); border-radius: var(--mv-radius); padding: 12px; margin: 0; }
+fieldset.mv-note legend { padding: 0 5px; font-weight: 650; }
+ul.mv-stack > li { padding-bottom: 8px; border-bottom: 1px solid var(--mv-border); }
+ul.mv-stack > li:last-child { border-bottom: 0; padding-bottom: 0; }

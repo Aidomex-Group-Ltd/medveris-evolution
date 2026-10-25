@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:medveris:schema:device-observation:1",
+  "title": "Device gateway observation example contract",
+  "description": "Schema validation does not verify device signatures, patient binding, units or clinical quality. Perform those checks server-side.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "deviceId",
+    "assignmentId",
+    "sequence",
+    "metric",
+    "value",
+    "unit",
+    "measuredAt",
+    "gatewayReceivedAt",
+    "qualityFlags"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "deviceId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "assignmentId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system",
+        "code"
+      ],
+      "properties": {
+        "system": {
+          "type": "string",
+          "format": "uri"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      }
+    },
+    "value": {
+      "type": "number"
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50
+    },
+    "measuredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "gatewayReceivedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "qualityFlags": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 20,
+      "items": {
+        "enum": [
+          "unverified",
+          "poor-signal",
+          "calibration-due",
+          "clock-uncertain",
+          "manual-reconciliation-required"
+        ]
+      }
+    },
+    "rawValue": {
+      "type": "number"
+    },
+    "rawUnit": {
+      "type": "string",
+      "maxLength": 50
+    }
+  }
+}

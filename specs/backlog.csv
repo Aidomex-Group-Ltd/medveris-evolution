@@ -1,0 +1,21 @@
+id,milestone,title,dependencies,acceptance,status
+BK01,M0,Repository assessment and gap matrix,None,Clean reproducible setup and architecture decisions,Not started
+BK02,M0,Database roles migrations and CI,BK01,Real PostgreSQL baseline passes,Not started
+BK03,M1,Identity MFA membership and revocation,BK02,AT03 AT21 AT24,Not started
+BK04,M1,Patient registration identity and duplicate review,BK03,AT01 AT26,Not started
+BK05,M1,Encounters observations notes signing amendments audit,BK04,AT04 AT06 AT07 AT19,Not started
+BK06,M1,Consent exchange overrides and private documents,BK05,AT05 AT20 AT23,Not started
+BK07,M1,Credential evidence verification and expiry,BK03,AT02 AT25,Not started
+BK08,M1,Outbox checkpoints recovery and browser journeys,BK05 BK06 BK07,AT18 AT22 and complete M1 evidence,Not started
+BK09,M2,Inpatient emergency wards and theatre,BK08,AT08 AT09 and clinical sign-off,Not started
+BK10,M2,Diagnostics medication and imaging workflow,BK08,AT10 and diagnostics acceptance,Not started
+BK11,M3,Finance inventory continuing care and public health,BK09 BK10,AT11 AT12 AT13,Not started
+BK12,M4,Telemedicine and selected device pilot,BK11,AT14 AT15,Not started
+BK13,M5,Task-specific AI validation and radiology pilot,BK10 BK12,AT16 AT17 plus approved evaluation,Not started
+BK14,M5,Approved ledger anchoring adapter,BK08,AT18 plus privacy and ledger governance,Not started
+BK15,M0,Standards profile baseline and terminology/PACS rights review,BK01,Pinned baselines and API registry,Not started
+BK16,M1,FHIR facade profiles terminology search and code validation,BK05 BK06 BK15,AT27 AT28 AT29 AT30 AT31,Not started
+BK17,M2,DICOMweb PACS laboratory mappings and imaging links,BK10 BK15 BK16,AT32 AT33,Not started
+BK18,M4,LOINC UCUM device mapping and Observation export,BK12 BK16,AT34,Not started
+BK19,M5,Code-aware AI mapping and version compatibility,BK13 BK16 BK17,AT35,Not started
+BK20,M1 onward,Operational adapter resilience and credential rotation,BK03 BK15,AT36,Not started

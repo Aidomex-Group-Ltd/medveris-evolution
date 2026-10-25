@@ -1,0 +1,1321 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Medveris foundation API contract subset",
+    "version": "0.1.0",
+    "description": "Design starter for selected M1 routes, not a running server or complete API. Signed-in staff context, current authorization and durable audit required. Implement authentication, confirmation workflows, signing and grant creation in the expanded contract."
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "sessionCookie": []
+    }
+  ],
+  "paths": {
+    "/patients/resolve": {
+      "post": {
+        "operationId": "resolvePatient",
+        "description": "Requires approved identity-confirmation evidence; a patient public ID alone is insufficient.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Requested context only; verify active authenticated membership."
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 500
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authorized operation",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedPatient"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current policy",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable or concealed",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/encounters": {
+      "post": {
+        "operationId": "createEncounter",
+        "description": "Create a tenant-owned encounter after patient and facility authorization.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Requested context only; verify active authenticated membership."
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 500
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful authorized operation",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Encounter"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current policy",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable or concealed",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EncounterCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entries/{entryId}/amendments": {
+      "post": {
+        "operationId": "amendEntry",
+        "description": "Append a reasoned version of a source-owned entry with atomic audit and optimistic concurrency.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Requested context only; verify active authenticated membership."
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 500
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful authorized operation",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryVersionReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current policy",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable or concealed",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmendmentCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/consents/{consentId}/revoke": {
+      "post": {
+        "operationId": "revokeConsent",
+        "description": "Revoke scoped consent and associated future access; recheck delivery in pending jobs.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Requested context only; verify active authenticated membership."
+          },
+          {
+            "in": "path",
+            "name": "consentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 500
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful authorized operation",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current policy",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable or concealed",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentRevoke"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exchange/patients/{patientId}/records": {
+      "get": {
+        "operationId": "exchangeRecords",
+        "description": "Return permitted source-labelled clinical projections only after live grant and sensitivity checks; audit before return.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Requested context only; verify active authenticated membership."
+          },
+          {
+            "in": "path",
+            "name": "patientId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authorized operation",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangePage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current policy",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable or concealed",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Protected responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-medveris-session",
+        "description": "Secure HttpOnly SameSite session cookie. MFA and CSRF protection required as documented."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "correlationId"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "correlationId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            }
+          }
+        }
+      },
+      "ResolveRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "patientPublicId",
+          "confirmationReference"
+        ],
+        "properties": {
+          "patientPublicId": {
+            "type": "string",
+            "minLength": 16,
+            "maxLength": 100
+          },
+          "confirmationReference": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ResolvedPatient": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "patientId",
+          "identityConfirmed"
+        ],
+        "properties": {
+          "patientId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "identityConfirmed": {
+            "const": true
+          },
+          "displayLabel": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Minimum permitted identity label; role-filtered."
+          }
+        }
+      },
+      "EncounterCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "patientId",
+          "facilityId",
+          "type"
+        ],
+        "properties": {
+          "patientId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "facilityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "enum": [
+              "outpatient",
+              "emergency",
+              "inpatient",
+              "telehealth"
+            ]
+          },
+          "appointmentId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "Encounter": {
+        "type": "object",
+        "required": [
+          "id",
+          "patientId",
+          "state",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "patientId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "enum": [
+              "planned",
+              "arrived",
+              "triaged",
+              "in-progress",
+              "completed",
+              "cancelled",
+              "entered-in-error"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "AmendmentCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectedVersion",
+          "changeNote",
+          "contentSchema",
+          "content"
+        ],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "changeNote": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 2000
+          },
+          "contentSchema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "content": {
+            "type": "object"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EntryVersionReceipt": {
+        "type": "object",
+        "required": [
+          "entryId",
+          "versionId",
+          "version",
+          "recordedAt"
+        ],
+        "properties": {
+          "entryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "versionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ConsentRevoke": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectedVersion",
+          "reason"
+        ],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 1000
+          }
+        }
+      },
+      "ExchangeRecord": {
+        "type": "object",
+        "required": [
+          "entryId",
+          "versionId",
+          "sourceTenantId",
+          "authorId",
+          "occurredAt",
+          "category",
+          "content"
+        ],
+        "properties": {
+          "entryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "versionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceTenantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "content": {
+            "type": "object"
+          }
+        }
+      },
+      "ExchangePage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/ExchangeRecord"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:medveris:schema:clinical-coding:1",
+  "title": "Medveris persisted versioned clinical concept",
+  "description": "Internal coded representation, not a complete FHIR validator. Validate clinical value-set membership and content entitlement server-side.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "coding",
+    "text",
+    "validation"
+  ],
+  "properties": {
+    "coding": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "system",
+          "version",
+          "code",
+          "display"
+        ],
+        "properties": {
+          "system": {
+            "type": "string",
+            "format": "uri"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "display": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "userSelected": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 5000
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "validatedAt",
+        "valueSet",
+        "valueSetVersion"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "validated",
+            "unvalidated-local",
+            "inactive",
+            "invalid"
+          ]
+        },
+        "validatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "valueSet": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "valueSetVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serviceRelease": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

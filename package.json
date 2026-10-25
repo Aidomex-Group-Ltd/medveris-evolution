@@ -1,0 +1,60 @@
+{
+  "name": "medveris",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Medveris outpatient care MVP (synthetic data only)",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "db:setup": "tsx scripts/db-setup.ts",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "db:reset:synthetic": "tsx scripts/db-reset-synthetic.ts",
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "tsx watch apps/api/src/server.ts",
+    "dev:web": "vite --config apps/web/vite.config.ts",
+    "jobs:once": "tsx apps/jobs/src/index.ts --once",
+    "jobs:watch": "tsx apps/jobs/src/index.ts",
+    "build": "npm run build:web && npm run build:api",
+    "build:web": "vite build --config apps/web/vite.config.ts",
+    "build:api": "esbuild apps/api/src/server.ts --bundle --platform=node --format=esm --outfile=apps/api/dist/server.mjs --packages=external && esbuild apps/api/src/worker.ts --bundle --platform=node --format=esm --outfile=apps/api/dist/worker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "test:e2e": "playwright test",
+    "smoke:workers": "node scripts/workers-smoke.mjs",
+    "smoke:clinical": "node scripts/clinical-smoke.mjs",
+    "start": "node apps/api/dist/server.mjs"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "hono": "4.13.14",
+    "postgres": "3.4.9",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "22.19.3",
+    "@types/pg": "8.15.6",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "6.1.2",
+    "concurrently": "9.2.1",
+    "esbuild": "0.28.2",
+    "eslint": "9.39.1",
+    "pg": "8.16.3",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.2",
+    "vite": "8.3.5",
+    "vitest": "4.0.8",
+    "wrangler": "4.152.0"
+  }
+}

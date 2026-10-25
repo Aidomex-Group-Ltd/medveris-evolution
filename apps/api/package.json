@@ -1,0 +1,1 @@
+{"name":"@medveris/api","version":"0.1.0","private":true,"type":"module","main":"./src/worker.ts","dependencies":{"@medveris/auth":"0.1.0","@medveris/authz":"0.1.0","@medveris/contracts":"0.1.0","@medveris/db":"0.1.0","@medveris/domain":"0.1.0"}}

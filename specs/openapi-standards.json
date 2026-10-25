@@ -1,0 +1,635 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Medveris standards endpoint skeleton",
+    "version": "0.2.0",
+    "description": "Selected metadata and terminology endpoints only. Full FHIR profiles, SMART authorization and DICOMweb contracts require separate conformance artifacts. No running service is claimed."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "sessionCookie": []
+    },
+    {
+      "integrationOAuth": []
+    }
+  ],
+  "paths": {
+    "/fhir/r4/metadata": {
+      "get": {
+        "operationId": "fhirCapabilities",
+        "responses": {
+          "200": {
+            "description": "Actual implemented CapabilityStatement",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "CapabilityStatement"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminology/fhir/r4/metadata": {
+      "get": {
+        "operationId": "terminologyCapabilitiesStatement",
+        "responses": {
+          "200": {
+            "description": "Actual supported terminology interactions",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "CapabilityStatement"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminology/fhir/r4/CodeSystem/$lookup": {
+      "post": {
+        "operationId": "CodeSystemLookup",
+        "description": "Standard R4 Parameters/response semantics; entitlement, supported version and context checks required. See document 20. This skeleton does not encode all operation parameter rules.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/fhir+json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resourceType",
+                  "parameter"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "const": "Parameters"
+                  },
+                  "parameter": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Supported standard operation response",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "Parameters"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid/unsupported operation parameters",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Unauthorized or content entitlement denied",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Terminology dependency unavailable",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminology/fhir/r4/CodeSystem/$validate-code": {
+      "post": {
+        "operationId": "CodeSystemValidatecode",
+        "description": "Standard R4 Parameters/response semantics; entitlement, supported version and context checks required. See document 20. This skeleton does not encode all operation parameter rules.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/fhir+json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resourceType",
+                  "parameter"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "const": "Parameters"
+                  },
+                  "parameter": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Supported standard operation response",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "Parameters"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid/unsupported operation parameters",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Unauthorized or content entitlement denied",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Terminology dependency unavailable",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminology/fhir/r4/ValueSet/$expand": {
+      "post": {
+        "operationId": "ValueSetExpand",
+        "description": "Standard R4 Parameters/response semantics; entitlement, supported version and context checks required. See document 20. This skeleton does not encode all operation parameter rules.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/fhir+json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resourceType",
+                  "parameter"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "const": "Parameters"
+                  },
+                  "parameter": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Supported standard operation response",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "ValueSet"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid/unsupported operation parameters",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Unauthorized or content entitlement denied",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Terminology dependency unavailable",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminology/fhir/r4/ValueSet/$validate-code": {
+      "post": {
+        "operationId": "ValueSetValidatecode",
+        "description": "Standard R4 Parameters/response semantics; entitlement, supported version and context checks required. See document 20. This skeleton does not encode all operation parameter rules.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/fhir+json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resourceType",
+                  "parameter"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "const": "Parameters"
+                  },
+                  "parameter": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Supported standard operation response",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "Parameters"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid/unsupported operation parameters",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Unauthorized or content entitlement denied",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Terminology dependency unavailable",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminology/fhir/r4/ConceptMap/$translate": {
+      "post": {
+        "operationId": "ConceptMapTranslate",
+        "description": "Standard R4 Parameters/response semantics; entitlement, supported version and context checks required. See document 20. This skeleton does not encode all operation parameter rules.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/fhir+json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resourceType",
+                  "parameter"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "const": "Parameters"
+                  },
+                  "parameter": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Supported standard operation response",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "Parameters"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid/unsupported operation parameters",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Unauthorized or content entitlement denied",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Terminology dependency unavailable",
+            "content": {
+              "application/fhir+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "const": "OperationOutcome"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-medveris-session"
+      },
+      "integrationOAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Validated OIDC/OAuth service token; tenant/resource entitlements remain required."
+      }
+    }
+  }
+}

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: test
+      APP_ORIGIN: http://localhost:5173
+      DEV_SHOW_TOTP_SECRETS: "true"
+      PGADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+      MIGRATION_DATABASE_URL: postgres://medveris_migrator:medveris_migrator_dev@localhost:5432/medveris_dev
+      DATABASE_URL: postgres://medveris_runtime:medveris_runtime_dev@localhost:5432/medveris_dev
+      JOBS_DATABASE_URL: postgres://medveris_jobs:medveris_jobs_dev@localhost:5432/medveris_dev
+      SESSION_SECRET: ci-session-secret-ci-session-secret
+      MFA_ENCRYPTION_KEY: ci-mfa-encryption-key-ci-mfa-encryption-key
+      AUDIT_SIGNING_KEY: ci-audit-signing-key-ci-audit-signing-key
+      AUDIT_SIGNING_KEY_ID: ci-key-1
+      TERMINOLOGY_MODE: synthetic
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:setup
+      - run: npm run db:migrate
+      - run: npm run db:seed
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run smoke:workers
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7

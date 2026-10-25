@@ -1,0 +1,534 @@
+import { Hono } from "hono";
+import {
+  appointmentSchema,
+  createEncounterSchema,
+  createPatientByStaffSchema,
+  queueEntrySchema,
+  resolvePatientSchema,
+  triageSchema,
+  transitionEncounterSchema,
+  uuidSchema,
+} from "@medveris/contracts";
+import type { ActorContext } from "@medveris/authz";
+import { canTransitionEncounter, randomPatientPublicId, type EncounterState } from "@medveris/domain";
+import { requireStaff, withStaffActor } from "../auth/middleware.js";
+import { auditMeta, ensureMatch, parseJson, requestMeta } from "../lib/http.js";
+import { writeAudit, writeOutbox } from "../lib/audit.js";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
+import { rateLimit, clientKey } from "../lib/rate-limit.js";
+import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
+import type { AppEnv } from "../types.js";
+
+export const receptionRoutes = new Hono<AppEnv>();
+
+const FRONT_DESK_ROLES = ["receptionist", "nurse", "clinician", "facility_admin"];
+
+function actor(c: Parameters<typeof requireStaff>[0]): ActorContext {
+  const auth = c.get("auth")!;
+  return {
+    userId: auth.user.id,
+    roles: auth.activeTenant?.roles ?? [],
+    tenantId: auth.activeTenant?.id ?? null,
+    patientId: auth.patientId,
+    mfaVerified: auth.mfaVerified,
+    mfaEnrolled: Boolean(auth.user.mfaEnrolledAt),
+    platformRoles: auth.platformRoles,
+  };
+}
+
+function requireFrontDesk(c: Parameters<typeof requireStaff>[0]): void {
+  const a = actor(c);
+  if (!FRONT_DESK_ROLES.some((r) => a.roles.includes(r as never))) throw new ForbiddenError("Front-desk access is required");
+}
+
+receptionRoutes.post("/reception/patients", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const body = await parseJson(c, createPatientByStaffSchema);
+  const meta = requestMeta(c);
+  const result = await withStaffActor(c, async (tx) => {
+    let publicId = randomPatientPublicId();
+    for (let i = 0; i < 5; i++) {
+      const clash = await tx`select 1 from patients where public_id = ${publicId}`;
+      if (!clash.length) break;
+      publicId = randomPatientPublicId();
+    }
+    const patientId = crypto.randomUUID();
+    await tx`
+      insert into patients (id, public_id, given_name, family_name, date_of_birth, sex, email, phone,
+        identity_confidence, identity_evidence, created_via, created_tenant_id)
+      values (${patientId}, ${publicId}, ${body.givenName}, ${body.familyName}, ${body.dateOfBirth}, ${body.sex},
+        ${body.email || null}, ${body.phone || null}, ${body.identityConfidence},
+        ${body.assistedWithoutContactDetails ? "assisted registration without contact details" : "staff-assisted registration"},
+        'assisted-registration', ${auth.activeTenant!.id})
+    `;
+    await tx`
+      insert into tenant_patient_links (id, tenant_id, patient_id, local_mrn)
+      values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${patientId},
+        ${`MRN-${auth.activeTenant!.slug.slice(0, 8).toUpperCase()}-${publicId.slice(-4)}`})
+    `;
+    const possible = await tx`
+      select id, public_id from patients
+       where lower(family_name) = lower(${body.familyName}) and date_of_birth = ${body.dateOfBirth} and id <> ${patientId}
+       limit 5
+    `;
+    for (const candidate of possible) {
+      await tx`
+        insert into patient_duplicate_candidates (id, primary_patient_id, candidate_patient_id, reason)
+        values (${crypto.randomUUID()}, ${candidate.id}, ${patientId}, 'Exact family name and date of birth; review required')
+      `;
+    }
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "patient.assisted-register",
+      subjectPatientId: patientId,
+      resourceType: "Patient",
+      resourceId: patientId,
+      ...meta,
+      metadata: { publicId, duplicateCandidates: possible.length },
+    });
+    return { patientId, publicId, duplicateReviewQueued: possible.length };
+  });
+  return c.json({ ok: true, patient: result }, 201);
+});
+
+receptionRoutes.post("/patients/resolve", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  rateLimit(clientKey(c.req.raw.headers, `resolve:${c.get("auth")!.user.id}`), 30, 60_000);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const meta = requestMeta(c);
+  const body = await parseJson(c, resolvePatientSchema);
+  const data = await withStaffActor(c, async (tx) => {
+    const rows = await tx`
+      select p.id, p.public_id, p.given_name, p.family_name, p.date_of_birth, p.sex, p.identity_confidence,
+             EXISTS (SELECT 1 FROM tenant_patient_links l WHERE l.tenant_id = ${auth.activeTenant!.id} AND l.patient_id = p.id) as linked
+        from patients p where p.public_id = ${body.publicId} and lower(p.family_name) = lower(${body.familyName})
+          and p.date_of_birth = ${body.dateOfBirth} and p.merged_into is null
+        limit 1
+    `;
+    const patient = rows[0];
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "patient.lookup",
+      subjectPatientId: patient ? String(patient.id) : null,
+      resourceType: "Patient",
+      resourceId: patient ? String(patient.id) : null,
+      decision: patient ? "allow" : "deny",
+      reasonCode: patient ? "exact-id-and-identity-confirmed" : "not-found-or-confirmation-failed",
+      ...meta,
+      metadata: { exactPublicIdLookup: true },
+    });
+    return patient ?? null;
+  });
+  if (!data) throw new NotFoundError("No patient matched the supplied ID and identity confirmation");
+  return c.json({ patient: data });
+});
+
+receptionRoutes.get("/patients/recent", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select p.id, p.public_id, p.given_name, p.family_name, p.date_of_birth, p.sex, l.created_at, l.release_signed_records
+      from tenant_patient_links l join patients p on p.id = l.patient_id
+     where l.tenant_id = ${auth.activeTenant!.id}
+     order by l.created_at desc limit 25
+  `);
+  await withStaffActor(c, async (tx) => {
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "patient.list.recent",
+      ...auditMeta(c),
+    });
+  });
+  return c.json({ patients: rows });
+});
+
+receptionRoutes.get("/appointments", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select a.id, a.start_at, a.duration_minutes, a.reason, a.status, a.patient_id, p.public_id, p.given_name, p.family_name,
+           a.clinician_user_id, u.display_name as clinician_name
+      from appointments a join patients p on p.id = a.patient_id
+      left join users u on u.id = a.clinician_user_id
+     where a.tenant_id = ${auth.activeTenant!.id} and a.start_at >= now() - interval '1 day'
+     order by a.start_at limit 100
+  `);
+  return c.json({ appointments: rows });
+});
+
+receptionRoutes.post("/appointments", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const body = await parseJson(c, appointmentSchema);
+  const id = crypto.randomUUID();
+  await withStaffActor(c, async (tx) => {
+    const link = await tx`select 1 from tenant_patient_links where tenant_id = ${auth.activeTenant!.id} and patient_id = ${body.patientId}`;
+    if (!link.length) throw new NotFoundError("Patient is not linked to this facility");
+    await tx`
+      insert into appointments (id, tenant_id, patient_id, clinician_user_id, start_at, duration_minutes, reason, created_by)
+      values (${id}, ${auth.activeTenant!.id}, ${body.patientId}, ${body.clinicianUserId ?? null}, ${body.startAt},
+        ${body.durationMinutes}, ${body.reason}, ${auth.user.id})
+    `;
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "appointment.create",
+      subjectPatientId: body.patientId,
+      resourceType: "Appointment",
+      resourceId: id,
+      ...auditMeta(c),
+    });
+  });
+  return c.json({ ok: true, appointmentId: id }, 201);
+});
+
+receptionRoutes.get("/queues", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select q.id, q.name, count(qe.id) filter (where qe.status not in ('completed','cancelled'))::int as waiting
+      from queues q left join queue_entries qe on qe.queue_id = q.id and qe.tenant_id = q.tenant_id
+     where q.tenant_id = ${auth.activeTenant!.id} group by q.id, q.name order by q.name
+  `);
+  return c.json({ queues: rows });
+});
+
+receptionRoutes.post("/queues", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const body = await c.req.json<{ name?: string }>();
+  const name = (body.name ?? "Outpatient").trim();
+  if (name.length < 2 || name.length > 80) throw new ValidationError("Queue name must be 2-80 characters");
+  const id = await withStaffActor(c, async (tx) => {
+    const existing = await tx`select id from queues where tenant_id = ${auth.activeTenant!.id} and name = ${name} limit 1`;
+    if (existing[0]) return String(existing[0].id);
+    const newId = crypto.randomUUID();
+    await tx`insert into queues (id, tenant_id, name) values (${newId}, ${auth.activeTenant!.id}, ${name})`;
+    return newId;
+  });
+  return c.json({ ok: true, queueId: id }, 201);
+});
+
+receptionRoutes.post("/queues/:queueId/entries", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const queueId = uuidSchema.parse(c.req.param("queueId"));
+  const body = await parseJson(c, queueEntrySchema);
+  const id = crypto.randomUUID();
+  await withStaffActor(c, async (tx) => {
+    const queue = await tx`select id from queues where id = ${queueId} and tenant_id = ${auth.activeTenant!.id}`;
+    if (!queue.length) throw new NotFoundError("Queue not found");
+    const link = await tx`select 1 from tenant_patient_links where tenant_id = ${auth.activeTenant!.id} and patient_id = ${body.patientId}`;
+    if (!link.length) throw new NotFoundError("Patient is not linked to this facility");
+    await tx`
+      insert into queue_entries (id, tenant_id, queue_id, patient_id, appointment_id, priority)
+      values (${id}, ${auth.activeTenant!.id}, ${queueId}, ${body.patientId}, ${body.appointmentId ?? null}, ${body.priority})
+    `;
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "queue.entry.create",
+      subjectPatientId: body.patientId,
+      resourceType: "QueueEntry",
+      resourceId: id,
+      ...auditMeta(c),
+    });
+  });
+  return c.json({ ok: true, queueEntryId: id }, 201);
+});
+
+receptionRoutes.get("/queues/:queueId/entries", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const queueId = uuidSchema.parse(c.req.param("queueId"));
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select qe.id, qe.status, qe.priority, qe.created_at, qe.called_at, qe.encounter_id,
+           p.id as patient_id, p.public_id, p.given_name, p.family_name, p.date_of_birth,
+           e.state as encounter_state
+      from queue_entries qe join patients p on p.id = qe.patient_id
+      left join encounters e on e.id = qe.encounter_id
+     where qe.tenant_id = ${auth.activeTenant!.id} and qe.queue_id = ${queueId} and qe.status not in ('completed','cancelled')
+     order by case qe.priority when 'emergency' then 0 when 'urgent' then 1 else 2 end, qe.created_at
+  `);
+  return c.json({ entries: rows });
+});
+
+receptionRoutes.post("/encounters", async (c) => {
+  requireStaff(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const body = await parseJson(c, createEncounterSchema);
+  const id = crypto.randomUUID();
+  await withStaffActor(c, async (tx) => {
+    const link = await tx`select 1 from tenant_patient_links where tenant_id = ${auth.activeTenant!.id} and patient_id = ${body.patientId}`;
+    if (!link.length) throw new NotFoundError("Patient is not linked to this facility");
+    if (!actor(c).roles.some((r) => ["receptionist", "nurse", "clinician", "facility_admin"].includes(r))) {
+      throw new ForbiddenError("Front-desk access is required");
+    }
+    await tx`
+      insert into encounters (id, tenant_id, patient_id, appointment_id, queue_entry_id, type, state, reason, created_by, clinician_user_id)
+      values (${id}, ${auth.activeTenant!.id}, ${body.patientId}, ${body.appointmentId ?? null}, ${body.queueEntryId ?? null},
+        ${body.type}, 'arrived', ${body.reason}, ${auth.user.id}, ${null})
+    `;
+    if (body.queueEntryId) {
+      await tx`update queue_entries set encounter_id = ${id}, status = 'waiting', updated_at = now() where id = ${body.queueEntryId} and tenant_id = ${auth.activeTenant!.id}`;
+    }
+    if (body.appointmentId) {
+      await tx`update appointments set status = 'arrived', updated_at = now() where id = ${body.appointmentId} and tenant_id = ${auth.activeTenant!.id}`;
+    }
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "encounter.create",
+      subjectPatientId: body.patientId,
+      resourceType: "Encounter",
+      resourceId: id,
+      ...auditMeta(c),
+    });
+    await writeOutbox(tx, {
+      tenantId: auth.activeTenant!.id,
+      eventType: "encounter.created",
+      aggregateId: id,
+      aggregateVersion: 1,
+      payload: { encounterId: id, patientId: body.patientId },
+    });
+  });
+  return c.json({ ok: true, encounterId: id }, 201);
+});
+
+receptionRoutes.get("/encounters/worklist", async (c) => {
+  requireStaff(c);
+  const a = actor(c);
+  if (!a.roles.some((r) => ["nurse", "clinician"].includes(r))) {
+    throw new ForbiddenError("A clinical role is required for the clinical worklist");
+  }
+  const auth = c.get("auth")!;
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select e.id, e.state, e.type, e.reason, e.opened_at, e.version,
+           p.id as patient_id, p.public_id, p.given_name, p.family_name, p.date_of_birth, p.sex,
+           (select count(*)::int from clinical_entries ce where ce.encounter_id = e.id and ce.status = 'draft') as draft_notes,
+           (select count(*)::int from clinical_entries ce where ce.encounter_id = e.id and ce.status in ('signed','amended')) as signed_notes,
+           (select count(*)::int from follow_ups f where f.encounter_id = e.id and f.status = 'pending') as pending_followups
+      from encounters e join patients p on p.id = e.patient_id
+     where e.tenant_id = ${auth.activeTenant!.id} and e.state in ('arrived','triaged','in-progress')
+     order by case e.state when 'triaged' then 0 when 'in-progress' then 1 else 2 end, e.opened_at
+  `);
+  await withStaffActor(c, async (tx) => {
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "clinical.worklist.read",
+      ...auditMeta(c),
+    });
+  });
+  return c.json({ encounters: rows });
+});
+
+receptionRoutes.get("/encounters/:id", async (c) => {
+  requireStaff(c);
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const a = actor(c);
+  const clinical = a.roles.some((r) => ["nurse", "clinician"].includes(r));
+  const data = await withStaffActor(c, async (tx) => {
+    const encounters = await tx`
+      select e.id, e.state, e.type, e.reason, e.opened_at, e.closed_at, e.version, e.created_by,
+             p.id as patient_id, p.public_id, p.given_name, p.family_name, p.date_of_birth, p.sex, p.identity_confidence,
+             t.name as facility_name, e.tenant_id
+        from encounters e join patients p on p.id = e.patient_id join tenants t on t.id = e.tenant_id
+       where e.id = ${id} and e.tenant_id = ${auth.activeTenant!.id}
+    `;
+    if (!encounters[0]) throw new NotFoundError("Encounter not found");
+    if (!clinical) {
+      return { encounter: encounters[0], triage: [], observations: [], allergies: [], conditions: [], entries: [], followUps: [], referrals: [] };
+    }
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "encounter.read",
+      subjectPatientId: String(encounters[0].patientId),
+      resourceType: "Encounter",
+      resourceId: id,
+      ...auditMeta(c),
+    });
+    const [triage, observations, allergies, conditions, entries, followUps, referrals] = await Promise.all([
+      tx`select * from triage_records where encounter_id = ${id} and tenant_id = ${auth.activeTenant!.id} order by created_at desc`,
+      tx`select id, display, loinc_code, value_num, value_text, unit_code, occurred_at, status, recorded_at from observations where encounter_id = ${id} and tenant_id = ${auth.activeTenant!.id} order by occurred_at desc`,
+      tx`select id, state, substance_coding, reaction_coding, severity, note, recorded_at from allergies where encounter_id = ${id} and tenant_id = ${auth.activeTenant!.id} order by recorded_at desc`,
+      tx`select id, display, snomed_code, clinical_status, onset_date, note, recorded_at from conditions where encounter_id = ${id} and tenant_id = ${auth.activeTenant!.id} order by recorded_at desc`,
+      tx`select ce.id, ce.status, ce.current_version, v.title, v.author_id, u.display_name as author_name, v.occurred_at, v.recorded_at, v.signed_at, v.change_note, v.content
+           from clinical_entries ce join clinical_entry_versions v on v.entry_id = ce.id and v.version = ce.current_version
+           join users u on u.id = v.author_id
+          where ce.encounter_id = ${id} and ce.tenant_id = ${auth.activeTenant!.id} order by ce.created_at`,
+      tx`select * from follow_ups where encounter_id = ${id} and tenant_id = ${auth.activeTenant!.id} order by due_date`,
+      tx`select * from referrals where encounter_id = ${id} and tenant_id = ${auth.activeTenant!.id} order by created_at`,
+    ]);
+    return { encounter: encounters[0], triage, observations, allergies, conditions, entries, followUps, referrals };
+  });
+  return c.json(data);
+});
+
+receptionRoutes.post("/encounters/:id/transitions", async (c) => {
+  requireStaff(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, transitionEncounterSchema);
+  const a = actor(c);
+  if (!a.roles.some((r) => ["nurse", "clinician"].includes(r))) throw new ForbiddenError("Clinical role required");
+  const result = await withStaffActor(c, async (tx) => {
+    const current = await tx`select state, version, patient_id from encounters where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update`;
+    if (!current[0]) throw new NotFoundError("Encounter not found");
+    ensureMatch(body.expectedVersion, Number(current[0].version));
+    const from = String(current[0].state) as EncounterState;
+    if (!canTransitionEncounter(from, body.state)) throw new ConflictError(`Cannot transition encounter from ${from} to ${body.state}`);
+    if ((body.state === "cancelled" || body.state === "entered-in-error") && (!body.reason || body.reason.length < 5)) {
+      throw new ValidationError("A reason is required for this transition");
+    }
+    if (body.state === "completed") {
+      const drafts = await tx`select count(*)::int as count from clinical_entries where encounter_id = ${id} and status = 'draft'`;
+      if (Number(drafts[0]?.count ?? 0) > 0) throw new ConflictError("Sign or resolve draft notes before completing the encounter");
+    }
+    if (body.state === "in-progress") {
+      await tx`update queue_entries set status = 'with-clinician', updated_at = now() where encounter_id = ${id} and status not in ('completed','cancelled')`;
+      await tx`update encounters set clinician_user_id = coalesce(clinician_user_id, ${auth.user.id}) where id = ${id}`;
+    }
+    if (body.state === "completed") {
+      await tx`update queue_entries set status = 'completed', completed_at = now(), updated_at = now() where encounter_id = ${id} and status not in ('cancelled')`;
+      await tx`update appointments set status = 'completed', updated_at = now() where id = (select appointment_id from encounters where id = ${id})`;
+    }
+    await tx`
+      update encounters set state = ${body.state}, version = version + 1, updated_at = now(),
+        closed_at = case when ${body.state} in ('completed','cancelled','entered-in-error') then now() else closed_at end
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+    `;
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "encounter.transition",
+      subjectPatientId: String(current[0].patientId),
+      resourceType: "Encounter",
+      resourceId: id,
+      ...auditMeta(c),
+      metadata: { from, to: body.state, reason: body.reason ?? null },
+    });
+    await writeOutbox(tx, {
+      tenantId: auth.activeTenant!.id,
+      eventType: "encounter.state.changed",
+      aggregateId: id,
+      aggregateVersion: Number(current[0].version) + 1,
+      payload: { from, to: body.state },
+    });
+    return { id, state: body.state, version: Number(current[0].version) + 1 };
+  });
+  return c.json({ ok: true, encounter: result });
+});
+
+receptionRoutes.post("/encounters/:id/triage", async (c) => {
+  requireStaff(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, triageSchema);
+  const a = actor(c);
+  if (!a.roles.some((r) => ["nurse", "clinician"].includes(r))) throw new ForbiddenError("Nursing or clinician role required");
+  await withStaffActor(c, async (tx) => {
+    const encounters = await tx`select id, state, version, patient_id from encounters where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update`;
+    if (!encounters[0]) throw new NotFoundError("Encounter not found");
+    if (!["planned", "arrived", "triaged"].includes(String(encounters[0].state))) throw new ConflictError("Encounter is not in a triageable state");
+    for (const observation of body.observations) {
+      await validateClinicalCoding(c, observation.coding, "observation");
+      await insertObservation(c, tx, {
+        tenantId: auth.activeTenant!.id,
+        patientId: String(encounters[0].patientId),
+        encounterId: id,
+        authorId: auth.user.id,
+        coding: observation.coding,
+        value: observation.value,
+        unit: observation.unit,
+        occurredAt: new Date(observation.occurredAt),
+        source: "triage",
+      });
+    }
+    if (body.allergyState) {
+      if (body.allergyState === "recorded") {
+        if (!body.allergy?.substance) throw new ValidationError("A recorded allergy requires a substance");
+        await validateClinicalCoding(c, body.allergy.substance, "allergy-substance");
+        if (body.allergy.reaction) await validateClinicalCoding(c, body.allergy.reaction, "allergy-reaction");
+      }
+      await insertAllergy(c, tx, {
+        tenantId: auth.activeTenant!.id,
+        patientId: String(encounters[0].patientId),
+        encounterId: id,
+        authorId: auth.user.id,
+        state: body.allergyState,
+        substance: body.allergy?.substance ?? null,
+        reaction: body.allergy?.reaction ?? null,
+        severity: "unknown",
+        note: body.allergy?.note || null,
+      });
+    }
+    await tx`
+      insert into triage_records (id, tenant_id, encounter_id, patient_id, complaint, urgency, notes, nurse_user_id)
+      values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${id}, ${encounters[0].patientId}, ${body.complaint},
+        ${body.urgency}, ${body.notes || null}, ${auth.user.id})
+    `;
+    await tx`update encounters set state = 'triaged', version = version + 1, updated_at = now() where id = ${id}`;
+    await tx`update queue_entries set status = 'in-triage', updated_at = now() where encounter_id = ${id} and status not in ('completed','cancelled')`;
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "encounter.triage",
+      subjectPatientId: String(encounters[0].patientId),
+      resourceType: "Encounter",
+      resourceId: id,
+      ...auditMeta(c),
+      metadata: { urgency: body.urgency, allergyState: body.allergyState },
+    });
+    await writeOutbox(tx, {
+      tenantId: auth.activeTenant!.id,
+      eventType: "encounter.triaged",
+      aggregateId: id,
+      aggregateVersion: Number(encounters[0].version) + 1,
+      payload: { encounterId: id, urgency: body.urgency },
+    });
+  });
+  return c.json({ ok: true });
+});

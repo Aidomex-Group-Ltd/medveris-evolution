@@ -1,0 +1,7 @@
+requirement,standard,stage,implementation,acceptance,status
+PR19,FHIR R4 4.0.1,M1,Profiles facade CapabilityStatement source versions,AT27 AT28,Specification only
+PR20,SNOMED CT LOINC UCUM,M1,Contextual terminology search validation and release-aware coding,AT29 AT30 AT31,Specification only
+PR21,DICOM DICOMweb,M2,PACS query retrieve store and identity reconciliation,AT32 AT33,Specification only
+PR22,LOINC UCUM FHIR Observation,M4,Device metric maps units and provenance,AT34,Specification only
+PR22,SNOMED CT LOINC DICOM,M5,Code/study-aware AI evidence and validation,AT35,Specification only
+PR23,Operational APIs,M1 onward,Scoped adapters signatures retry and reconciliation,AT36,Specification only

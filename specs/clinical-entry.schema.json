@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:medveris:schema:clinical-entry:1",
+  "title": "Clinical entry version example contract",
+  "description": "Server-owned version representation. Content needs a separately validated domain schema; this is not a full clinical record or FHIR resource.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "entryId",
+    "versionId",
+    "version",
+    "previousVersionId",
+    "tenantId",
+    "patientId",
+    "encounterId",
+    "authorId",
+    "occurredAt",
+    "recordedAt",
+    "status",
+    "changeNote",
+    "contentSchema",
+    "content",
+    "contentDigest"
+  ],
+  "properties": {
+    "entryId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "versionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "tenantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "patientId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "encounterId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "authorId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "previousVersionId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "recordedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "signed",
+        "amended",
+        "entered-in-error"
+      ]
+    },
+    "changeNote": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 2000
+    },
+    "contentSchema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "content": {
+      "type": "object",
+      "description": "Must additionally validate against the named clinical content schema."
+    },
+    "contentDigest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "version": {
+            "const": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "previousVersionId": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "previousVersionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "signed",
+              "amended"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "signedAt"
+        ],
+        "properties": {
+          "signedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  ]
+}

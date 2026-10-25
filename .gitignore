@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+coverage/
+.env
+.env.local
+*.local
+.data/
+.mail-sink/
+.playwright/
+test-results/
+playwright-report/
+.wrangler/
+*.log
+.DS_Store
