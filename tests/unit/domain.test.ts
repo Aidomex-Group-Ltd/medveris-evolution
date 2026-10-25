@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   canTransitionEncounter,
+  canTransitionFollowUp,
+  canTransitionReferral,
   canonicalJson,
   contentDigest,
   isPatientPublicId,
@@ -65,5 +67,22 @@ describe("content digests", () => {
 
   it("canonicalizes nested structures deterministically", () => {
     expect(canonicalJson({ b: 1, a: { d: 2, c: 3 } })).toBe('{"a":{"c":3,"d":2},"b":1}');
+  });
+});
+
+describe("follow-up and referral tracking transitions", () => {
+  it("keeps follow-ups terminal after a decision", () => {
+    expect(canTransitionFollowUp("pending", "completed")).toBe(true);
+    expect(canTransitionFollowUp("pending", "cancelled")).toBe(true);
+    expect(canTransitionFollowUp("completed", "cancelled")).toBe(false);
+    expect(canTransitionFollowUp("cancelled", "completed")).toBe(false);
+  });
+
+  it("allows referral completion only after local acceptance", () => {
+    expect(canTransitionReferral("pending", "accepted")).toBe(true);
+    expect(canTransitionReferral("pending", "declined")).toBe(true);
+    expect(canTransitionReferral("accepted", "completed")).toBe(true);
+    expect(canTransitionReferral("declined", "completed")).toBe(false);
+    expect(canTransitionReferral("completed", "cancelled")).toBe(false);
   });
 });

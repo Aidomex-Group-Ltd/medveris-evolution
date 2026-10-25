@@ -146,3 +146,29 @@ export const EXCHANGE_CATEGORIES = [
 export type ExchangeCategory = (typeof EXCHANGE_CATEGORIES)[number];
 
 export const SENSITIVITY_CATEGORIES = ["mental-health", "reproductive-health", "genetic", "hiv"] as const;
+
+export type FollowUpStatus = "pending" | "completed" | "cancelled";
+
+const followUpTransitions: Record<FollowUpStatus, FollowUpStatus[]> = {
+  pending: ["completed", "cancelled"],
+  completed: [],
+  cancelled: [],
+};
+
+export function canTransitionFollowUp(from: FollowUpStatus, to: FollowUpStatus): boolean {
+  return followUpTransitions[from]?.includes(to) ?? false;
+}
+
+export type ReferralStatus = "pending" | "accepted" | "declined" | "completed" | "cancelled";
+
+const referralTransitions: Record<ReferralStatus, ReferralStatus[]> = {
+  pending: ["accepted", "declined", "cancelled"],
+  accepted: ["completed", "cancelled"],
+  declined: [],
+  completed: [],
+  cancelled: [],
+};
+
+export function canTransitionReferral(from: ReferralStatus, to: ReferralStatus): boolean {
+  return referralTransitions[from]?.includes(to) ?? false;
+}

@@ -11,6 +11,7 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Authentication, staff MFA, patient sessions, CSRF | Working | `tests/integration/http.test.ts`, Playwright sign-in flows |
 | Patient registration, assisted registration, exact-ID resolution and facility-scoped duplicate review | Working | API routes + browser flows; `tests/integration/patients.test.ts`; no automatic merge |
 | Appointments, walk-in encounters, queues and triage | Working | API + UI; seeded Kampala/Entebbe tenants |
+| Follow-up worklist and referral tracking | Working, local only | API + UI; versioned status changes; no external referral transmission |
 | Emergency temporary identity, triage, serial observations, handoff and disposition | Working | `tests/integration/emergency.test.ts`; emergency board + case UI; Playwright emergency journey |
 | Signed clinical notes, amendments, entered-in-error and versions | Working | `scripts/clinical-smoke.mjs`, `tests/unit/domain.test.ts` |
 | Append-only hash-chained audit + transactional outbox | Working | audit writes in every command path; `scripts/workers-smoke.mjs` |

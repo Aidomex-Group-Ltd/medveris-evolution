@@ -33,6 +33,7 @@ import { DevicesPage } from "./pages/DevicesPage";
 import { AIPage } from "./pages/AIPage";
 import { EmergencyPage } from "./pages/EmergencyPage";
 import { EmergencyCasePage } from "./pages/EmergencyCasePage";
+import { CareCoordinationPage } from "./pages/CareCoordinationPage";
 
 function NotFoundPage() {
   return (
@@ -53,6 +54,7 @@ export function App() {
         <Route path="patients" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><PatientsPage /></ProtectedRoute>} />
         <Route path="queues" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><QueuesPage /></ProtectedRoute>} />
         <Route path="worklist" element={<ProtectedRoute roles={["nurse", "clinician"]}><WorklistPage /></ProtectedRoute>} />
+        <Route path="care" element={<ProtectedRoute roles={["nurse", "clinician"]}><CareCoordinationPage /></ProtectedRoute>} />
         <Route path="emergency" element={<ProtectedRoute roles={["nurse", "clinician"]}><EmergencyPage /></ProtectedRoute>} />
         <Route path="emergency/:id" element={<ProtectedRoute roles={["nurse", "clinician"]}><EmergencyCasePage /></ProtectedRoute>} />
         <Route path="encounters/:id" element={<ProtectedRoute roles={["nurse", "clinician", "receptionist", "facility_admin"]}><EncounterPage /></ProtectedRoute>} />

@@ -27,6 +27,7 @@ import { telehealthRoutes } from "./routes/telehealth.js";
 import { deviceRoutes } from "./routes/devices.js";
 import { aiRoutes } from "./routes/ai.js";
 import { emergencyRoutes } from "./routes/emergency.js";
+import { careRoutes } from "./routes/care.js";
 
 function isFhirPath(path: string): boolean {
   return path.startsWith("/fhir/") || path.startsWith("/terminology/fhir/");
@@ -99,6 +100,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   app.route("/api/v1", deviceRoutes);
   app.route("/api/v1", aiRoutes);
   app.route("/api/v1", emergencyRoutes);
+  app.route("/api/v1", careRoutes);
 
   app.notFound((c) => {
     if (isFhirPath(c.req.path)) {

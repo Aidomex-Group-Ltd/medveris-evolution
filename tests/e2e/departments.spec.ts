@@ -194,3 +194,45 @@ test("clinician can register and triage an unidentified emergency patient", asyn
   await expect(page.getByText("Triage saved. The encounter moved to triaged.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Serial observations" })).toBeVisible();
 });
+
+test("clinician tracks a follow-up and referral through the care coordination UI", async ({ page }) => {
+  const stamp = Date.now();
+  const followUpText = `E2E follow-up ${stamp}`;
+  const referralReason = `E2E referral ${stamp}`;
+  await signInStaff(page, "clinician@medveris.local");
+  await page.getByRole("link", { name: "Clinical worklist", exact: true }).click();
+  const row = page.getByRole("row", { name: /Joseph Mukasa/ });
+  await expect(row).toBeVisible();
+  await row.getByRole("link", { name: "Open" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Joseph Mukasa");
+
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  await page.getByLabel("Follow-up date").fill(yesterday);
+  await page.getByLabel("Instructions").fill(followUpText);
+  await page.getByRole("button", { name: "Schedule follow-up" }).click();
+  await expect(page.getByText(followUpText)).toBeVisible();
+
+  await page.getByLabel("Destination facility or service").fill("Synthetic Regional Hospital");
+  await page.getByLabel("Referral reason").fill(referralReason);
+  await page.getByLabel("Priority").selectOption("urgent");
+  await page.getByRole("button", { name: "Record referral" }).click();
+  await expect(page.getByText(referralReason)).toBeVisible();
+
+  await page.getByRole("link", { name: "Follow-ups and referrals", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Follow-ups and referrals" })).toBeVisible();
+  const followUpRow = page.getByRole("row", { name: new RegExp(followUpText) });
+  await expect(followUpRow).toBeVisible();
+  await expect(followUpRow.getByText("overdue")).toBeVisible();
+  await followUpRow.getByRole("button", { name: "Complete" }).click();
+  await page.getByLabel("Decision note").fill("Synthetic follow-up completed in browser flow.");
+  await page.getByRole("button", { name: "Save status" }).click();
+  await expect(page.getByText("Follow-up marked completed.")).toBeVisible();
+
+  await page.getByRole("tab", { name: "Referrals" }).click();
+  const referralRow = page.getByRole("row", { name: new RegExp(referralReason) });
+  await expect(referralRow).toBeVisible();
+  await referralRow.getByRole("button", { name: "Accept locally" }).click();
+  await page.getByLabel("Decision note").fill("Synthetic local acceptance recorded in browser flow.");
+  await page.getByRole("button", { name: "Save status" }).click();
+  await expect(page.getByText("Referral marked accepted.")).toBeVisible();
+});

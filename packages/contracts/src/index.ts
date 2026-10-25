@@ -802,3 +802,17 @@ export const emergencyDispositionSchema = z.object({
   note: z.string().trim().min(5).max(4000),
   expectedVersion: z.number().int().min(1),
 });
+
+// Local follow-up and referral tracking. These records are not external
+// referral transmissions.
+export const followUpStatusSchema = z.object({
+  status: z.enum(["completed", "cancelled"]),
+  note: z.string().trim().min(5).max(2000),
+  expectedVersion: z.number().int().min(1),
+});
+
+export const referralStatusSchema = z.object({
+  status: z.enum(["accepted", "declined", "completed", "cancelled"]),
+  note: z.string().trim().min(5).max(2000),
+  expectedVersion: z.number().int().min(1),
+});

@@ -130,6 +130,10 @@ export function EncounterPage() {
               <h3 style={{ marginBottom: 6 }}>Follow-ups</h3>
               {!data.followUps.length ? <p className="mv-small mv-muted">No follow-up scheduled.</p> : <ul className="mv-small">{data.followUps.map((followUp) => <li key={followUp.id}>{followUp.dueDate}: {followUp.instructions} ({followUp.status})</li>)}</ul>}
               {clinical ? <FollowUpForm encounterId={encounter.id} onSaved={detail.reload} /> : null}
+              <hr className="mv-divider" />
+              <h3 style={{ marginBottom: 6 }}>Referrals</h3>
+              {!data.referrals.length ? <p className="mv-small mv-muted">No referral recorded.</p> : <ul className="mv-small">{data.referrals.map((referral) => <li key={referral.id}>{referral.toFacility} — {referral.reason} ({referral.priority}, {referral.status})</li>)}</ul>}
+              {clinical ? <ReferralForm encounterId={encounter.id} onSaved={detail.reload} /> : null}
             </Card>
           </div>
         </>
@@ -214,6 +218,40 @@ function FollowUpForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
       <Field label="Follow-up date"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required /></Field>
       <Field label="Instructions"><Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} required /></Field>
       <Button type="submit" variant="secondary" disabled={busy}>{busy ? "Saving…" : "Schedule follow-up"}</Button>
+    </form>
+  );
+}
+
+function ReferralForm({ encounterId, onSaved }: { encounterId: string; onSaved: () => void }) {
+  const [toFacility, setToFacility] = useState("");
+  const [reason, setReason] = useState("");
+  const [priority, setPriority] = useState("routine");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/encounters/${encounterId}/referrals`, { method: "POST", body: { toFacility, reason, priority } });
+      setToFacility("");
+      setReason("");
+      setPriority("routine");
+      onSaved();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="mv-stack" style={{ marginTop: 14 }} onSubmit={submit}>
+      <Notice tone="info">This records a local referral. It is not sent to the destination facility.</Notice>
+      {error ? <ErrorState message={error} /> : null}
+      <Field label="Destination facility or service" htmlFor="referral-destination"><Input id="referral-destination" value={toFacility} onChange={(event) => setToFacility(event.target.value)} required maxLength={300} /></Field>
+      <Field label="Referral reason" htmlFor="referral-reason"><Textarea id="referral-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={4000} /></Field>
+      <Field label="Priority" htmlFor="referral-priority"><Select id="referral-priority" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></Select></Field>
+      <Button type="submit" variant="secondary" disabled={busy || !toFacility.trim() || !reason.trim()}>{busy ? "Saving…" : "Record referral"}</Button>
     </form>
   );
 }

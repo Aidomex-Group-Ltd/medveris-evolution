@@ -17,6 +17,7 @@ This file separates harmless local-development gaps from items that block produc
 11. **Audit anchoring.** Checkpoints are HMAC-signed and stored locally. No external ledger/WORM anchoring or independent verification job exists.
 12. **Patient identity proofing.** Registration verifies email only. Duplicate candidates are tenant-scoped and never auto-merged, but production identity confidence, merge/reconciliation and temporary emergency identities still need an approved operational policy.
 13. **Access reviews.** Emergency overrides create review tasks, but there is no automated escalation or periodic access recertification.
+14. **External referral exchange.** Follow-up and referral tracking is local and versioned. There is no referral message transport, receiving-facility acknowledgement or directory integration; the UI must not describe local acceptance as external confirmation.
 
 ## Accepted local-development limitations
 

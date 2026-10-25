@@ -8,13 +8,13 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 |---|---|
 | `npm run lint` | Passed, zero warnings |
 | `npm run typecheck` | Passed |
-| `npm test` | 7 files, 45 tests passed |
-| `npm run test:e2e` | 11 Playwright tests passed (smoke 3, departmental 8) |
+| `npm test` | 8 files, 50 tests passed |
+| `npm run test:e2e` | 12 Playwright tests passed (smoke 3, departmental 9) |
 | `npm run smoke:clinical` | Draft → sign → amend → versions: `[[1,"signed"],[2,"amended"]]` |
 | `npm run smoke:workers` | Event processed once; dedup row present; signed Merkle checkpoint present |
-| `npm run build` | Web 68 modules / 479.90 kB JS; API server bundle 390.5 kB; worker bundle 1.2 MB |
+| `npm run build` | Web 69 modules / 489.99 kB JS; API server bundle 398.9 kB; worker bundle 1.2 MB |
 | `PORT=8788 node apps/api/dist/server.mjs` | Started successfully; `/api/v1/health/ready` returned `{"status":"ready","database":"reachable"}`; clean SIGTERM shutdown |
-| `npm run db:migrate` | 001–006 applied cleanly on the development database |
+| `npm run db:migrate` | 001–007 applied cleanly on the development database |
 
 ## Unit tests
 
@@ -57,6 +57,17 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 - Registering the same identity at another facility queues no candidate and exposes no cross-facility candidate to the first facility's administrator.
 - Duplicate review is audited, removes the candidate from the pending list and explicitly reports that no automatic merge occurred.
 - Migration 006 scopes candidate rows and RLS to the active facility.
+
+## Care coordination tests
+
+`tests/integration/care.test.ts` verifies:
+
+- An overdue pending follow-up appears in the overdue worklist.
+- Completion increments the version; a stale version and a terminal-state transition both return 409.
+- A referral moves pending → accepted → completed with one audit event per change.
+- Reception is denied both care-coordination lists.
+
+`tests/e2e/departments.spec.ts` additionally schedules a follow-up and referral from an encounter, completes the overdue follow-up from the care page, and records local referral acceptance. The UI states that no external referral transmission occurred.
 
 ## Emergency API tests
 

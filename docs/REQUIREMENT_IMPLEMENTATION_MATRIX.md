@@ -37,7 +37,7 @@ Status definitions:
 | PAT-03 | Exact-ID resolution and identity confirmation | 02, 06 | Staff cannot open a chart from a public ID alone | Exact ID + family name + DOB resolution; lookup audited | Verified |
 | PAT-04 | Facility-scoped duplicate review without automatic merge | 02, 06, 15 (AT26) | Administrators review same-facility candidates; another facility cannot inspect or review them | `tests/integration/patients.test.ts`; migration 006 adds `tenant_id` and tenant RLS; review console records a decision only | Verified; identity merge remains deliberately disabled |
 | PAT-05 | Patient profile and permitted medical history | 05, 06, 07 | Patients see released records from linked facilities | Patient portal records, observations, conditions, allergies, appointments | Verified for signed/released records |
-| PAT-06 | Appointments, follow-ups and referrals | 05, 06 | Reception schedules; clinicians record follow-up and referral | Appointment API/UI; follow-up and referral commands on encounters | Implemented; referral is a local record, not an external transmission |
+| PAT-06 | Appointments, follow-ups and referrals | 05, 06 | Reception schedules; clinicians record and track follow-ups and referrals | Appointment API/UI; versioned follow-up/referral status commands; `tests/integration/care.test.ts`; Playwright care-coordination journey | Verified for local lifecycle; referral is never presented as an external transmission |
 | PAT-07 | Consent and record-access management | 02, 07 | Patients grant, inspect and revoke scoped access | Consent API and patient portal consent screen | Implemented |
 | PAT-08 | Patient-readable disclosure/access history | 07, 09 | Patients see who accessed their record | `/me/access` and patient access-history page | Implemented |
 | PAT-09 | Proxy/guardian access | 02, 06, 07 | Authorized carers can act for a patient | No patient relationship/proxy model or delegated session exists | Missing; requires policy and identity-proofing decision |
@@ -162,7 +162,7 @@ Executed after the emergency increment:
 
 - `npm run typecheck` — passed.
 - `npm run lint` — passed.
-- `npm test` — unit, PostgreSQL isolation, HTTP, departmental and patient-registration suites, including emergency and duplicate-isolation tests.
+- `npm test` — unit, PostgreSQL isolation, HTTP, departmental, patient-registration and care-coordination suites.
 - `npm run test:e2e` — browser journeys, including the emergency registration/triage journey.
 - `npm run build` — web, API server and worker bundles.
 - `npm run smoke:clinical`, `npm run smoke:workers` — see `docs/TEST_EVIDENCE.md`.
