@@ -1,4 +1,4 @@
-# Medveris M0/M1 implementation status
+# Medveris M0/M1 and departmental operations status
 
 Status date: 25 October 2026. Environment: local synthetic development only.
 
@@ -22,14 +22,24 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Facility administration, memberships, queue management | Working | API + admin console |
 | FHIR R4 read facade | Working subset | metadata, Patient, Encounter, Observation, Condition, AllergyIntolerance, DocumentReference, Provenance, Consent, AuditEvent |
 | Terminology facade | Working synthetic only | ValueSet expand/validate, CodeSystem lookup/validate |
-| React web workspace | Working | 49-module Vite build; desktop Playwright smoke |
+| Inpatient wards, beds, nursing care, handoffs and discharge | Working, synthetic | `tests/integration/departments.test.ts`; Wards/admission UI |
+| Theatre checkpoints: preop, consent, sign-in/time-out/sign-out, anesthesia, recovery, counts, specimens | Working, synthetic | integration checkpoint flow + Playwright theatre case |
+| Diagnostics orders, specimens, results, correction, critical communication, imaging reports | Working, synthetic only | integration diagnostics flow; external modalities are not connected |
+| Pharmacy prescriptions, stock, dispensing, administration | Working, synthetic only | integration pharmacy flow; no external e-prescribing or wholesaler |
+| Invoicing, payments, reversals, claims and finance summary | Working, synthetic only | integration finance flow; no payment rail |
+| Care programmes, enrolments, care plans, events, advance care | Working, synthetic | API + programmes UI |
+| Aggregate public-health reporting with small-cell suppression and release | Working, synthetic | API + public-health UI |
+| Telehealth sessions, consent and completion | Working, metadata only | no media transport; join is disabled |
+| Device registry, assignment, observation ingestion and alerts | Working, synthetic | no vendor gateway or real device data |
+| Assistive AI job history and clinician review surface | Read-only placeholder | jobs run synthetically; no model inference |
+| React web workspace | Working | 66-module Vite build; desktop Playwright smoke + departmental flows |
 | Worker bundle | Builds | `apps/api/dist/worker.mjs` produced by esbuild |
 
 ## Explicitly not delivered
 
 - Clinical validation, regulatory approval, security certification or production readiness.
 - Real SNOMED CT, LOINC or UCUM content; production terminology requires licensed services.
-- DICOMweb/PACS, laboratory, pharmacy, telemedicine, device ingestion, AI/radiology, payments, public health, ledger anchoring.
+- External integration transports: DICOMweb/PACS, laboratory analysers, e-prescribing/wholesalers, telemedicine media, device gateways, model inference, payment rails, regulator submission and ledger/WORM anchoring. Departmental workflows run on synthetic data with feature flags off by default; disabled pages state this explicitly.
 - FHIR writes, bulk export, SMART/OAuth client registration or cross-facility FHIR reads.
 - Cloudflare deployment, Hyperdrive verification, R2/Resend production integration, hosted CI execution evidence, deployment pipelines, backups, monitoring and incident response.
 - Production identity proofing, consent legal-basis configuration, retention automation and jurisdictional forms.

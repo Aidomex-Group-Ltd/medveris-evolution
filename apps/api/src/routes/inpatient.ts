@@ -12,7 +12,7 @@ import {
   uuidSchema,
   wardSchema,
 } from "@medveris/contracts";
-import { assertMembershipAdmin, assertWardAccess } from "@medveris/authz";
+import { assertMembershipAdmin, assertWardAccess, assertWardView } from "@medveris/authz";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { ensureMatch, parseJson } from "../lib/http.js";
@@ -22,9 +22,23 @@ import type { AppEnv } from "../types.js";
 
 export const inpatientRoutes = new Hono<AppEnv>();
 
-inpatientRoutes.get("/wards", async (c) => {
+inpatientRoutes.get("/directory/clinical-members", async (c) => {
   requireStaff(c);
   assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select u.id, u.display_name, m.roles
+      from memberships m join users u on u.id = m.user_id
+     where m.tenant_id = ${auth.activeTenant!.id} and m.status = 'active'
+       and m.roles && ARRAY['clinician','nurse']::text[]
+     order by u.display_name
+  `);
+  return c.json({ members: rows });
+});
+
+inpatientRoutes.get("/wards", async (c) => {
+  requireStaff(c);
+  assertWardView(requestActor(c));
   const auth = c.get("auth")!;
   const rows = await withStaffActor(c, async (tx) => tx`
     select w.id, w.name, w.ward_type, w.description, w.status, w.created_at,
@@ -56,7 +70,7 @@ inpatientRoutes.post("/wards", async (c) => {
 
 inpatientRoutes.post("/wards/:id/beds", async (c) => {
   requireStaff(c);
-  assertWardAccess(requestActor(c));
+  assertWardView(requestActor(c));
   const auth = c.get("auth")!;
   const wardId = uuidSchema.parse(c.req.param("id"));
   const body = await parseJson(c, bedSchema);
@@ -77,7 +91,7 @@ inpatientRoutes.post("/wards/:id/beds", async (c) => {
 
 inpatientRoutes.get("/beds", async (c) => {
   requireStaff(c);
-  assertWardAccess(requestActor(c));
+  assertWardView(requestActor(c));
   const auth = c.get("auth")!;
   const wardId = c.req.query("wardId");
   const rows = await withStaffActor(c, async (tx) => tx`
@@ -92,7 +106,7 @@ inpatientRoutes.get("/beds", async (c) => {
 
 inpatientRoutes.patch("/beds/:id/status", async (c) => {
   requireStaff(c);
-  assertWardAccess(requestActor(c));
+  assertWardView(requestActor(c));
   const auth = c.get("auth")!;
   const id = uuidSchema.parse(c.req.param("id"));
   const body = await parseJson(c, bedStatusSchema);

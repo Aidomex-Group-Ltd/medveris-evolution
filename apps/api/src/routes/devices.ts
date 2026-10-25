@@ -6,7 +6,7 @@ import {
   deviceSchema,
   uuidSchema,
 } from "@medveris/contracts";
-import { assertWardAccess, assertMembershipAdmin } from "@medveris/authz";
+import { assertWardAccess, assertWardView, assertMembershipAdmin } from "@medveris/authz";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
@@ -23,7 +23,7 @@ function hasRole(c: Parameters<typeof requireStaff>[0], ...roles: string[]): boo
 
 deviceRoutes.get("/devices", async (c) => {
   requireStaff(c);
-  assertWardAccess(requestActor(c));
+  assertWardView(requestActor(c));
   const auth = c.get("auth")!;
   const rows = await withStaffActor(c, async (tx) => tx`
     select d.*, (select row_to_json(da) from device_assignments da where da.device_id = d.id and da.released_at is null limit 1) as active_assignment

@@ -8,13 +8,13 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 |---|---|
 | `npm run lint` | Passed, zero warnings |
 | `npm run typecheck` | Passed |
-| `npm test` | 4 files, 29 tests passed |
-| `npm run test:e2e` | 3 Playwright tests passed |
+| `npm test` | 5 files, 40 tests passed |
+| `npm run test:e2e` | 9 Playwright tests passed (smoke 3, departmental 6) |
 | `npm run smoke:clinical` | Draft → sign → amend → versions: `[[1,"signed"],[2,"amended"]]` |
 | `npm run smoke:workers` | Event processed once; dedup row present; signed Merkle checkpoint present |
-| `npm run build` | Web 49 modules / 322.62 kB JS; API server bundle 222 kB; worker bundle 1.1 MB |
+| `npm run build` | Web 66 modules / 460.58 kB JS; API server bundle 374.2 kB; worker bundle 1.2 MB |
 | `PORT=8788 node apps/api/dist/server.mjs` | Started successfully; `/api/v1/health/ready` returned `{"status":"ready","database":"reachable"}`; clean SIGTERM shutdown |
-| `npm run db:migrate` | 001, 002 and 003 applied cleanly on the development database |
+| `npm run db:migrate` | 001–004 applied cleanly on the development database |
 
 ## Unit tests
 
@@ -49,6 +49,16 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 - FHIR metadata is public; FHIR writes return 405; FHIR Patient reads are facility-link scoped.
 - Synthetic terminology expansion returns a labelled ValueSet.
 
+## Departmental API tests
+
+`tests/integration/departments.test.ts` runs the full synthetic departmental flows through the real API:
+
+- Admission, bed assignment, nursing assessments/tasks, handoff and discharge.
+- Theatre preop, consent, safety checklists, anesthesia, counts, recovery and completion, including refusal to skip checkpoints.
+- Diagnostics order, specimen receive/verify, result release, correction and critical-result communication.
+- Pharmacy review, dispensing, administration and stock controls.
+- Invoicing, payment/reversal, claims, programmes, public health and cross-role denial.
+
 ## Browser tests
 
 `tests/e2e/smoke.spec.ts` runs against the Vite app and live API:
@@ -56,6 +66,8 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 1. Clinician signs in with password + TOTP, reaches the overview, opens the worklist and a patient chart.
 2. Receptionist signs in but cannot see or open the clinical worklist.
 3. Patient signs in without MFA and reaches their portal with released records and consent navigation.
+
+`tests/e2e/departments.spec.ts` additionally verifies that each departmental workspace opens with the correct roles, that a clinician can place a laboratory order, and that a clinician can schedule and open a theatre case with its safety-checkpoint surface. It also covers the pharmacist, finance and public-health permission boundaries.
 
 ## Worker smoke
 

@@ -7,7 +7,7 @@ import {
   serviceCatalogSchema,
   uuidSchema,
 } from "@medveris/contracts";
-import { assertFinance, assertMembershipAdmin } from "@medveris/authz";
+import { assertFinance } from "@medveris/authz";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
@@ -49,7 +49,7 @@ financeRoutes.get("/service-catalog", async (c) => {
 
 financeRoutes.post("/service-catalog", async (c) => {
   requireStaff(c);
-  assertMembershipAdmin(requestActor(c));
+  assertFinance(requestActor(c));
   if (!hasRole(c, "finance", "facility_admin")) throw new ForbiddenError("The finance role is required");
   const auth = c.get("auth")!;
   const body = await parseJson(c, serviceCatalogSchema);

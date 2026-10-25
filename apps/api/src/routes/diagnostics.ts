@@ -14,7 +14,7 @@ import {
   specimenTransitionSchema,
   uuidSchema,
 } from "@medveris/contracts";
-import { assertDiagnostics, assertMembershipAdmin } from "@medveris/authz";
+import { assertDiagnostics } from "@medveris/authz";
 import { contentDigest } from "@medveris/domain";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
@@ -59,7 +59,7 @@ diagnosticsRoutes.get("/lab-tests", async (c) => {
 
 diagnosticsRoutes.post("/lab-tests", async (c) => {
   requireStaff(c);
-  assertMembershipAdmin(requestActor(c));
+  assertDiagnostics(requestActor(c));
   if (!hasRole(c, "laboratory", "facility_admin")) throw new ForbiddenError("The laboratory role is required");
   const auth = c.get("auth")!;
   const body = await parseJson(c, labTestSchema);

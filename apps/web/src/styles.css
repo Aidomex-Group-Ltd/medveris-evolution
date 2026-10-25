@@ -3,3 +3,8 @@ fieldset.mv-note { border: 1px solid var(--mv-border); border-radius: var(--mv-r
 fieldset.mv-note legend { padding: 0 5px; font-weight: 650; }
 ul.mv-stack > li { padding-bottom: 8px; border-bottom: 1px solid var(--mv-border); }
 ul.mv-stack > li:last-child { border-bottom: 0; padding-bottom: 0; }
+.mv-metric { font-size: 1.9rem; font-weight: 700; line-height: 1.1; margin: 0; }
+.mv-check { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.mv-check input { width: 16px; height: 16px; }
+details > summary { cursor: pointer; font-weight: 650; color: var(--mv-brand); }
+details > summary:hover { text-decoration: underline; }

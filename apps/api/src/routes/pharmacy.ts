@@ -9,7 +9,6 @@ import {
   stockMovementSchema,
   uuidSchema,
 } from "@medveris/contracts";
-import { assertMembershipAdmin } from "@medveris/authz";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
@@ -40,7 +39,6 @@ pharmacyRoutes.get("/medicines", async (c) => {
 
 pharmacyRoutes.post("/medicines", async (c) => {
   requireStaff(c);
-  assertMembershipAdmin(requestActor(c));
   if (!hasRole(c, "pharmacist", "facility_admin")) throw new ForbiddenError("The pharmacy role is required");
   const auth = c.get("auth")!;
   const body = await parseJson(c, medicineSchema);
