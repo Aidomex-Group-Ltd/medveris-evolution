@@ -11,6 +11,16 @@ export const ROLES = [
   "laboratory",
   "radiology",
   "public_health",
+  "hr",
+  "records",
+  "theatre",
+  "housekeeping",
+  "porter",
+  "mortuary",
+  "cssd",
+  "biomedical",
+  "quality",
+  "it_admin",
 ] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -32,6 +42,13 @@ const wardRoles: Role[] = ["clinician", "nurse"];
 const diagnosticsRoles: Role[] = ["clinician", "nurse", "laboratory", "radiology"];
 const financeRoles: Role[] = ["finance", "facility_admin"];
 const programmeRoles: Role[] = ["clinician", "nurse"];
+const workforceRoles: Role[] = ["hr", "facility_admin"];
+const clinicalReviewRoles: Role[] = ["clinician", "facility_admin"];
+const recordsRoles: Role[] = ["records", "receptionist", "facility_admin"];
+const housekeepingRoles: Role[] = ["housekeeping", "facility_admin"];
+const porterRoles: Role[] = ["porter", "nurse", "facility_admin"];
+const mortuaryRoles: Role[] = ["mortuary", "facility_admin"];
+const technicalRoles: Role[] = ["cssd", "biomedical", "facility_admin"];
 
 export function hasRole(actor: ActorContext, ...roles: Role[]): boolean {
   return roles.some((r) => actor.roles.includes(r));
@@ -97,6 +114,38 @@ export function canManagePublicHealth(actor: ActorContext): boolean {
   return hasRole(actor, "public_health", "facility_admin");
 }
 
+export function canManageWorkforce(actor: ActorContext): boolean {
+  return hasRole(actor, ...workforceRoles);
+}
+
+export function canReviewPrivileges(actor: ActorContext): boolean {
+  return hasRole(actor, ...clinicalReviewRoles);
+}
+
+export function canManageRecords(actor: ActorContext): boolean {
+  return hasRole(actor, ...recordsRoles);
+}
+
+export function canManageHousekeeping(actor: ActorContext): boolean {
+  return hasRole(actor, ...housekeepingRoles);
+}
+
+export function canManagePorters(actor: ActorContext): boolean {
+  return hasRole(actor, ...porterRoles);
+}
+
+export function canManageMortuary(actor: ActorContext): boolean {
+  return hasRole(actor, ...mortuaryRoles);
+}
+
+export function canManageTechnicalServices(actor: ActorContext): boolean {
+  return hasRole(actor, ...technicalRoles);
+}
+
+export function canViewOperationalReports(actor: ActorContext): boolean {
+  return hasRole(actor, "facility_admin", "finance", "quality", "auditor", "hr", "public_health");
+}
+
 export function canUseEmergencyOverride(actor: ActorContext): boolean {
   return hasRole(actor, "clinician", "nurse") && actor.mfaVerified && actor.mfaEnrolled;
 }
@@ -147,6 +196,38 @@ export function assertProgrammeAccess(actor: ActorContext): void {
 
 export function assertPublicHealth(actor: ActorContext): void {
   if (!canManagePublicHealth(actor)) throw new AuthzError("Public-health reporting access is not permitted for this role");
+}
+
+export function assertWorkforceAccess(actor: ActorContext): void {
+  if (!canManageWorkforce(actor)) throw new AuthzError("Workforce management permission is required");
+}
+
+export function assertPrivilegeReview(actor: ActorContext): void {
+  if (!canReviewPrivileges(actor)) throw new AuthzError("Clinical privilege review permission is required");
+}
+
+export function assertRecordsAccess(actor: ActorContext): void {
+  if (!canManageRecords(actor) && !canReadClinical(actor)) throw new AuthzError("Health-records access is not permitted for this role");
+}
+
+export function assertHousekeepingAccess(actor: ActorContext): void {
+  if (!canManageHousekeeping(actor)) throw new AuthzError("Housekeeping permission is required");
+}
+
+export function assertPorterAccess(actor: ActorContext): void {
+  if (!canManagePorters(actor)) throw new AuthzError("Portering permission is required");
+}
+
+export function assertMortuaryAccess(actor: ActorContext): void {
+  if (!canManageMortuary(actor)) throw new AuthzError("Mortuary permission is required");
+}
+
+export function assertTechnicalServices(actor: ActorContext): void {
+  if (!canManageTechnicalServices(actor)) throw new AuthzError("Technical-services permission is required");
+}
+
+export function assertOperationalReports(actor: ActorContext): void {
+  if (!canViewOperationalReports(actor)) throw new AuthzError("Operational reporting access is not permitted for this role");
 }
 
 export function assertAuditAccess(actor: ActorContext): void {

@@ -124,6 +124,11 @@ Status definitions:
 | ADM-05 | Procurement and inventory | 06 | Stock and purchasing are managed | Pharmacy stock only; general procurement missing | Partial |
 | ADM-06 | Operational reports from stored data | 06, 07 | Managers see real local data | Finance summary and public-health aggregate; no broad BI layer | Partial |
 | ADM-07 | Manual payment is not external settlement | 06, 17 | Staff do not mistake a recorded payment for cleared funds | Payment records are local/manual; claim states remain local | Implemented |
+| ADM-08 | Configurable departments, units, locations, cadres, job titles and catalogue bootstrap | 01, 05 | Administrators model the facility without code changes | `organization.ts`; hospital integration test | Verified |
+| ADM-09 | Workforce onboarding, assignments, privileges and training records | 01, 05 | HR moves a hire through review to active with scoped access | Onboarding transitions to active; hospital integration test | Verified |
+| ADM-10 | Configurable documentation templates, immutable versions, signatures, amendments and entered-in-error | 05, 09 | Services configure their own forms without losing record integrity | `documents.ts`; hospital integration test | Verified |
+| ADM-11 | Maternity episodes, labour observations, delivery and newborn records | 06 | Maternity staff document labour and birth in one episode | `maternity.ts`; hospital integration test | Verified |
+| ADM-12 | Bed readiness, housekeeping, portering, mortuary custody and technical services | 06 | Support services are tracked separately from clinical discharge | `operations.ts`; hospital integration test | Verified |
 
 ## Telemedicine, devices and bounded AI
 
@@ -158,11 +163,11 @@ Status definitions:
 
 ## Verification summary
 
-Executed after the emergency increment:
+Executed after the hospital-operations increment:
 
 - `npm run typecheck` — passed.
 - `npm run lint` — passed.
-- `npm test` — unit, PostgreSQL isolation, HTTP, departmental, patient-registration and care-coordination suites.
+- `npm test` — 9 files and 57 tests, including the hospital organisation/workforce, documentation, maternity and support-services suite.
 - `npm run test:e2e` — browser journeys, including the emergency registration/triage journey.
 - `npm run build` — web, API server and worker bundles.
 - `npm run smoke:clinical`, `npm run smoke:workers` — see `docs/TEST_EVIDENCE.md`.

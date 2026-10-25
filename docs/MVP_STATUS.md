@@ -22,6 +22,11 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Emergency override with review task | Working | API routes; synthetic clinical role |
 | Credential submission and independent review | Working | API + reviewer console |
 | Facility administration, memberships, queue management | Working | API + admin console |
+| Configurable organisation: departments, units, locations, cadres, job titles and catalogue bootstrap | Working, synthetic | `organization.ts`; hospital integration test |
+| Workforce onboarding, assignments, privilege requests and training records | Working, synthetic | onboarding reaches active through review; hospital integration test |
+| Configurable document templates, drafts, signatures, amendments and entered-in-error | Working, synthetic | `documents.ts`; hospital integration test |
+| Maternity episodes, labour observations, delivery and newborn records | Working, synthetic | `maternity.ts`; hospital integration test |
+| Bed readiness, housekeeping, portering, mortuary custody and technical services (engineering/CSSD) | Working, synthetic | `operations.ts`; hospital integration test |
 | FHIR R4 read facade | Working subset | metadata, Patient, Encounter, Observation, Condition, AllergyIntolerance, DocumentReference, Provenance, Consent, AuditEvent |
 | Terminology facade | Working synthetic only | ValueSet expand/validate, CodeSystem lookup/validate |
 | Inpatient wards, beds, nursing care, handoffs and discharge | Working, synthetic | `tests/integration/departments.test.ts`; Wards/admission UI |
@@ -51,3 +56,5 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 Signing initially returned HTTP 500 because the immutability trigger allowed the draft-to-signed transition but the runtime role lacked `UPDATE`. Migration `002_signing_privileges.sql` grants only the required table update and the end-to-end sign/amend flow now passes.
 
 A second hardening migration (`003_access_hardening.sql`) scopes patient updates to linked facilities and permits pre-authentication denial audit records.
+
+Document signing read `signing_required` from the template instead of the pinned template version. The query now uses the version row, and the hospital integration test signs a document and asserts the immutable second version.

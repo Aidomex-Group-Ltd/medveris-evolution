@@ -8,13 +8,13 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 |---|---|
 | `npm run lint` | Passed, zero warnings |
 | `npm run typecheck` | Passed |
-| `npm test` | 8 files, 50 tests passed |
+| `npm test` | 9 files, 57 tests passed |
 | `npm run test:e2e` | 12 Playwright tests passed (smoke 3, departmental 9) |
 | `npm run smoke:clinical` | Draft → sign → amend → versions: `[[1,"signed"],[2,"amended"]]` |
 | `npm run smoke:workers` | Event processed once; dedup row present; signed Merkle checkpoint present |
 | `npm run build` | Web 69 modules / 489.99 kB JS; API server bundle 398.9 kB; worker bundle 1.2 MB |
 | `PORT=8788 node apps/api/dist/server.mjs` | Started successfully; `/api/v1/health/ready` returned `{"status":"ready","database":"reachable"}`; clean SIGTERM shutdown |
-| `npm run db:migrate` | 001–007 applied cleanly on the development database |
+| `npm run db:migrate` | 001–012 applied cleanly on the development database |
 
 ## Unit tests
 
@@ -87,6 +87,16 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 - Diagnostics order, specimen receive/verify, result release, correction and critical-result communication.
 - Pharmacy review, dispensing, administration and stock controls.
 - Invoicing, payment/reversal, claims, programmes, public health and cross-role denial.
+
+## Hospital operations API tests
+
+`tests/integration/hospital.test.ts` covers the organisation, documentation and support-service increment:
+
+- A non-workforce role cannot create a department; HR provisions a department and unit, starts onboarding, advances every stage to review and approves it to active.
+- A template is published, a patient document recorded, signed with a digest and read back as two immutable versions.
+- A maternity episode accepts labour observations, a delivery record and a newborn record.
+- Housekeeping turns a task in-progress and completed; portering completes a patient transfer only with identity verification.
+- Mortuary blocks release while identity is provisional; engineering work orders complete with a release note; CSSD releases only a passing load.
 
 ## Browser tests
 

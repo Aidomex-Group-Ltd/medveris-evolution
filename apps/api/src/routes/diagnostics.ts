@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import {
+  criticalAcknowledgementSchema,
   criticalCommunicationSchema,
+  diagnosticAssignmentSchema,
+  diagnosticReleaseSchema,
   diagnosticReportCorrectionSchema,
   diagnosticReportSchema,
   imagingStudySchema,
@@ -504,4 +507,179 @@ diagnosticsRoutes.get("/patients/:id/diagnostics", async (c) => {
     subjectPatientId: patientId, resourceType: "DiagnosticSummary", resourceId: patientId,
   })));
   return c.json(data);
+});
+
+diagnosticsRoutes.get("/diagnostic-reporting/worklist", async (c) => {
+  requireStaff(c);
+  assertDiagnostics(requestActor(c));
+  const auth = c.get("auth")!;
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select o.id, o.order_type, o.priority, o.clinical_note, o.status, o.created_at, o.assigned_reporter_id, o.reported_at,
+           p.public_id, p.given_name, p.family_name, u.display_name as assigned_reporter_name,
+           (select count(*)::int from service_order_items i where i.order_id = o.id) as item_count,
+           (select count(*)::int from service_order_items i where i.order_id = o.id and i.status not in ('resulted','cancelled')) as pending_items
+      from service_orders o
+      join patients p on p.id = o.patient_id
+      left join users u on u.id = o.assigned_reporter_id
+     where o.tenant_id = ${auth.activeTenant!.id} and o.order_type in ('laboratory','imaging')
+       and o.status not in ('cancelled')
+     order by case o.priority when 'urgent' then 0 when 'stat' then 0 else 1 end, o.created_at asc
+     limit 200
+  `);
+  return c.json({ worklist: rows });
+});
+
+diagnosticsRoutes.post("/diagnostic-orders/:id/assign", async (c) => {
+  requireStaff(c);
+  assertDiagnostics(requestActor(c));
+  if (!hasRole(c, "laboratory", "radiology", "facility_admin")) {
+    throw new ForbiddenError("Reporter assignment requires laboratory, radiology or facility administration");
+  }
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, diagnosticAssignmentSchema);
+  await withStaffActor(c, async (tx) => {
+    const order = await requireRows(await tx`
+      select id, patient_id, order_type, status from service_orders where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update
+    `, "Diagnostic order not found");
+    if (["resulted", "cancelled"].includes(String(order.status))) throw new ConflictError("A completed or cancelled order cannot be reassigned");
+    const reporter = await tx`
+      select 1 from memberships where tenant_id = ${auth.activeTenant!.id} and user_id = ${body.reporterUserId} and status = 'active'
+    `;
+    if (!reporter[0]) throw new ValidationError("The reporter is not an active facility member");
+    await tx`
+      update service_orders set assigned_reporter_id = ${body.reporterUserId}, version = version + 1, updated_at = now() where id = ${id}
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "diagnostic.order.assign", {
+      subjectPatientId: String(order.patientId), resourceType: "ServiceOrder", resourceId: id,
+      metadata: { orderType: order.orderType, reporterUserId: body.reporterUserId },
+    }));
+  });
+  return c.json({ ok: true });
+});
+
+diagnosticsRoutes.get("/critical-communications", async (c) => {
+  requireStaff(c);
+  assertDiagnostics(requestActor(c));
+  const auth = c.get("auth")!;
+  const unacknowledged = c.req.query("unacknowledged") === "true";
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select c.id, c.result_id, c.recipient_user_id, c.method, c.notes, c.created_at, c.acknowledged_at,
+           c.acknowledgement_note, r.value_num, r.value_text, r.unit_code, r.patient_id,
+           p.public_id, p.given_name, p.family_name, u.display_name as recipient_name, rv.display_name as acknowledged_by_name
+      from critical_communications c
+      join lab_results r on r.id = c.result_id
+      join patients p on p.id = r.patient_id
+      join users u on u.id = c.recipient_user_id
+      left join users rv on rv.id = c.acknowledged_by
+     where c.tenant_id = ${auth.activeTenant!.id}
+       ${unacknowledged ? tx`and c.acknowledged_at is null` : tx``}
+     order by c.created_at desc limit 200
+  `);
+  return c.json({ communications: rows });
+});
+
+diagnosticsRoutes.post("/critical-communications/:id/acknowledge", async (c) => {
+  requireStaff(c);
+  assertDiagnostics(requestActor(c));
+  if (!hasRole(c, "clinician", "nurse")) throw new ForbiddenError("Critical-result acknowledgement requires clinical staff");
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, criticalAcknowledgementSchema);
+  await withStaffActor(c, async (tx) => {
+    const communication = await requireRows(await tx`
+      select id, recipient_user_id, result_id, acknowledged_at from critical_communications
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update
+    `, "Critical communication not found");
+    if (communication.acknowledgedAt) throw new ConflictError("This critical result has already been acknowledged");
+    await tx`
+      update critical_communications set acknowledged_at = now(), acknowledged_by = ${auth.user.id},
+        acknowledgement_note = ${body.note} where id = ${id}
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "lab.critical.acknowledge", {
+      resourceType: "CriticalCommunication", resourceId: id,
+      metadata: { resultId: String(communication.resultId), note: body.note },
+    }));
+  });
+  return c.json({ ok: true });
+});
+
+diagnosticsRoutes.post("/lab-results/:id/release", async (c) => {
+  requireStaff(c);
+  assertDiagnostics(requestActor(c));
+  if (!hasRole(c, "clinician", "laboratory", "facility_admin")) throw new ForbiddenError("Result release requires laboratory or clinical staff");
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, diagnosticReleaseSchema);
+  await withStaffActor(c, async (tx) => {
+    const result = await requireRows(await tx`
+      select id, patient_id, status, version, reported_at from lab_results where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update
+    `, "Laboratory result not found");
+    if (body.expectedVersion) ensureMatch(body.expectedVersion, Number(result.version));
+    if (result.status !== "final") throw new ConflictError("Only a final verified result can be released");
+    if (result.reportedAt) throw new ConflictError("This result has already been released");
+    await tx`
+      update lab_results set reported_at = now(), release_note = ${body.releaseNote}, updated_at = now() where id = ${id}
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "lab.result.release", {
+      subjectPatientId: String(result.patientId), resourceType: "LabResult", resourceId: id,
+      metadata: { releaseNote: body.releaseNote },
+    }));
+    await writeOutbox(tx, { tenantId: auth.activeTenant!.id, eventType: "lab.result.released", aggregateId: id });
+  });
+  return c.json({ ok: true });
+});
+
+diagnosticsRoutes.post("/diagnostic-reports/:id/release", async (c) => {
+  requireStaff(c);
+  assertDiagnostics(requestActor(c));
+  if (!hasRole(c, "radiology", "clinician", "facility_admin")) throw new ForbiddenError("Report release requires radiology or clinical staff");
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, diagnosticReleaseSchema);
+  await withStaffActor(c, async (tx) => {
+    const report = await requireRows(await tx`
+      select id, patient_id, status, version, reported_at from diagnostic_reports where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update
+    `, "Diagnostic report not found");
+    if (body.expectedVersion) ensureMatch(body.expectedVersion, Number(report.version));
+    if (report.status !== "final") throw new ConflictError("Only a final signed report can be released");
+    if (report.reportedAt) throw new ConflictError("This report has already been released");
+    await tx`
+      update diagnostic_reports set reported_at = now(), release_note = ${body.releaseNote}, updated_at = now() where id = ${id}
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "diagnostic.report.release", {
+      subjectPatientId: String(report.patientId), resourceType: "DiagnosticReport", resourceId: id,
+      metadata: { releaseNote: body.releaseNote },
+    }));
+    await writeOutbox(tx, { tenantId: auth.activeTenant!.id, eventType: "diagnostic.report.released", aggregateId: id });
+  });
+  return c.json({ ok: true });
+});
+
+diagnosticsRoutes.get("/diagnostic-reporting/releasable", async (c) => {
+  requireStaff(c);
+  assertDiagnostics(requestActor(c));
+  const auth = c.get("auth")!;
+  const data = await withStaffActor(c, async (tx) => {
+    const results = await tx`
+      select r.id, 'laboratory' as kind, r.patient_id, r.verified_at, r.created_at, i.name as item_name,
+             p.public_id, p.given_name, p.family_name
+        from lab_results r
+        join service_order_items i on i.id = r.order_item_id
+        join patients p on p.id = r.patient_id
+       where r.tenant_id = ${auth.activeTenant!.id} and r.status = 'final' and r.reported_at is null
+       order by r.created_at
+    `;
+    const reports = await tx`
+      select r.id, 'imaging' as kind, r.patient_id, r.verified_at, r.created_at, i.name as item_name,
+             p.public_id, p.given_name, p.family_name
+        from diagnostic_reports r
+        join service_order_items i on i.id = r.order_item_id
+        join patients p on p.id = r.patient_id
+       where r.tenant_id = ${auth.activeTenant!.id} and r.status = 'final' and r.reported_at is null
+       order by r.created_at
+    `;
+    return [...results, ...reports];
+  });
+  return c.json({ releasable: data });
 });

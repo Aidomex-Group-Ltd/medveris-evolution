@@ -1,3 +1,4 @@
+export * from "./catalog.js";
 export type EncounterState =
   | "planned"
   | "arrived"
@@ -171,4 +172,253 @@ const referralTransitions: Record<ReferralStatus, ReferralStatus[]> = {
 
 export function canTransitionReferral(from: ReferralStatus, to: ReferralStatus): boolean {
   return referralTransitions[from]?.includes(to) ?? false;
+}
+
+export type AppointmentStatus = "scheduled" | "arrived" | "completed" | "cancelled" | "no-show";
+
+const appointmentTransitions: Record<AppointmentStatus, AppointmentStatus[]> = {
+  scheduled: ["cancelled", "no-show"],
+  arrived: [],
+  completed: [],
+  cancelled: [],
+  "no-show": [],
+};
+
+export function canTransitionAppointment(from: AppointmentStatus, to: AppointmentStatus): boolean {
+  return appointmentTransitions[from]?.includes(to) ?? false;
+}
+
+// Organisation, workforce and document-registry invariants.
+
+export type OnboardingStatus =
+  | "invited"
+  | "identity"
+  | "employment"
+  | "professional"
+  | "assignments"
+  | "credentials"
+  | "privileges"
+  | "review"
+  | "access"
+  | "induction"
+  | "active"
+  | "rejected"
+  | "withdrawn";
+
+const onboardingTransitions: Record<OnboardingStatus, OnboardingStatus[]> = {
+  invited: ["identity", "withdrawn"],
+  identity: ["employment", "withdrawn"],
+  employment: ["professional", "withdrawn"],
+  professional: ["assignments", "withdrawn"],
+  assignments: ["credentials", "withdrawn"],
+  credentials: ["privileges", "withdrawn"],
+  privileges: ["review", "withdrawn"],
+  review: ["access", "rejected", "credentials"],
+  access: ["induction", "withdrawn"],
+  induction: ["active", "withdrawn"],
+  active: ["withdrawn"],
+  rejected: [],
+  withdrawn: [],
+};
+
+export function canAdvanceOnboarding(from: OnboardingStatus, to: OnboardingStatus): boolean {
+  return onboardingTransitions[from]?.includes(to) ?? false;
+}
+
+export type DocumentStatus = "draft" | "signed" | "amended" | "entered-in-error";
+
+export function nextDocumentStatus(current: DocumentStatus, action: "sign" | "amend" | "error"): DocumentStatus {
+  if (action === "sign") {
+    if (current !== "draft") throw new DomainError("Only a draft document can be signed");
+    return "signed";
+  }
+  if (action === "amend") {
+    if (current !== "signed" && current !== "amended") throw new DomainError("Only a signed document can be amended");
+    return "amended";
+  }
+  if (current !== "signed" && current !== "amended") throw new DomainError("Only a signed document can be marked entered-in-error");
+  return "entered-in-error";
+}
+
+export type TemplateStatus = "draft" | "published" | "retired";
+
+const templateTransitions: Record<TemplateStatus, TemplateStatus[]> = {
+  draft: ["published", "retired"],
+  published: ["retired"],
+  retired: [],
+};
+
+export function canTransitionTemplate(from: TemplateStatus, to: TemplateStatus): boolean {
+  return templateTransitions[from]?.includes(to) ?? false;
+}
+
+export interface AssignmentPeriod {
+  startsOn: string;
+  endsOn: string | null;
+}
+
+export function assignmentActiveOn(assignment: AssignmentPeriod, date: string): boolean {
+  return assignment.startsOn <= date && (assignment.endsOn === null || assignment.endsOn >= date);
+}
+
+export function periodsOverlap(a: AssignmentPeriod, b: AssignmentPeriod): boolean {
+  const aEnd = a.endsOn ?? "9999-12-31";
+  const bEnd = b.endsOn ?? "9999-12-31";
+  return a.startsOn <= bEnd && b.startsOn <= aEnd;
+}
+
+export type BedStatus =
+  | "available"
+  | "occupied"
+  | "vacated"
+  | "awaiting-cleaning"
+  | "cleaning-in-progress"
+  | "cleaning"
+  | "ready"
+  | "out-of-service"
+  | "unavailable";
+
+const bedTransitions: Record<BedStatus, BedStatus[]> = {
+  available: ["occupied", "out-of-service", "unavailable", "awaiting-cleaning"],
+  occupied: ["vacated"],
+  vacated: ["awaiting-cleaning", "ready"],
+  "awaiting-cleaning": ["cleaning-in-progress", "out-of-service"],
+  "cleaning-in-progress": ["ready", "out-of-service"],
+  cleaning: ["ready", "available", "out-of-service"],
+  ready: ["available", "occupied", "out-of-service"],
+  "out-of-service": ["ready", "available"],
+  unavailable: ["ready", "available", "out-of-service"],
+};
+
+export function canTransitionBed(from: BedStatus, to: BedStatus): boolean {
+  if (from === to) return true;
+  return bedTransitions[from]?.includes(to) ?? false;
+}
+
+export interface LabourObservationInput {
+  occurredAt: string;
+  templateType: "labour-care-guide" | "partograph";
+  maternal: Record<string, number | string | null>;
+  fetal: Record<string, number | string | null>;
+  notes?: string | null;
+}
+
+export function validateLabourObservation(input: LabourObservationInput): void {
+  if (!["labour-care-guide", "partograph"].includes(input.templateType)) {
+    throw new DomainError("Unsupported labour-chart template");
+  }
+  if (Number.isNaN(Date.parse(input.occurredAt))) throw new DomainError("A valid clinical occurrence time is required");
+  for (const [key, value] of Object.entries(input.maternal)) {
+    if (typeof value === "number" && !Number.isFinite(value)) throw new DomainError(`Invalid maternal value for ${key}`);
+  }
+  for (const [key, value] of Object.entries(input.fetal)) {
+    if (typeof value === "number" && !Number.isFinite(value)) throw new DomainError(`Invalid fetal value for ${key}`);
+  }
+}
+
+const CROCKFORD_STAFF = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+export function randomStaffReference(random = crypto.getRandomValues(new Uint8Array(5))): string {
+  if (random.length !== 5) throw new Error("random source must provide 5 bytes");
+  let body = "";
+  let bits = 0;
+  let value = 0;
+  for (const byte of random) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5 && body.length < 8) {
+      bits -= 5;
+      body += CROCKFORD_STAFF[(value >>> bits) & 31];
+    }
+  }
+  body = body.padEnd(8, "0");
+  return `STF-${body.slice(0, 4)}-${body.slice(4, 8)}`;
+}
+
+export function randomMortuaryReference(sequence: number, year = new Date().getFullYear()): string {
+  if (!Number.isInteger(sequence) || sequence < 1) throw new DomainError("A positive mortuary sequence is required");
+  return `MOR-${year}-${String(sequence).padStart(5, "0")}`;
+}
+
+export interface TemplateFieldDefinition {
+  key: string;
+  label: string;
+  type: "text" | "textarea" | "number" | "decimal" | "boolean" | "date" | "datetime" | "select" | "coded" | "quantity" | "repeating-group";
+  required?: boolean;
+  unit?: string;
+  options?: string[];
+  section?: string;
+  sensitivity?: string;
+}
+
+export function validateTemplateFields(fields: unknown): TemplateFieldDefinition[] {
+  if (!Array.isArray(fields) || fields.length === 0) throw new DomainError("A template requires at least one field");
+  const allowed = new Set(["text", "textarea", "number", "decimal", "boolean", "date", "datetime", "select", "coded", "quantity", "repeating-group"]);
+  const keys = new Set<string>();
+  return fields.map((raw, index) => {
+    if (!raw || typeof raw !== "object") throw new DomainError(`Field ${index + 1} is invalid`);
+    const field = raw as Record<string, unknown>;
+    const key = String(field.key ?? "");
+    if (!/^[a-z][a-z0-9_.-]{1,79}$/.test(key)) throw new DomainError(`Field ${index + 1} has an invalid key`);
+    if (keys.has(key)) throw new DomainError(`Duplicate template field key: ${key}`);
+    keys.add(key);
+    if (!String(field.label ?? "").trim()) throw new DomainError(`Field ${key} requires a label`);
+    if (!allowed.has(String(field.type))) throw new DomainError(`Field ${key} has an unsupported type`);
+    if (field.type === "select" && (!Array.isArray(field.options) || field.options.length === 0)) {
+      throw new DomainError(`Select field ${key} requires options`);
+    }
+    return {
+      key,
+      label: String(field.label),
+      type: field.type as TemplateFieldDefinition["type"],
+      required: field.required === true,
+      unit: field.unit ? String(field.unit) : undefined,
+      options: Array.isArray(field.options) ? field.options.map(String) : undefined,
+      section: field.section ? String(field.section) : undefined,
+      sensitivity: field.sensitivity ? String(field.sensitivity) : undefined,
+    };
+  });
+}
+
+export function validateDocumentContent(
+  fields: TemplateFieldDefinition[],
+  content: Record<string, unknown>,
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  for (const field of fields) {
+    const value = content[field.key];
+    const missing = value === undefined || value === null || value === "";
+    if (field.required && missing) {
+      errors.push(`${field.label} is required`);
+      continue;
+    }
+    if (missing) continue;
+    switch (field.type) {
+      case "number":
+        if (typeof value !== "number" || !Number.isFinite(value)) errors.push(`${field.label} must be a number`);
+        break;
+      case "decimal":
+        if (typeof value !== "number" || !Number.isFinite(value)) errors.push(`${field.label} must be a decimal value`);
+        break;
+      case "boolean":
+        if (typeof value !== "boolean") errors.push(`${field.label} must be true or false`);
+        break;
+      case "date":
+        if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) errors.push(`${field.label} must be a date`);
+        break;
+      case "datetime":
+        if (typeof value !== "string" || Number.isNaN(Date.parse(value))) errors.push(`${field.label} must be a date and time`);
+        break;
+      case "quantity":
+        if (typeof value !== "number" || !Number.isFinite(value)) errors.push(`${field.label} must be a quantity`);
+        else if (field.unit && typeof content[`${field.key}Unit`] !== "string") errors.push(`${field.label} requires a unit`);
+        break;
+      case "select":
+        if (typeof value !== "string" || !(field.options ?? []).includes(value)) errors.push(`${field.label} has an unsupported option`);
+        break;
+      default:
+        if (typeof value !== "string") errors.push(`${field.label} must be text`);
+    }
+  }
+  return { valid: errors.length === 0, errors };
 }

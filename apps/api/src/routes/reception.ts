@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import {
+  appointmentRescheduleSchema,
   appointmentSchema,
+  appointmentStatusSchema,
   createEncounterSchema,
   createPatientByStaffSchema,
   queueEntrySchema,
@@ -10,7 +12,8 @@ import {
   uuidSchema,
 } from "@medveris/contracts";
 import type { ActorContext } from "@medveris/authz";
-import { canTransitionEncounter, randomPatientPublicId, type EncounterState } from "@medveris/domain";
+import type { Tx } from "@medveris/db";
+import { canTransitionAppointment, canTransitionEncounter, randomPatientPublicId, type AppointmentStatus, type EncounterState } from "@medveris/domain";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, ensureMatch, parseJson, requestMeta } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
@@ -160,17 +163,37 @@ receptionRoutes.get("/patients/recent", async (c) => {
   return c.json({ patients: rows });
 });
 
+async function ensureAssignedClinician(tx: Tx, tenantId: string, userId: string): Promise<void> {
+  const member = await tx`
+    select 1 from memberships
+     where tenant_id = ${tenantId} and user_id = ${userId} and status = 'active'
+       and roles && ARRAY['clinician','nurse']
+  `;
+  if (!member[0]) throw new ValidationError("Assigned clinician is not an active clinical member of this facility");
+}
+
 receptionRoutes.get("/appointments", async (c) => {
   requireStaff(c);
   requireFrontDesk(c);
   const auth = c.get("auth")!;
+  const status = c.req.query("status") ?? "all";
+  const scope = c.req.query("scope") ?? "upcoming";
+  if (!["all", "scheduled", "arrived", "completed", "cancelled", "no-show"].includes(status)) {
+    throw new ValidationError("Invalid appointment status filter");
+  }
+  if (!["upcoming", "past", "all"].includes(scope)) throw new ValidationError("Invalid appointment scope");
   const rows = await withStaffActor(c, async (tx) => tx`
-    select a.id, a.start_at, a.duration_minutes, a.reason, a.status, a.patient_id, p.public_id, p.given_name, p.family_name,
+    select a.id, a.start_at, a.duration_minutes, a.reason, a.status, a.version, a.status_note, a.updated_at,
+           a.patient_id, p.public_id, p.given_name, p.family_name,
            a.clinician_user_id, u.display_name as clinician_name
       from appointments a join patients p on p.id = a.patient_id
       left join users u on u.id = a.clinician_user_id
-     where a.tenant_id = ${auth.activeTenant!.id} and a.start_at >= now() - interval '1 day'
-     order by a.start_at limit 100
+     where a.tenant_id = ${auth.activeTenant!.id}
+       and (${status} = 'all' or a.status = ${status})
+       and (${scope} = 'all'
+         or (${scope} = 'upcoming' and a.start_at >= now() - interval '1 day')
+         or (${scope} = 'past' and a.start_at < now() - interval '1 day'))
+     order by a.start_at limit 200
   `);
   return c.json({ appointments: rows });
 });
@@ -185,6 +208,7 @@ receptionRoutes.post("/appointments", async (c) => {
   await withStaffActor(c, async (tx) => {
     const link = await tx`select 1 from tenant_patient_links where tenant_id = ${auth.activeTenant!.id} and patient_id = ${body.patientId}`;
     if (!link.length) throw new NotFoundError("Patient is not linked to this facility");
+    if (body.clinicianUserId) await ensureAssignedClinician(tx, auth.activeTenant!.id, body.clinicianUserId);
     await tx`
       insert into appointments (id, tenant_id, patient_id, clinician_user_id, start_at, duration_minutes, reason, created_by)
       values (${id}, ${auth.activeTenant!.id}, ${body.patientId}, ${body.clinicianUserId ?? null}, ${body.startAt},
@@ -203,6 +227,101 @@ receptionRoutes.post("/appointments", async (c) => {
     });
   });
   return c.json({ ok: true, appointmentId: id }, 201);
+});
+
+receptionRoutes.patch("/appointments/:id", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, appointmentRescheduleSchema);
+  const result = await withStaffActor(c, async (tx) => {
+    const current = await tx`
+      select id, patient_id, status, version from appointments
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update
+    `;
+    if (!current[0]) throw new NotFoundError("Appointment not found");
+    if (current[0].status !== "scheduled") throw new ConflictError("Only a scheduled appointment can be rescheduled");
+    ensureMatch(body.expectedVersion, Number(current[0].version));
+    if (body.clinicianUserId) await ensureAssignedClinician(tx, auth.activeTenant!.id, body.clinicianUserId);
+    const version = Number(current[0].version) + 1;
+    await tx`
+      update appointments
+         set start_at = ${body.startAt}, duration_minutes = ${body.durationMinutes},
+             clinician_user_id = ${body.clinicianUserId ?? null}, version = ${version},
+             status_note = ${body.note}, updated_by = ${auth.user.id}, updated_at = now()
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+    `;
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "appointment.reschedule",
+      subjectPatientId: String(current[0].patientId),
+      resourceType: "Appointment",
+      resourceId: id,
+      ...auditMeta(c),
+      metadata: { startAt: body.startAt, durationMinutes: body.durationMinutes, clinicianUserId: body.clinicianUserId ?? null, note: body.note },
+    });
+    await writeOutbox(tx, {
+      tenantId: auth.activeTenant!.id,
+      eventType: "appointment.rescheduled",
+      aggregateId: id,
+      aggregateVersion: version,
+      payload: { patientId: current[0].patientId, startAt: body.startAt },
+    });
+    return { id, version };
+  });
+  return c.json({ ok: true, appointment: result });
+});
+
+receptionRoutes.post("/appointments/:id/status", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, appointmentStatusSchema);
+  const result = await withStaffActor(c, async (tx) => {
+    const current = await tx`
+      select id, patient_id, status, version from appointments
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update
+    `;
+    if (!current[0]) throw new NotFoundError("Appointment not found");
+    ensureMatch(body.expectedVersion, Number(current[0].version));
+    const from = String(current[0].status) as AppointmentStatus;
+    if (!canTransitionAppointment(from, body.status)) {
+      throw new ConflictError(`Cannot move a ${from} appointment to ${body.status}`);
+    }
+    const version = Number(current[0].version) + 1;
+    await tx`
+      update appointments
+         set status = ${body.status}, version = ${version}, status_note = ${body.note},
+             updated_by = ${auth.user.id}, updated_at = now()
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+    `;
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "appointment.status-change",
+      subjectPatientId: String(current[0].patientId),
+      resourceType: "Appointment",
+      resourceId: id,
+      ...auditMeta(c),
+      metadata: { from, to: body.status, note: body.note },
+    });
+    await writeOutbox(tx, {
+      tenantId: auth.activeTenant!.id,
+      eventType: "appointment.status-changed",
+      aggregateId: id,
+      aggregateVersion: version,
+      payload: { patientId: current[0].patientId, from, to: body.status },
+    });
+    return { id, status: body.status, version };
+  });
+  return c.json({ ok: true, appointment: result });
 });
 
 receptionRoutes.get("/queues", async (c) => {

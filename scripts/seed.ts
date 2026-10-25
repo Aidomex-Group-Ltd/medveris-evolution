@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createSql, setLocalContext } from "@medveris/db";
 import type { Tx } from "@medveris/db";
 import { encryptSecret, generateTotpSecret, hashPassword } from "@medveris/auth";
-import { canonicalJson, contentDigest } from "@medveris/domain";
+import { DEFAULT_DEPARTMENTS, DEFAULT_PRIVILEGES, canonicalJson, contentDigest } from "@medveris/domain";
 import { hmacHex } from "@medveris/auth";
 import { loadConfig } from "../apps/api/src/config.js";
 import { assertSyntheticEnvironment, loadLocalEnv, requireEnv } from "./lib.js";
@@ -29,7 +29,29 @@ const users = {
   laboratory: "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd",
   radiology: "dededede-dede-4ded-8ded-dededededede",
   publicHealth: "efefefef-efef-4efe-8efe-efefefefefef",
+  hr: "f0f0f0f0-f0f0-4f0f-8f0f-f0f0f0f0f0f0",
+  records: "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1",
+  housekeeping: "b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1",
+  porter: "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2",
+  mortuary: "b3b3b3b3-b3b3-4b3b-8b3b-b3b3b3b3b3b3",
+  cssd: "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4b4",
+  biomedical: "b5b5b5b5-b5b5-4b5b-8b5b-b5b5b5b5b5b5",
+  quality: "b6b6b6b6-b6b6-4b6b-8b6b-b6b6b6b6b6b6",
 } as const;
+const organizationA = "0a000000-0000-4000-8000-000000000001";
+const staffClinician = "0b000000-0000-4000-8000-000000000001";
+const staffNurse = "0b000000-0000-4000-8000-000000000002";
+const staffPending = "0b000000-0000-4000-8000-000000000003";
+const engagementClinician = "0c000000-0000-4000-8000-000000000001";
+const engagementNurse = "0c000000-0000-4000-8000-000000000002";
+const engagementPending = "0c000000-0000-4000-8000-000000000003";
+const onboardingPending = "0d000000-0000-4000-8000-000000000001";
+const templateA = "0e000000-0000-4000-8000-000000000001";
+const templateVersionA = "0e000000-0000-4000-8000-000000000101";
+const documentA = "0e000000-0000-4000-8000-000000000201";
+const maternityGrace = "0f000000-0000-4000-8000-000000000001";
+const mortarCaseA = "0f000000-0000-4000-8000-000000000101";
+const assetA = "0f000000-0000-4000-8000-000000000201";
 const patients = {
   amina: "a0000000-0000-4000-8000-000000000001",
   joseph: "a0000000-0000-4000-8000-000000000002",
@@ -111,6 +133,14 @@ try {
     await person(tx, users.laboratory, "lab@medveris.local", "Lydia Laboratory", "Lydia", "Nakimuli", true);
     await person(tx, users.radiology, "radiology@medveris.local", "Dr Ruth Radiologist", "Ruth", "Auma", true);
     await person(tx, users.publicHealth, "publichealth@medveris.local", "Patrick Public Health", "Patrick", "Opio", true);
+    await person(tx, users.hr, "hr@medveris.local", "Harriet HR", "Harriet", "Nabatanzi", true);
+    await person(tx, users.records, "records@medveris.local", "Rose Records", "Rose", "Kirabo", true);
+    await person(tx, users.housekeeping, "housekeeping@medveris.local", "Hilda Housekeeping", "Hilda", "Auma", true);
+    await person(tx, users.porter, "porter@medveris.local", "Peter Porter", "Peter", "Okwir", true);
+    await person(tx, users.mortuary, "mortuary@medveris.local", "Moses Mortuary", "Moses", "Bwire", true);
+    await person(tx, users.cssd, "cssd@medveris.local", "Cecilia CSSD", "Cecilia", "Akello", true);
+    await person(tx, users.biomedical, "biomedical@medveris.local", "Brian Biomedical", "Brian", "Tumusiime", true);
+    await person(tx, users.quality, "quality@medveris.local", "Quinn Quality", "Quinn", "Nansubuga", true);
 
     await context(tx, tenantA, users.admin, ["facility_admin"], null);
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-admin-a")}, ${tenantA}, ${users.admin}, ${["facility_admin"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
@@ -122,6 +152,14 @@ try {
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-lab-a")}, ${tenantA}, ${users.laboratory}, ${["laboratory"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-radiology-a")}, ${tenantA}, ${users.radiology}, ${["radiology"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-public-health-a")}, ${tenantA}, ${users.publicHealth}, ${["public_health"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-hr-a")}, ${tenantA}, ${users.hr}, ${["hr"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-records-a")}, ${tenantA}, ${users.records}, ${["records"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-housekeeping-a")}, ${tenantA}, ${users.housekeeping}, ${["housekeeping"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-porter-a")}, ${tenantA}, ${users.porter}, ${["porter"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-mortuary-a")}, ${tenantA}, ${users.mortuary}, ${["mortuary"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-cssd-a")}, ${tenantA}, ${users.cssd}, ${["cssd"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-biomedical-a")}, ${tenantA}, ${users.biomedical}, ${["biomedical"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-quality-a")}, ${tenantA}, ${users.quality}, ${["quality"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
 
     await context(tx, tenantB, users.admin, ["facility_admin"], null);
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-clinician-b")}, ${tenantB}, ${users.clinicianB}, ${["clinician"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
@@ -313,6 +351,196 @@ try {
     await tx`
       insert into service_catalog (id, tenant_id, code, name, category, price, currency, created_by)
       values (${serviceA}, ${tenantA}, 'CONS-OPD', 'Outpatient consultation', 'consultation', 50000, 'UGX', ${users.admin})
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.admin, ["facility_admin"], null);
+    await tx`
+      insert into organizations (id, name, legal_name, registration_ref, country)
+      values (${organizationA}, 'Medveris Synthetic Health Group', 'Medveris Synthetic Health Group Ltd', 'SYNTH-ORG-001', 'Uganda')
+      on conflict (id) do update set name = excluded.name
+    `;
+    await tx`update tenants set organization_id = ${organizationA} where id = ${tenantA}`;
+    await context(tx, tenantB, users.admin, ["facility_admin"], null);
+    await tx`update tenants set organization_id = ${organizationA} where id = ${tenantB}`;
+
+    await context(tx, tenantA, users.admin, ["facility_admin"], null);
+    for (const [index, department] of DEFAULT_DEPARTMENTS.entries()) {
+      const departmentId = hashId(`department-${department.code}`);
+      await tx`
+        insert into departments (id, tenant_id, code, name, department_type, description, sort_order, created_by)
+        values (${departmentId}, ${tenantA}, ${department.code}, ${department.name}, ${department.type},
+          'Synthetic default department catalogue entry', ${index}, ${users.admin})
+        on conflict (tenant_id, code) do nothing
+      `;
+      for (const unit of department.units) {
+        await tx`
+          insert into units (id, tenant_id, department_id, code, name, unit_type)
+          values (${hashId(`unit-${department.code}-${unit.code}`)}, ${tenantA}, ${departmentId}, ${unit.code}, ${unit.name}, ${unit.type ?? "general"})
+          on conflict (tenant_id, department_id, code) do nothing
+        `;
+      }
+      for (const cadre of department.cadres) {
+        await tx`
+          insert into cadres (id, tenant_id, code, name, category)
+          values (${hashId(`cadre-${cadre.code}`)}, ${tenantA}, ${cadre.code}, ${cadre.name}, ${cadre.category})
+          on conflict (tenant_id, code) do nothing
+        `;
+      }
+    }
+    for (const privilege of DEFAULT_PRIVILEGES) {
+      await tx`
+        insert into privilege_catalog (id, tenant_id, code, name, category, requires_credential, description)
+        values (${hashId(`privilege-${privilege.code}`)}, ${tenantA}, ${privilege.code}, ${privilege.name},
+          ${privilege.category}, ${privilege.requiresCredential}, 'Synthetic privilege catalogue entry')
+        on conflict (tenant_id, code) do nothing
+      `;
+    }
+    await tx`
+      insert into job_titles (id, tenant_id, name, cadre_id)
+      values (${hashId("job-title-medical-officer")}, ${tenantA}, 'Medical officer', ${hashId("cadre-MED-OFF")})
+      on conflict (tenant_id, name) do nothing
+    `;
+
+    await context(tx, tenantA, users.hr, ["hr"], null);
+    await tx`
+      insert into staff_persons (id, staff_ref, user_id, given_name, family_name, professional_display_name, email, phone, identity_verification_method, identity_verified_at)
+      values
+        (${staffClinician}, 'STF-KAMP-0001', ${users.clinician}, 'Daniel', 'Okello', 'Dr Daniel Okello', 'clinician@medveris.local', '+256-700-000-101', 'synthetic-seed', now()),
+        (${staffNurse}, 'STF-KAMP-0002', ${users.nurse}, 'Sarah', 'Atim', 'Nurse Sarah Atim', 'nurse@medveris.local', '+256-700-000-102', 'synthetic-seed', now()),
+        (${staffPending}, 'STF-KAMP-0003', null, 'Joan', 'Adero', 'Ms Joan Adero', 'joan.dero@example.test', '+256-700-000-103', null, null)
+      on conflict (id) do update set professional_display_name = excluded.professional_display_name
+    `;
+    await tx`
+      insert into engagements (id, tenant_id, staff_person_id, employee_number, engagement_type, employer, start_date, status, job_title_id, approved_by, approved_at)
+      values
+        (${engagementClinician}, ${tenantA}, ${staffClinician}, 'EMP-0001', 'employee', 'Medveris Synthetic Health Group', current_date - 400, 'active', ${hashId("job-title-medical-officer")}, ${users.admin}, now()),
+        (${engagementNurse}, ${tenantA}, ${staffNurse}, 'EMP-0002', 'employee', 'Medveris Synthetic Health Group', current_date - 300, 'active', null, ${users.admin}, now()),
+        (${engagementPending}, ${tenantA}, ${staffPending}, 'EMP-0003', 'employee', 'Medveris Synthetic Health Group', current_date, 'pending', null, null, null)
+      on conflict (id) do update set status = excluded.status, approved_by = excluded.approved_by, approved_at = excluded.approved_at
+    `;
+    await tx`
+      insert into department_assignments (id, tenant_id, engagement_id, department_id, unit_id, is_primary, appointment_title, starts_on, created_by)
+      values
+        (${hashId("assignment-clinician")}, ${tenantA}, ${engagementClinician}, ${hashId("department-OPD")}, ${hashId("unit-OPD-OPD-GEN")}, true, 'Medical officer', current_date - 400, ${users.hr}),
+        (${hashId("assignment-nurse")}, ${tenantA}, ${engagementNurse}, ${hashId("department-WARD")}, ${hashId("unit-WARD-WARD-GEN")}, true, 'Ward nurse', current_date - 300, ${users.hr}),
+        (${hashId("assignment-pending")}, ${tenantA}, ${engagementPending}, ${hashId("department-MAT")}, ${hashId("unit-MAT-MAT-LD")}, true, 'Midwife', current_date, ${users.hr})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into onboarding_cases (id, tenant_id, staff_person_id, engagement_id, status, current_step, data, created_by)
+      values (${onboardingPending}, ${tenantA}, ${staffPending}, ${engagementPending}, 'professional', 4,
+        ${tx.json({ cadreId: hashId("cadre-MIDWIFE"), source: "synthetic-seed" })}, ${users.hr})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into privilege_grants (id, tenant_id, engagement_id, privilege_id, status, requested_by)
+      values (${hashId("privilege-request-clinician")}, ${tenantA}, ${engagementClinician}, ${hashId("privilege-CLIN-SIGN")}, 'requested', ${users.hr})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into training_records (id, tenant_id, engagement_id, training_type, completed_on, expires_on, verified_by, verified_at)
+      values (${hashId("training-ipc-nurse")}, ${tenantA}, ${engagementNurse}, 'Infection prevention and control induction', current_date - 20, current_date + 345, ${users.quality}, now())
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.admin, ["facility_admin"], null);
+    const templateFields = [
+      { key: "presenting_complaint", label: "Presenting complaint", type: "textarea", required: true, section: "History" },
+      { key: "assessment", label: "Assessment", type: "textarea", required: true, section: "Clinical" },
+      { key: "plan", label: "Plan", type: "textarea", required: true, section: "Plan" },
+    ];
+    await tx`
+      insert into document_templates (id, tenant_id, template_key, name, description, department_id, context, purpose, sensitivity, status, current_version, created_by)
+      values (${templateA}, ${tenantA}, 'opd.consultation-note', 'Outpatient consultation note', 'Structured synthetic outpatient note', ${hashId("department-OPD")},
+        'clinical', 'Document an outpatient consultation', 'standard', 'published', 1, ${users.admin})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into document_template_versions (id, template_id, tenant_id, version, fields, author_roles, reviewer_roles,
+        signing_required, countersign_required, retention_class, published_at, approved_by, approved_at, created_by)
+      values (${templateVersionA}, ${templateA}, ${tenantA}, 1, ${tx.json(templateFields as never)}, ${["clinician","nurse"]}, ${["clinician"]},
+        true, false, 'clinical-standard', now(), ${users.admin}, now(), ${users.admin})
+      on conflict (id) do nothing
+    `;
+    const documentContent = {
+      presenting_complaint: "Synthetic follow-up for raised blood pressure.",
+      assessment: "Blood pressure improving on current synthetic treatment.",
+      plan: "Continue treatment, review in four weeks.",
+    };
+    await tx`
+      insert into documents (id, tenant_id, template_id, template_version_id, department_id, subject_type, patient_id, encounter_id, title, occurred_at, status, current_version, author_user_id)
+      values (${documentA}, ${tenantA}, ${templateA}, ${templateVersionA}, ${hashId("department-OPD")}, 'patient', ${patients.amina}, ${encounterA},
+        'Outpatient consultation note', now(), 'draft', 1, ${users.admin})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into document_versions (id, document_id, tenant_id, version, status, content, content_digest, change_note, author_user_id)
+      values (${hashId("document-version-amina-1")}, ${documentA}, ${tenantA}, 1, 'draft', ${tx.json(documentContent as never)},
+        ${await contentDigest(documentContent)}, 'Initial synthetic draft', ${users.admin})
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.nurse, ["nurse"], null);
+    await tx`
+      insert into maternity_episodes (id, tenant_id, patient_id, gravidity, parity, estimated_due_date, dating_basis, risk_level, status, admitted_at, notes, created_by)
+      values (${maternityGrace}, ${tenantA}, ${patients.grace}, 2, 1, current_date + 21, 'ultrasound', 'low', 'active', now(),
+        'Synthetic active maternity episode', ${users.nurse})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into labour_observations (id, tenant_id, episode_id, template_type, clinical_occurred_at, maternal, fetal, notes, recorded_by)
+      values (${hashId("labour-observation-grace-1")}, ${tenantA}, ${maternityGrace}, 'partograph', now(),
+        ${tx.json({ cervixCm: 4, contractionsPer10Min: 3, bloodPressureSystolic: 118, bloodPressureDiastolic: 74 } as never)},
+        ${tx.json({ heartRate: 142, presentation: "cephalic" } as never)}, 'Synthetic labour observation', ${users.nurse})
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.housekeeping, ["housekeeping"], null);
+    await tx`
+      insert into cleaning_tasks (id, tenant_id, bed_id, zone, task_type, risk_level, status, assigned_to_user_id, instructions, created_by)
+      values (${hashId("cleaning-bed-a2")}, ${tenantA}, ${bedA2}, 'Ward A', 'routine', 'low', 'assigned', ${users.housekeeping},
+        'Routine synthetic bed-area cleaning', ${users.housekeeping})
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.porter, ["porter"], null);
+    await tx`
+      insert into porter_tasks (id, tenant_id, request_type, patient_id, from_location, to_location, status, assigned_to_user_id, requested_by, notes)
+      values (${hashId("porter-task-amina")}, ${tenantA}, 'patient-transfer', ${patients.amina}, 'Outpatient clinic', 'Ward A',
+        'requested', ${users.porter}, ${users.porter}, 'Synthetic porter request')
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.mortuary, ["mortuary"], null);
+    await tx`
+      insert into mortuary_cases (id, tenant_id, case_ref, deceased_name, identity_status, received_from, storage_location, status, death_confirmed_at, notes, created_by)
+      values (${mortarCaseA}, ${tenantA}, 'MOR-2026-00001', 'Unidentified synthetic adult', 'provisional', 'Emergency department',
+        'Mortuary bay 1', 'in-custody', now(), 'Synthetic mortuary custody record', ${users.mortuary})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into mortuary_movements (id, tenant_id, case_id, movement_type, to_location, identity_checked, verified_by, notes)
+      values (${hashId("mortuary-receipt-1")}, ${tenantA}, ${mortarCaseA}, 'receipt', 'Mortuary bay 1', false, ${users.mortuary}, 'Initial synthetic receipt')
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.biomedical, ["biomedical"], null);
+    await tx`
+      insert into engineering_assets (id, tenant_id, asset_ref, name, category, location, next_maintenance_on, created_by)
+      values (${assetA}, ${tenantA}, 'ENG-SYNTH-001', 'Synthetic vital-signs monitor', 'monitoring', 'Ward A', current_date + 30, ${users.biomedical})
+      on conflict (id) do nothing
+    `;
+    await tx`
+      insert into maintenance_work_orders (id, tenant_id, asset_id, fault, priority, status, created_by)
+      values (${hashId("maintenance-monitor-1")}, ${tenantA}, ${assetA}, 'Synthetic intermittent display fault', 'urgent', 'open', ${users.biomedical})
+      on conflict (id) do nothing
+    `;
+
+    await context(tx, tenantA, users.cssd, ["cssd"], null);
+    await tx`
+      insert into cssd_cycles (id, tenant_id, sterilizer, cycle_ref, load_count, indicator_result, status, notes, created_by)
+      values (${hashId("cssd-cycle-1")}, ${tenantA}, 'Sterilizer 1', 'CSSD-2026-0001', 12, 'pending', 'quarantined', 'Synthetic pending biological indicator', ${users.cssd})
       on conflict (id) do nothing
     `;
 

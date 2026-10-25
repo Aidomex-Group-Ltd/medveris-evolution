@@ -20,6 +20,16 @@ export const roleSchema = z.enum([
   "laboratory",
   "radiology",
   "public_health",
+  "hr",
+  "records",
+  "theatre",
+  "housekeeping",
+  "porter",
+  "mortuary",
+  "cssd",
+  "biomedical",
+  "quality",
+  "it_admin",
 ]);
 
 export const codingSchema = z.object({
@@ -101,6 +111,20 @@ export const appointmentSchema = z.object({
   startAt: z.string().datetime(),
   durationMinutes: z.number().int().min(5).max(480).default(20),
   reason: z.string().trim().min(1).max(1000),
+});
+
+export const appointmentRescheduleSchema = z.object({
+  startAt: z.string().datetime(),
+  durationMinutes: z.number().int().min(5).max(480),
+  clinicianUserId: uuidSchema.optional().nullable(),
+  note: z.string().trim().min(5).max(2000),
+  expectedVersion: z.number().int().min(1),
+});
+
+export const appointmentStatusSchema = z.object({
+  status: z.enum(["cancelled", "no-show"]),
+  note: z.string().trim().min(5).max(2000),
+  expectedVersion: z.number().int().min(1),
 });
 
 export const queueEntrySchema = z.object({
@@ -546,6 +570,19 @@ export const diagnosticReportCorrectionSchema = z.object({
   expectedVersion: z.number().int().min(1),
 });
 
+export const diagnosticAssignmentSchema = z.object({
+  reporterUserId: uuidSchema,
+});
+
+export const diagnosticReleaseSchema = z.object({
+  releaseNote: z.string().trim().min(5).max(2000),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+export const criticalAcknowledgementSchema = z.object({
+  note: z.string().trim().min(5).max(2000),
+});
+
 export const medicineSchema = z.object({
   name: z.string().trim().min(2).max(300),
   strength: z.string().trim().min(1).max(100),
@@ -815,4 +852,393 @@ export const referralStatusSchema = z.object({
   status: z.enum(["accepted", "declined", "completed", "cancelled"]),
   note: z.string().trim().min(5).max(2000),
   expectedVersion: z.number().int().min(1),
+});
+
+// Organisation and workforce.
+export const departmentSchema = z.object({
+  code: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9-]+$/),
+  name: z.string().trim().min(2).max(160),
+  departmentType: z.enum([
+    "governance","patient-access","outpatient","emergency","inpatient","maternity",
+    "pediatrics","critical-care","theatre","laboratory","blood-bank","radiology",
+    "pharmacy","renal","mental-health","rehabilitation","nutrition","dental",
+    "eye-ent","primary-community","palliative","ipc-quality","cssd","mortuary",
+    "housekeeping","portering","engineering","catering","security","finance",
+    "hr","procurement","digital-health","other",
+  ]),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
+  parentDepartmentId: uuidSchema.optional().nullable(),
+  enabled: z.boolean().default(true),
+});
+
+export const unitSchema = z.object({
+  code: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9-]+$/),
+  name: z.string().trim().min(2).max(160),
+  unitType: z.string().trim().min(2).max(80).default("general"),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+  enabled: z.boolean().default(true),
+});
+
+export const locationSchema = z.object({
+  code: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9-]+$/),
+  name: z.string().trim().min(1).max(160),
+  locationType: z.enum(["ward","room","bed-space","theatre","laboratory-bench","storage","office","reception","vehicle","other"]),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+
+export const cadreSchema = z.object({
+  code: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9-]+$/),
+  name: z.string().trim().min(2).max(160),
+  category: z.string().trim().min(2).max(80),
+  isco08Code: z.string().trim().max(8).optional().or(z.literal("")),
+  isco08Reviewed: z.boolean().default(false),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+
+export const jobTitleSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  cadreId: uuidSchema.optional().nullable(),
+  grade: z.string().trim().max(80).optional().or(z.literal("")),
+});
+
+export const onboardingStartSchema = z.object({
+  givenName: z.string().trim().min(1).max(120),
+  familyName: z.string().trim().min(1).max(120),
+  preferredName: z.string().trim().max(120).optional().or(z.literal("")),
+  professionalDisplayName: z.string().trim().max(160).optional().or(z.literal("")),
+  email: z.string().email().max(254).optional().or(z.literal("")),
+  phone: z.string().trim().max(40).optional().or(z.literal("")),
+  preferredLanguage: z.string().trim().max(20).default("en"),
+  engagementType: z.enum(["employee","contractor","student","intern","trainee","volunteer","locum","visiting-practitioner"]).default("employee"),
+  employer: z.string().trim().max(200).optional().or(z.literal("")),
+  employeeNumber: z.string().trim().max(80).optional().or(z.literal("")),
+  startDate: z.string().date(),
+  endDate: z.string().date().optional().nullable(),
+  jobTitleId: uuidSchema.optional().nullable(),
+  grade: z.string().trim().max(80).optional().or(z.literal("")),
+  cadreId: uuidSchema.optional().nullable(),
+  primaryDepartmentId: uuidSchema.optional().nullable(),
+  primaryUnitId: uuidSchema.optional().nullable(),
+  appointmentTitle: z.string().trim().max(160).optional().or(z.literal("")),
+});
+
+export const onboardingUpdateSchema = z.object({
+  status: z.enum(["invited","identity","employment","professional","assignments","credentials","privileges","review","access","induction","active","rejected","withdrawn"]).optional(),
+  currentStep: z.number().int().min(1).max(20).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const onboardingDecisionSchema = z.object({
+  decision: z.enum(["approve","reject","return"]),
+  reason: z.string().trim().min(10).max(2000),
+});
+
+export const assignmentSchema = z.object({
+  departmentId: uuidSchema,
+  unitId: uuidSchema.optional().nullable(),
+  locationId: uuidSchema.optional().nullable(),
+  isPrimary: z.boolean().default(false),
+  appointmentTitle: z.string().trim().max(160).optional().or(z.literal("")),
+  reportingManagerStaffId: uuidSchema.optional().nullable(),
+  onCallEligible: z.boolean().default(false),
+  startsOn: z.string().date(),
+  endsOn: z.string().date().optional().nullable(),
+});
+
+export const privilegeRequestSchema = z.object({
+  privilegeId: uuidSchema,
+  scope: z.string().trim().max(1000).optional().or(z.literal("")),
+  requestedFor: z.string().date().optional().nullable(),
+  expiresOn: z.string().date().optional().nullable(),
+});
+
+export const privilegeDecisionSchema = z.object({
+  decision: z.enum(["approved","rejected"]),
+  reason: z.string().trim().min(10).max(2000),
+  scope: z.string().trim().max(1000).optional().or(z.literal("")),
+  effectiveFrom: z.string().date().optional().nullable(),
+  expiresOn: z.string().date().optional().nullable(),
+});
+
+export const trainingRecordSchema = z.object({
+  trainingType: z.string().trim().min(2).max(200),
+  completedOn: z.string().date().optional().nullable(),
+  expiresOn: z.string().date().optional().nullable(),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+// Document and template registry.
+const templateFieldSchema = z.object({
+  key: z.string().trim().min(2).max(80),
+  label: z.string().trim().min(1).max(200),
+  type: z.enum(["text","textarea","number","decimal","boolean","date","datetime","select","coded","quantity","repeating-group"]),
+  required: z.boolean().default(false),
+  unit: z.string().trim().max(40).optional(),
+  options: z.array(z.string().trim().min(1).max(200)).optional(),
+  section: z.string().trim().max(120).optional(),
+  sensitivity: z.string().trim().max(80).optional(),
+});
+
+export const templateSchema = z.object({
+  templateKey: z.string().trim().min(2).max(100).regex(/^[a-z0-9][a-z0-9.-]+$/),
+  name: z.string().trim().min(2).max(240),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
+  departmentId: uuidSchema.optional().nullable(),
+  context: z.enum(["clinical","nursing","maternity","theatre","diagnostic","pharmacy","administrative","operational","hr","mortuary","housekeeping","portering","technical"]).default("clinical"),
+  purpose: z.string().trim().max(1000).optional().or(z.literal("")),
+  sensitivity: z.enum(["standard","sensitive","restricted"]).default("standard"),
+  fields: z.array(templateFieldSchema).min(1).max(200),
+  authorRoles: z.array(roleSchema).min(1).default(["clinician","nurse"]),
+  reviewerRoles: z.array(roleSchema).default(["clinician"]),
+  signingRequired: z.boolean().default(true),
+  countersignRequired: z.boolean().default(false),
+  amendmentRules: z.string().trim().max(2000).optional().or(z.literal("")),
+  retentionClass: z.string().trim().max(80).default("clinical-standard"),
+  effectiveFrom: z.string().date().optional().nullable(),
+});
+
+export const templatePublishSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  approvalNote: z.string().trim().min(5).max(2000),
+});
+
+export const documentCreateSchema = z.object({
+  templateId: uuidSchema,
+  subjectType: z.enum(["patient","staff","operational"]).default("patient"),
+  patientId: uuidSchema.optional().nullable(),
+  encounterId: uuidSchema.optional().nullable(),
+  staffSubjectId: uuidSchema.optional().nullable(),
+  departmentId: uuidSchema.optional().nullable(),
+  unitId: uuidSchema.optional().nullable(),
+  title: z.string().trim().min(1).max(300),
+  occurredAt: z.string().datetime(),
+  content: z.record(z.string(), z.unknown()),
+  changeNote: z.string().trim().min(5).max(2000).default("Initial draft"),
+  sensitivity: z.array(z.string().trim().max(80)).default([]),
+});
+
+export const documentDraftUpdateSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  title: z.string().trim().min(1).max(300),
+  occurredAt: z.string().datetime(),
+  content: z.record(z.string(), z.unknown()),
+  changeNote: z.string().trim().min(5).max(2000),
+});
+
+export const documentSignSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const documentAmendSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  title: z.string().trim().min(1).max(300),
+  occurredAt: z.string().datetime(),
+  content: z.record(z.string(), z.unknown()),
+  changeNote: z.string().trim().min(10).max(2000),
+});
+
+export const documentErrorSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  reason: z.string().trim().min(10).max(2000),
+});
+
+// Maternity.
+export const maternityEpisodeSchema = z.object({
+  patientId: uuidSchema,
+  encounterId: uuidSchema.optional().nullable(),
+  gravidity: z.number().int().min(0).max(30).optional().nullable(),
+  parity: z.number().int().min(0).max(30).optional().nullable(),
+  estimatedDueDate: z.string().date().optional().nullable(),
+  datingBasis: z.enum(["lmp","ultrasound","clinical","unknown"]).optional().nullable(),
+  riskLevel: z.enum(["not-assessed","low","moderate","high"]).default("not-assessed"),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+});
+
+export const maternityEpisodeUpdateSchema = z.object({
+  status: z.enum(["active","delivered","closed","transferred-out","cancelled"]).optional(),
+  riskLevel: z.enum(["not-assessed","low","moderate","high"]).optional(),
+  gravidity: z.number().int().min(0).max(30).optional().nullable(),
+  parity: z.number().int().min(0).max(30).optional().nullable(),
+  estimatedDueDate: z.string().date().optional().nullable(),
+  datingBasis: z.enum(["lmp","ultrasound","clinical","unknown"]).optional().nullable(),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+export const labourObservationSchema = z.object({
+  templateType: z.enum(["labour-care-guide","partograph"]),
+  clinicalOccurredAt: z.string().datetime(),
+  maternal: z.record(z.string(), z.union([z.number(), z.string(), z.null()])).default({}),
+  fetal: z.record(z.string(), z.union([z.number(), z.string(), z.null()])).default({}),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+  lateEntry: z.boolean().default(false),
+});
+
+export const deliveryRecordSchema = z.object({
+  deliveredAt: z.string().datetime(),
+  mode: z.enum(["spontaneous-vaginal","assisted-vaginal","caesarean","other"]),
+  outcome: z.enum(["live-birth","stillbirth","multiple","other"]),
+  bloodLossMl: z.number().min(0).max(20000).optional().nullable(),
+  perineum: z.string().trim().max(500).optional().or(z.literal("")),
+  complications: z.string().trim().max(5000).optional().or(z.literal("")),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+});
+
+export const newbornRecordSchema = z.object({
+  givenName: z.string().trim().min(1).max(120).default("Baby"),
+  familyName: z.string().trim().min(1).max(120),
+  sex: z.enum(["female","male","other","unknown"]).default("unknown"),
+  bornAt: z.string().datetime().optional().nullable(),
+  weightG: z.number().int().min(200).max(10000).optional().nullable(),
+  apgar1: z.number().int().min(0).max(10).optional().nullable(),
+  apgar5: z.number().int().min(0).max(10).optional().nullable(),
+  feeding: z.string().trim().max(500).optional().or(z.literal("")),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+});
+
+// Ward operations, housekeeping, portering and mortuary.
+export const bedReadinessSchema = z.object({
+  status: z.enum(["available","occupied","vacated","awaiting-cleaning","cleaning-in-progress","cleaning","ready","out-of-service","unavailable"]),
+  reason: z.string().trim().max(1000).optional(),
+  cleaningTaskId: uuidSchema.optional().nullable(),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+export const cleaningTaskSchema = z.object({
+  bedId: uuidSchema.optional().nullable(),
+  locationId: uuidSchema.optional().nullable(),
+  zone: z.string().trim().min(1).max(160),
+  taskType: z.enum(["routine","terminal","discharge","isolation","spill","inspection","other"]),
+  riskLevel: z.enum(["low","medium","high"]).default("low"),
+  assignedToUserId: uuidSchema.optional().nullable(),
+  instructions: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const cleaningTransitionSchema = z.object({
+  status: z.enum(["in-progress","completed","verified","cancelled"]),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const porterTaskSchema = z.object({
+  requestType: z.enum(["patient-transfer","specimen","equipment","document","other"]),
+  patientId: uuidSchema.optional().nullable(),
+  encounterId: uuidSchema.optional().nullable(),
+  fromLocation: z.string().trim().min(1).max(200),
+  toLocation: z.string().trim().min(1).max(200),
+  assignedToUserId: uuidSchema.optional().nullable(),
+  specimenCustody: z.boolean().default(false),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const porterTransitionSchema = z.object({
+  status: z.enum(["accepted","in-progress","completed","cancelled"]),
+  identityChecked: z.boolean().optional(),
+  delayReason: z.string().trim().max(1000).optional().or(z.literal("")),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const fluidBalanceSchema = z.object({
+  occurredAt: z.string().datetime(),
+  intakeMl: z.number().min(0).max(50000).optional().nullable(),
+  outputMl: z.number().min(0).max(50000).optional().nullable(),
+  source: z.enum(["oral","intravenous","urine","drain","vomit","stool","other"]),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const mortuaryCaseSchema = z.object({
+  patientId: uuidSchema.optional().nullable(),
+  deceasedName: z.string().trim().min(2).max(200),
+  identityStatus: z.enum(["unknown","provisional","verified"]).default("unknown"),
+  receivedFrom: z.string().trim().min(1).max(300),
+  storageLocation: z.string().trim().min(1).max(200),
+  deathConfirmedAt: z.string().datetime().optional().nullable(),
+  deathDocumentRef: z.string().trim().max(200).optional().or(z.literal("")),
+  causeDocumentRef: z.string().trim().max(200).optional().or(z.literal("")),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+});
+
+export const mortuaryMovementSchema = z.object({
+  movementType: z.enum(["receipt","internal-transfer","post-mortem","release","return","other"]),
+  fromLocation: z.string().trim().max(200).optional().or(z.literal("")),
+  toLocation: z.string().trim().min(1).max(200),
+  identityChecked: z.boolean(),
+  witnessedBy: z.string().trim().max(200).optional().or(z.literal("")),
+  occurredAt: z.string().datetime().optional().nullable(),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const mortuaryEffectsSchema = z.object({
+  description: z.string().trim().min(1).max(500),
+  quantity: z.number().int().min(1).max(1000).default(1),
+  notes: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+
+export const mortuaryReleaseSchema = z.object({
+  releasedToName: z.string().trim().min(2).max(200),
+  relationship: z.string().trim().min(2).max(160),
+  authorityReference: z.string().trim().min(2).max(300),
+  identificationMethod: z.string().trim().min(2).max(300),
+  identityVerifiedBy: uuidSchema,
+  handoverWitness: z.string().trim().min(2).max(200),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const engineeringAssetSchema = z.object({
+  assetRef: z.string().trim().min(2).max(80),
+  name: z.string().trim().min(2).max(200),
+  category: z.string().trim().min(2).max(120),
+  location: z.string().trim().max(200).optional().or(z.literal("")),
+  nextMaintenanceOn: z.string().date().optional().nullable(),
+});
+
+export const maintenanceOrderSchema = z.object({
+  assetId: uuidSchema,
+  fault: z.string().trim().min(5).max(4000),
+  priority: z.enum(["routine","urgent","emergency"]).default("routine"),
+  assignedToUserId: uuidSchema.optional().nullable(),
+});
+
+export const maintenanceTransitionSchema = z.object({
+  status: z.enum(["assigned","in-progress","completed","verified","cancelled"]),
+  releaseNote: z.string().trim().max(4000).optional().or(z.literal("")),
+});
+
+export const cssdCycleSchema = z.object({
+  sterilizer: z.string().trim().min(1).max(120),
+  cycleRef: z.string().trim().min(1).max(120),
+  loadCount: z.number().int().min(0).max(10000).default(0),
+  indicatorResult: z.enum(["pass","fail","pending"]),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const cssdReleaseSchema = z.object({
+  releaseNote: z.string().trim().min(5).max(2000),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+// Consultation note type support. Structured sections are additive; legacy
+// SOAP content remains valid.
+export const consultationNoteTypeSchema = z.enum([
+  "initial-consultation","follow-up-consultation","soap","admission-clerking","progress-note",
+  "specialist-consultation","procedure-note","referral","handoff","discharge-summary","teleconsultation",
+]);
+
+export const consultationSectionsSchema = z.object({
+  presentingComplaint: z.string().trim().max(10000).optional().or(z.literal("")),
+  historyOfPresentingIllness: z.string().trim().max(20000).optional().or(z.literal("")),
+  medicalHistory: z.string().trim().max(10000).optional().or(z.literal("")),
+  medicationHistory: z.string().trim().max(10000).optional().or(z.literal("")),
+  allergyStatus: z.string().trim().max(2000).optional().or(z.literal("")),
+  familySocialHistory: z.string().trim().max(10000).optional().or(z.literal("")),
+  reviewOfSystems: z.string().trim().max(10000).optional().or(z.literal("")),
+  investigationReview: z.string().trim().max(10000).optional().or(z.literal("")),
+  differential: z.string().trim().max(10000).optional().or(z.literal("")),
+  diagnoses: z.string().trim().max(10000).optional().or(z.literal("")),
+  procedures: z.string().trim().max(10000).optional().or(z.literal("")),
+  counselling: z.string().trim().max(10000).optional().or(z.literal("")),
+  followUp: z.string().trim().max(10000).optional().or(z.literal("")),
+  disposition: z.string().trim().max(5000).optional().or(z.literal("")),
+  reviewedUnchanged: z.boolean().default(false),
+  copiedForward: z.boolean().default(false),
 });

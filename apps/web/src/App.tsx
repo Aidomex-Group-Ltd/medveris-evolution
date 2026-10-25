@@ -34,6 +34,11 @@ import { AIPage } from "./pages/AIPage";
 import { EmergencyPage } from "./pages/EmergencyPage";
 import { EmergencyCasePage } from "./pages/EmergencyCasePage";
 import { CareCoordinationPage } from "./pages/CareCoordinationPage";
+import { AppointmentsPage } from "./pages/AppointmentsPage";
+import { WorkforcePage } from "./pages/WorkforcePage";
+import { DocumentsPage } from "./pages/DocumentsPage";
+import { MaternityPage } from "./pages/MaternityPage";
+import { OperationsPage } from "./pages/OperationsPage";
 
 function NotFoundPage() {
   return (
@@ -53,6 +58,7 @@ export function App() {
         <Route index element={<DashboardPage />} />
         <Route path="patients" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><PatientsPage /></ProtectedRoute>} />
         <Route path="queues" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><QueuesPage /></ProtectedRoute>} />
+        <Route path="appointments" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><AppointmentsPage /></ProtectedRoute>} />
         <Route path="worklist" element={<ProtectedRoute roles={["nurse", "clinician"]}><WorklistPage /></ProtectedRoute>} />
         <Route path="care" element={<ProtectedRoute roles={["nurse", "clinician"]}><CareCoordinationPage /></ProtectedRoute>} />
         <Route path="emergency" element={<ProtectedRoute roles={["nurse", "clinician"]}><EmergencyPage /></ProtectedRoute>} />
@@ -61,6 +67,8 @@ export function App() {
         <Route path="exchange" element={<ProtectedRoute roles={["nurse", "clinician"]}><ExchangePage /></ProtectedRoute>} />
         <Route path="wards" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin"]}><WardsPage /></ProtectedRoute>} />
         <Route path="wards/admissions/:id" element={<ProtectedRoute roles={["nurse", "clinician"]}><AdmissionDetailPage /></ProtectedRoute>} />
+        <Route path="maternity" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin"]}><MaternityPage /></ProtectedRoute>} />
+        <Route path="operations" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin", "housekeeping", "porter", "mortuary", "cssd", "biomedical", "auditor"]}><OperationsPage /></ProtectedRoute>} />
         <Route path="theatre" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin"]}><TheatrePage /></ProtectedRoute>} />
         <Route path="theatre/:id" element={<ProtectedRoute roles={["nurse", "clinician"]}><TheatreCasePage /></ProtectedRoute>} />
         <Route path="diagnostics" element={<ProtectedRoute roles={["nurse", "clinician", "laboratory", "radiology"]}><DiagnosticsPage /></ProtectedRoute>} />
@@ -77,6 +85,8 @@ export function App() {
         <Route path="portal/consents" element={<ProtectedRoute patient><ConsentPage /></ProtectedRoute>} />
         <Route path="portal/access" element={<ProtectedRoute patient><AccessHistoryPage /></ProtectedRoute>} />
         <Route path="credentials" element={<ProtectedRoute><CredentialsPage /></ProtectedRoute>} />
+        <Route path="documents" element={<ProtectedRoute roles={["clinician", "nurse", "records", "receptionist", "facility_admin", "hr", "quality"]}><DocumentsPage /></ProtectedRoute>} />
+        <Route path="workforce" element={<ProtectedRoute roles={["hr", "facility_admin"]}><WorkforcePage /></ProtectedRoute>} />
         <Route path="admin" element={<ProtectedRoute roles={["facility_admin"]}><AdminPage /></ProtectedRoute>} />
         <Route path="reviewer" element={<ProtectedRoute platform><ReviewerPage /></ProtectedRoute>} />
         <Route path="security" element={<ProtectedRoute><SecurityPage /></ProtectedRoute>} />

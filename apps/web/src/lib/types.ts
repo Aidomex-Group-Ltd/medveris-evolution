@@ -1,4 +1,26 @@
-export type Role = "patient" | "receptionist" | "nurse" | "clinician" | "facility_admin" | "finance" | "auditor" | "credential_reviewer" | "pharmacist" | "laboratory" | "radiology" | "public_health";
+export type Role =
+  | "patient"
+  | "receptionist"
+  | "nurse"
+  | "clinician"
+  | "facility_admin"
+  | "finance"
+  | "auditor"
+  | "credential_reviewer"
+  | "pharmacist"
+  | "laboratory"
+  | "radiology"
+  | "public_health"
+  | "hr"
+  | "records"
+  | "theatre"
+  | "housekeeping"
+  | "porter"
+  | "mortuary"
+  | "cssd"
+  | "biomedical"
+  | "quality"
+  | "it_admin";
 
 export interface SessionUser {
   id: string;
