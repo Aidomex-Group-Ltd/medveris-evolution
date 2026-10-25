@@ -9,9 +9,15 @@ export const publicPatientIdSchema = z
   .regex(/^MV-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
 
 export const roleSchema = z.enum([
+  "patient",
+  "proxy",
   "receptionist",
   "nurse",
+  "midwife",
   "clinician",
+  "specialist_clinician",
+  "diagnostic_practitioner",
+  "department_lead",
   "facility_admin",
   "finance",
   "auditor",
@@ -30,6 +36,10 @@ export const roleSchema = z.enum([
   "biomedical",
   "quality",
   "it_admin",
+  "research",
+  "content_editor",
+  "content_reviewer",
+  "opportunity_moderator",
 ]);
 
 export const codingSchema = z.object({
@@ -1241,4 +1251,362 @@ export const consultationSectionsSchema = z.object({
   disposition: z.string().trim().max(5000).optional().or(z.literal("")),
   reviewedUnchanged: z.boolean().default(false),
   copiedForward: z.boolean().default(false),
+});
+
+// Versioned non-clinical content and professional opportunities.
+export const contentAudienceSchema = z.enum(["general","patient","professional","specialty","organization","department"]);
+export const contentScopeSchema = z.enum(["public","authenticated","patient","professional","specialty","organization","department"]);
+export const contentStatusSchema = z.enum(["draft","in-review","published","archived","withdrawn"]);
+
+export const contentCreateSchema = z.object({
+  contentType: z.enum(["public-health-advisory","health-education","research-update","guideline","professional-learning","facility-announcement"]),
+  slug: z.string().trim().min(2).max(160).regex(/^[a-z0-9][a-z0-9-]+$/),
+  title: z.string().trim().min(2).max(300),
+  summary: z.string().trim().min(10).max(4000),
+  body: z.string().trim().max(60000).optional().or(z.literal("")),
+  sourceId: uuidSchema.optional().nullable(),
+  sourceOrganization: z.string().trim().max(300).optional().or(z.literal("")),
+  sourceUrl: z.string().url().max(2000).optional().nullable(),
+  publicationDate: z.string().date().optional().nullable(),
+  language: z.string().trim().min(2).max(20).default("en"),
+  geography: z.string().trim().max(160).optional().or(z.literal("")),
+  audience: contentAudienceSchema.default("general"),
+  specialtyTags: z.array(z.string().trim().min(1).max(120)).max(30).default([]),
+  visibilityScope: contentScopeSchema.default("public"),
+  visibilityValues: z.array(z.string().trim().min(1).max(160)).max(30).default([]),
+  attribution: z.string().trim().max(1000).optional().or(z.literal("")),
+  reuseTerms: z.string().trim().max(2000).optional().or(z.literal("")),
+  sponsorshipDisclosure: z.string().trim().max(2000).optional().or(z.literal("")),
+  studyType: z.string().trim().max(160).optional().or(z.literal("")),
+  population: z.string().trim().max(500).optional().or(z.literal("")),
+  findingsSummary: z.string().trim().max(8000).optional().or(z.literal("")),
+  limitations: z.string().trim().max(8000).optional().or(z.literal("")),
+  peerReviewStatus: z.enum(["peer-reviewed","preprint","not-applicable","unknown"]).optional().nullable(),
+  editorialPriority: z.number().int().min(0).max(100).default(50),
+  reviewDueOn: z.string().date().optional().nullable(),
+});
+
+export const contentUpdateSchema = contentCreateSchema.partial().extend({
+  expectedVersion: z.number().int().min(1),
+  changeNote: z.string().trim().min(5).max(2000),
+});
+
+export const contentDecisionSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  note: z.string().trim().min(5).max(4000),
+  reviewDueOn: z.string().date().optional().nullable(),
+});
+
+export const contentPreferencesSchema = z.object({
+  language: z.string().trim().min(2).max(20).default("en"),
+  geography: z.string().trim().max(160).optional().or(z.literal("")),
+  specialtyTags: z.array(z.string().trim().min(1).max(120)).max(30).default([]),
+  interests: z.array(z.string().trim().min(1).max(120)).max(30).default([]),
+  hidePatientOpportunities: z.boolean().default(false),
+  hideProfessionalOpportunities: z.boolean().default(false),
+});
+
+export const contentReportSchema = z.object({
+  reason: z.enum(["inaccurate","outdated","unsafe","spam","copyright","privacy","other"]),
+  detail: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const opportunityCreateSchema = z.object({
+  opportunityType: z.enum(["employment","locum","cpd","conference","fellowship","training","research-collaboration","community-screening","health-education","patient-support","study-participation"]),
+  title: z.string().trim().min(2).max(300),
+  description: z.string().trim().min(10).max(20000),
+  organization: z.string().trim().min(2).max(300),
+  audience: z.enum(["patient","professional","both"]).default("professional"),
+  specialtyTags: z.array(z.string().trim().min(1).max(120)).max(30).default([]),
+  eligibility: z.string().trim().max(4000).optional().or(z.literal("")),
+  location: z.string().trim().max(300).optional().or(z.literal("")),
+  remote: z.boolean().default(false),
+  applicationUrl: z.string().url().max(2000).optional().nullable(),
+  contactRoute: z.string().trim().max(500).optional().or(z.literal("")),
+  opensOn: z.string().date().optional().nullable(),
+  closesOn: z.string().date().optional().nullable(),
+  compensation: z.string().trim().max(500).optional().or(z.literal("")),
+  cpdDetails: z.string().trim().max(2000).optional().or(z.literal("")),
+  sourceEvidence: z.string().trim().max(2000).optional().or(z.literal("")),
+  sponsorshipStatus: z.enum(["none","sponsored","unknown"]).default("none"),
+});
+
+export const opportunityUpdateSchema = opportunityCreateSchema.partial().extend({
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+export const opportunityDecisionSchema = z.object({
+  decision: z.enum(["publish","reject","archive"]),
+  note: z.string().trim().min(5).max(4000),
+  verificationStatus: z.enum(["unverified","details-checked","source-verified"]).optional(),
+  verifiedChecks: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const contentSourceSchema = z.object({
+  name: z.string().trim().min(2).max(200),
+  sourceKind: z.enum(["public-health-authority","government","professional-body","journal-index","institutional","opportunity-board","manual"]),
+  baseUrl: z.string().url().max(2000).optional().nullable(),
+  rssUrl: z.string().url().max(2000).optional().nullable(),
+  termsNote: z.string().trim().max(2000).optional().or(z.literal("")),
+  tenantScoped: z.boolean().default(true),
+});
+
+export const roleGrantRequestSchema = z.object({
+  userId: uuidSchema,
+  role: roleSchema,
+  departmentId: uuidSchema.optional().nullable(),
+  scopeNote: z.string().trim().max(1000).optional().or(z.literal("")),
+  startsAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional().nullable(),
+});
+
+export const roleGrantDecisionSchema = z.object({
+  decision: z.enum(["approved","rejected","revoked"]),
+  reason: z.string().trim().min(10).max(2000),
+});
+
+export const careTeamAssignmentSchema = z.object({
+  patientId: uuidSchema,
+  userId: uuidSchema.optional().nullable(),
+  relationship: z.enum(["primary","covering","consulting","multidisciplinary","nursing","diagnostic"]),
+  departmentId: uuidSchema.optional().nullable(),
+  purpose: z.string().trim().max(1000).optional().or(z.literal("")),
+  endsAt: z.string().datetime().optional().nullable(),
+});
+
+// Departmental inventory and fixed assets.
+export const inventoryLocationSchema = z.object({
+  code: z.string().trim().min(2).max(60).regex(/^[A-Za-z0-9][A-Za-z0-9._-]+$/),
+  name: z.string().trim().min(2).max(200),
+  locationType: z.enum(["central-store","department-store","unit-store","ward-store","room","cabinet","bin","equipment-location"]),
+  parentId: uuidSchema.optional().nullable(),
+  departmentId: uuidSchema.optional().nullable(),
+  unitId: uuidSchema.optional().nullable(),
+  physicalLocationId: uuidSchema.optional().nullable(),
+  custodianUserId: uuidSchema.optional().nullable(),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const inventoryItemUnitSchema = z.object({
+  unit: z.string().trim().min(1).max(40),
+  conversionFactor: z.number().positive().max(1000000),
+  isBase: z.boolean().default(false),
+  purchasingUnit: z.boolean().default(false),
+  issuingUnit: z.boolean().default(false),
+});
+
+export const inventoryItemSchema = z.object({
+  itemCode: z.string().trim().min(2).max(80),
+  name: z.string().trim().min(2).max(300),
+  description: z.string().trim().max(4000).optional().or(z.literal("")),
+  category: z.string().trim().min(1).max(120),
+  subcategory: z.string().trim().max(120).optional().or(z.literal("")),
+  classification: z.enum(["consumable","medicine","asset","reusable","returnable"]),
+  baseUnit: z.string().trim().min(1).max(40),
+  medicineId: uuidSchema.optional().nullable(),
+  manufacturer: z.string().trim().max(200).optional().or(z.literal("")),
+  supplierName: z.string().trim().max(200).optional().or(z.literal("")),
+  barcode: z.string().trim().max(200).optional().or(z.literal("")),
+  lotTracked: z.boolean().default(false),
+  serialTracked: z.boolean().default(false),
+  expiryTracked: z.boolean().default(false),
+  storageRequirements: z.string().trim().max(1000).optional().or(z.literal("")),
+  criticality: z.enum(["standard","medium","high","critical"]).default("standard"),
+  unitCost: z.number().min(0).max(1000000000).default(0),
+  currency: z.string().trim().length(3).regex(/^[A-Z]{3}$/).default("UGX"),
+  units: z.array(inventoryItemUnitSchema).min(1),
+});
+
+export const inventoryItemUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(300).optional(),
+  description: z.string().trim().max(4000).optional().or(z.literal("")),
+  category: z.string().trim().min(1).max(120).optional(),
+  subcategory: z.string().trim().max(120).optional().or(z.literal("")),
+  criticality: z.enum(["standard","medium","high","critical"]).optional(),
+  unitCost: z.number().min(0).max(1000000000).optional(),
+  currency: z.string().trim().length(3).regex(/^[A-Z]{3}$/).optional(),
+  storageRequirements: z.string().trim().max(1000).optional().or(z.literal("")),
+  status: z.enum(["active","discontinued"]).optional(),
+});
+
+export const inventoryPolicySchema = z.object({
+  locationId: uuidSchema,
+  itemId: uuidSchema,
+  minimumQuantity: z.number().min(0).default(0),
+  maximumQuantity: z.number().min(0).optional().nullable(),
+  reorderQuantity: z.number().min(0).default(0),
+  criticality: z.enum(["standard","medium","high","critical"]).default("standard"),
+});
+
+export const inventoryReceiptSchema = z.object({
+  locationId: uuidSchema,
+  itemId: uuidSchema,
+  lotNumber: z.string().trim().max(120).optional().or(z.literal("")),
+  expiresOn: z.string().date().optional().nullable(),
+  manufactureOn: z.string().date().optional().nullable(),
+  supplier: z.string().trim().max(200).optional().or(z.literal("")),
+  receiptReference: z.string().trim().max(200).optional().or(z.literal("")),
+  quantity: z.number().positive().max(100000000),
+  unit: z.string().trim().min(1).max(40),
+  occurredAt: z.string().datetime().optional(),
+  reason: z.string().trim().min(5).max(2000),
+  referenceType: z.string().trim().max(80).optional().or(z.literal("")),
+  referenceId: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
+export const inventoryIssueSchema = z.object({
+  locationId: uuidSchema,
+  itemId: uuidSchema,
+  lotId: uuidSchema.optional().nullable(),
+  quantity: z.number().positive().max(100000000),
+  unit: z.string().trim().min(1).max(40),
+  destinationLocationId: uuidSchema.optional().nullable(),
+  movementType: z.enum(["issue","consumption","return","write-off"]).default("issue"),
+  reason: z.string().trim().min(5).max(2000),
+  occurredAt: z.string().datetime().optional(),
+  referenceType: z.string().trim().max(80).optional().or(z.literal("")),
+  referenceId: z.string().trim().max(200).optional().or(z.literal("")),
+  reservationId: uuidSchema.optional().nullable(),
+});
+
+export const stockReservationSchema = z.object({
+  locationId: uuidSchema,
+  itemId: uuidSchema,
+  lotId: uuidSchema.optional().nullable(),
+  quantity: z.number().positive().max(100000000),
+  sourceType: z.string().trim().min(2).max(80),
+  sourceId: z.string().trim().max(200).optional().or(z.literal("")),
+  expiresAt: z.string().datetime().optional().nullable(),
+});
+
+export const inventoryRequisitionSchema = z.object({
+  requestingLocationId: uuidSchema.optional().nullable(),
+  requestingDepartmentId: uuidSchema.optional().nullable(),
+  fulfillingLocationId: uuidSchema,
+  reason: z.string().trim().min(5).max(2000),
+  lines: z.array(z.object({
+    itemId: uuidSchema,
+    quantity: z.number().positive().max(100000000),
+    unit: z.string().trim().min(1).max(40),
+    notes: z.string().trim().max(1000).optional().or(z.literal("")),
+  })).min(1).max(200),
+});
+
+export const inventoryRequisitionDecisionSchema = z.object({
+  decision: z.enum(["approve","reject"]),
+  reason: z.string().trim().min(10).max(2000),
+  lines: z.array(z.object({
+    lineId: uuidSchema,
+    approvedQuantity: z.number().min(0).max(100000000),
+  })).optional(),
+  expectedVersion: z.number().int().min(1),
+});
+
+export const inventoryRequisitionIssueSchema = z.object({
+  lineId: uuidSchema,
+  quantity: z.number().positive().max(100000000),
+  unit: z.string().trim().min(1).max(40),
+  lotId: uuidSchema.optional().nullable(),
+  expectedVersion: z.number().int().min(1),
+});
+
+export const inventoryTransferSchema = z.object({
+  sourceLocationId: uuidSchema,
+  destinationLocationId: uuidSchema,
+  lines: z.array(z.object({
+    itemId: uuidSchema,
+    lotId: uuidSchema.optional().nullable(),
+    quantity: z.number().positive().max(100000000),
+    unit: z.string().trim().min(1).max(40),
+  })).min(1).max(200),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const inventoryTransferDispatchSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+});
+
+export const inventoryTransferReceiveSchema = z.object({
+  lines: z.array(z.object({
+    lineId: uuidSchema,
+    receivedQuantity: z.number().min(0).max(100000000),
+    rejectedQuantity: z.number().min(0).max(100000000).default(0),
+    discrepancyReason: z.string().trim().max(2000).optional().or(z.literal("")),
+  })).min(1),
+  expectedVersion: z.number().int().min(1),
+});
+
+export const inventoryCountSchema = z.object({
+  locationId: uuidSchema,
+  blind: z.boolean().default(false),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+  lines: z.array(z.object({
+    itemId: uuidSchema,
+    lotId: uuidSchema.optional().nullable(),
+    countedQuantity: z.number().min(0).max(100000000),
+    reasonCode: z.string().trim().max(80).optional().or(z.literal("")),
+  })).min(1).max(500),
+});
+
+export const inventoryCountDecisionSchema = z.object({
+  decision: z.enum(["approve","reject"]),
+  reason: z.string().trim().min(10).max(2000),
+  expectedVersion: z.number().int().min(1),
+});
+
+export const inventoryAdjustmentSchema = z.object({
+  locationId: uuidSchema,
+  itemId: uuidSchema,
+  lotId: uuidSchema.optional().nullable(),
+  quantityDelta: z.number().min(-100000000).max(100000000).refine((value) => value !== 0, "A non-zero adjustment is required"),
+  unit: z.string().trim().min(1).max(40),
+  reasonCode: z.enum(["breakage","wastage","loss","expiry","correction","disposal","other"]),
+  reason: z.string().trim().min(10).max(2000),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+export const inventoryAdjustmentDecisionSchema = z.object({
+  decision: z.enum(["approve","reject"]),
+  reason: z.string().trim().min(10).max(2000),
+  expectedVersion: z.number().int().min(1),
+});
+
+export const inventoryRecallSchema = z.object({
+  itemId: uuidSchema,
+  lotId: uuidSchema.optional().nullable(),
+  reason: z.string().trim().min(10).max(4000),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const inventoryAssetSchema = z.object({
+  itemId: uuidSchema.optional().nullable(),
+  assetTag: z.string().trim().min(2).max(80),
+  name: z.string().trim().min(2).max(300),
+  manufacturer: z.string().trim().max(200).optional().or(z.literal("")),
+  model: z.string().trim().max(200).optional().or(z.literal("")),
+  serialNumber: z.string().trim().max(200).optional().or(z.literal("")),
+  locationId: uuidSchema.optional().nullable(),
+  departmentId: uuidSchema.optional().nullable(),
+  custodianUserId: uuidSchema.optional().nullable(),
+  acquisitionDate: z.string().date().optional().nullable(),
+  acquisitionCost: z.number().min(0).max(100000000000).optional().nullable(),
+  currency: z.string().trim().length(3).regex(/^[A-Z]{3}$/).default("UGX"),
+  warrantyEndsOn: z.string().date().optional().nullable(),
+  serviceAgreement: z.string().trim().max(2000).optional().or(z.literal("")),
+  maintenanceIntervalDays: z.number().int().min(1).max(3650).optional().nullable(),
+  nextMaintenanceOn: z.string().date().optional().nullable(),
+  nextCalibrationOn: z.string().date().optional().nullable(),
+  notes: z.string().trim().max(4000).optional().or(z.literal("")),
+});
+
+export const inventoryAssetEventSchema = z.object({
+  eventType: z.enum(["commission","assignment","transfer","loan","maintenance","calibration","fault","service-release","retirement"]),
+  note: z.string().trim().min(5).max(4000),
+  toStatus: z.enum(["pending-commissioning","in-service","reserved","under-maintenance","out-of-service","retired"]),
+  toCustody: z.enum(["in-store","assigned","in-use","in-transit","maintenance","retired"]).optional(),
+  custodianUserId: uuidSchema.optional().nullable(),
+  locationId: uuidSchema.optional().nullable(),
+  nextMaintenanceOn: z.string().date().optional().nullable(),
+  nextCalibrationOn: z.string().date().optional().nullable(),
+  expectedVersion: z.number().int().min(1),
 });

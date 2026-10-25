@@ -1,8 +1,13 @@
 export type Role =
   | "patient"
+  | "proxy"
   | "receptionist"
   | "nurse"
+  | "midwife"
   | "clinician"
+  | "specialist_clinician"
+  | "diagnostic_practitioner"
+  | "department_lead"
   | "facility_admin"
   | "finance"
   | "auditor"
@@ -20,7 +25,11 @@ export type Role =
   | "cssd"
   | "biomedical"
   | "quality"
-  | "it_admin";
+  | "it_admin"
+  | "research"
+  | "content_editor"
+  | "content_reviewer"
+  | "opportunity_moderator";
 
 export interface SessionUser {
   id: string;

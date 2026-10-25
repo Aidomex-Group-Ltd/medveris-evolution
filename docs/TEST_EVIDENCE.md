@@ -98,6 +98,31 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 - Housekeeping turns a task in-progress and completed; portering completes a patient transfer only with identity verification.
 - Mortuary blocks release while identity is provisional; engineering work orders complete with a release note; CSSD releases only a passing load.
 
+## Inventory and fixed-asset API tests
+
+`tests/integration/inventory.test.ts` runs the departmental inventory workflow through the real API:
+
+- Creates the location hierarchy, catalogue items with purchasing/issuing units and a replenishment policy.
+- Posts an idempotent receipt and confirms replay does not double the balance; rejects a missing tracked lot/expiry.
+- Issues stock, rejects overselling with 409 and a bad unit with 422, and confirms posted movements are immutable.
+- Runs a requisition from submission through independent approval to issue, with requester/approver separation of duties.
+- Dispatches and receives a transfer, refusing self-receipt by the dispatcher.
+- Records a blind count and a separately approved adjustment, preserving the variance.
+- Selects lots by FEFO, then acknowledges and closes a recall.
+- Registers a fixed asset, commissions it, records a fault, completes a technical service and enforces the nurse-denied service release.
+- Enforces role-scoped reports and audited CSV export, and verifies low-stock output.
+
+## Content, dashboards and access-governance API tests
+
+`tests/integration/content.test.ts` verifies:
+
+- `/access/summary` returns the actor's roles, permissions, departments and active care relationships.
+- The clinician dashboard returns only scoped content, assigned appointments, worklist and aggregate counts.
+- A draft moves through independent review to publication, and patient feed, bookmark, report and preference endpoints work.
+- An unpublished draft is not visible to a patient (404) and remains isolated by audience and visibility.
+- A role grant is requested and approved by a different user; access review returns grants, care-team rows and credential aggregates.
+- A care-team assignment can be created and revoked with audit evidence.
+
 ## Browser tests
 
 `tests/e2e/smoke.spec.ts` runs against the Vite app and live API:

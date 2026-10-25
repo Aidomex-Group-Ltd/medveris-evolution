@@ -48,6 +48,18 @@ Lock the stable entry while appending or use an equivalent compare-and-swap on c
 7. Consent expiry and revocation checked at access time, not only scheduled cleanup time.
 8. Device observations reference the assignment valid at measured time; ambiguous delayed assignments require reconciliation.
 
+## Inventory and asset projections
+
+Migration 014 adds `inventory_locations` (self-referencing hierarchy scoped to tenant/department/unit), `inventory_items` with `inventory_item_units` (base unit plus purchasing/issuing conversion), `inventory_policies`, `inventory_balances`, `inventory_reservations`, `inventory_requisitions`/lines, `inventory_transfers`/lines, `inventory_counts`/lines, `inventory_adjustments`, `inventory_recalls`/lines and `inventory_assets`/`inventory_asset_events`. Stock balances are derived from `stock_movements`: each receipt, issue, transfer, count adjustment and recall posts an immutable movement with a scoped idempotency key. Lot and expiry are retained where the item is tracked; issuing selects eligible lots by FEFO. Transfer, requisition and count records carry status, version and actor fields so separation of duties and stale-write rejection survive retries.
+
+Migration 015 enforces one balance row per tenant/location/item/lot and adds `inventory_export_audit` (tenant, actor, report, filters, row count, timestamp) with tenant RLS for exported reports. Fixed-asset events form a state machine (registered → commissioned → fault/maintenance/calibration → in-service/retired) and technical service release is restricted to biomedical roles.
+
+## Content, dashboards and access governance
+
+Migration 013 adds `content_items`, `content_item_versions`, `content_sources`, `content_bookmarks`, `content_preferences`, `content_reports`, `content_opportunities` and `opportunities` moderation state, plus `care_team_members` and `role_grants`. Content rows retain audience, visibility scope/values, specialty tags, attribution, sponsorship disclosure, peer-review status, correction state, review due date and version. Published feeds join `content_sources` for provenance and filter by the actor's tenant, departments and cadre/specialty tags. Patient feeds additionally require patient-audience scope and a `tenant_patient_links` relationship.
+
+`role_grants` records subject, role, department, scope note, requester, independent approver, start and expiry; approval and revocation are separate commands and are audited. `care_team_members` records patient, member, relationship, department, purpose and active window, and authorizes chart participation only for that patient. `inventory_export_audit` and access-review queries provide export and recertification evidence without exposing clinical narratives.
+
 ## Indexes and migrations
 
 Index tenant/patient/clinical-time queries, current memberships, active grants, encounter queues, bed occupancy, credential expiry, device/time sequences, audit resource/time and undelivered outbox events. Validate plans with realistic synthetic sizes. Protect query counts from cross-tenant leakage.

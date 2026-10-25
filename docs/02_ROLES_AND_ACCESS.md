@@ -38,6 +38,18 @@ Revocation blocks subsequent requests and pending deliveries; recheck at query, 
 
 Break-glass is a separate narrowly scoped authorization, not a global role. Require eligible staff, reauthentication, patient and encounter context, emergency reason and expiry. Proposed maximum is 60 minutes, configurable only through approved policy. Record use immediately, create a review task due within one working day, and notify the appropriate privacy/clinical team. Patient notification timing and restricted categories follow approved policy. Neither emergency access nor a grant allows amendment of another tenant's record.
 
+## Implemented inventory permissions
+
+Inventory uses explicit action permissions rather than a broad "inventory" role: `inventory.catalogue.read/manage`, `inventory.stock.read/receive/issue/adjust`, `inventory.transfer.manage`, `inventory.count.manage`, `inventory.recall.manage`, `inventory.asset.read/manage` and `inventory.report.read`. Clinical and nursing roles receive read access (nurses also receive/issue); pharmacists, CSSD and biomedical roles receive the operational commands appropriate to their service; finance, HR, records, quality and auditors receive read-only access. Central stock and organisation-wide reports additionally require an organisation-scope role and are enforced by the route, not only the navigation.
+
+Separation of duties is enforced on requisitions (requester cannot approve), transfers (dispatcher cannot receive) and counts/adjustments (counter cannot approve their own variance). Stock is a projection of an append-only `stock_movements` ledger; runtime roles cannot update or delete posted movements or signed records.
+
+## Implemented content and governance permissions
+
+`content.read` gates the published feed; `content.draft`, `content.review`, `content.publish` and `content.archive` gate editorial commands. Authors cannot review or publish their own material, and a facility administrator cannot bypass independent approval. `role_grant.request` and `role_grant.approve` are separate; a requester cannot decide their own grant, and grants carry an expiry. `clinical.care_team.manage` scopes chart participation to a linked patient, while `care_team.read` and `audit.read` support access review.
+
+Dashboard permissions are distinct from chart access: `dashboard.patient.read`, `dashboard.clinician.read`, `dashboard.specialist.read`, `dashboard.operations.read`, `dashboard.support.read`, `dashboard.finance.read` and `dashboard.administration.read`. A dashboard returns aggregates and assigned work only; opening a chart still requires an authorized record read.
+
 ## Decision evidence
 
 Audit actor, active role, purpose, target reference, decision, reason code, policy version and grant/override reference. Sanitize denial messages to prevent identifier enumeration. Separate patient-readable access history from security-investigation details. Test permissions on lists, counts, filters, exports, notifications, search, file URLs and background jobs, not just detail pages.

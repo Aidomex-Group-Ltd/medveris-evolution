@@ -28,6 +28,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/wards", label: "Wards and beds", roles: ["nurse", "clinician", "facility_admin"] },
       { to: "/maternity", label: "Maternity", roles: ["nurse", "clinician", "facility_admin"] },
       { to: "/operations", label: "Hospital operations", roles: ["nurse", "clinician", "facility_admin", "housekeeping", "porter", "mortuary", "cssd", "biomedical", "auditor"] },
+      { to: "/inventory", label: "Inventory and assets", roles: ["nurse", "midwife", "clinician", "specialist_clinician", "diagnostic_practitioner", "department_lead", "laboratory", "radiology", "pharmacist", "theatre", "facility_admin", "hr", "records", "quality", "finance", "auditor", "housekeeping", "porter", "mortuary", "cssd", "biomedical"] },
       { to: "/theatre", label: "Theatre", roles: ["nurse", "clinician", "facility_admin"] },
       { to: "/diagnostics", label: "Diagnostics", roles: ["nurse", "clinician", "laboratory", "radiology"] },
       { to: "/pharmacy", label: "Pharmacy", roles: ["nurse", "clinician", "pharmacist", "facility_admin"] },
@@ -35,6 +36,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/telehealth", label: "Telehealth", roles: ["nurse", "clinician"] },
       { to: "/devices", label: "Devices", roles: ["nurse", "clinician", "facility_admin"] },
       { to: "/ai", label: "Assistive AI", roles: ["nurse", "clinician"] },
+      { to: "/content", label: "Health library", staffOnly: true },
       { to: "/finance", label: "Finance", roles: ["finance", "facility_admin"] },
       { to: "/public-health", label: "Public health", roles: ["public_health", "facility_admin"] },
     ],
@@ -45,6 +47,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/portal", label: "My health record", patientOnly: true },
       { to: "/portal/consents", label: "Consent and sharing", patientOnly: true },
       { to: "/portal/access", label: "Access history", patientOnly: true },
+      { to: "/content", label: "Health library", patientOnly: true },
     ],
   },
   {

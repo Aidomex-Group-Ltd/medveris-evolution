@@ -77,7 +77,12 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
     `;
     const patientRows = await tx`select patient_id from patient_accounts where user_id = ${user.id} limit 1`;
     const platformRows = await tx`select role from platform_roles where user_id = ${user.id}`;
-    return { membershipsRaw, patientRows, platformRows };
+    const roleGrantRows = await tx`
+      select tenant_id, role from role_grants
+       where user_id = ${user.id} and status = 'approved'
+         and starts_at <= now() and (expires_at is null or expires_at > now())
+    `;
+    return { membershipsRaw, patientRows, platformRows, roleGrantRows };
   });
   const memberships: MembershipRecord[] = related.membershipsRaw
     .filter((m) => m.status === "active")
@@ -89,6 +94,12 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
       roles: (m.roles as string[]) as Role[],
       status: m.status as string,
     }));
+  for (const grant of related.roleGrantRows) {
+    const membership = memberships.find((m) => m.tenantId === grant.tenantId);
+    if (!membership) continue;
+    const role = grant.role as Role;
+    if (!membership.roles.includes(role)) membership.roles = [...membership.roles, role];
+  }
   const active = memberships.find((m) => m.tenantId === session.activeTenantId) ?? null;
   if (session.activeTenantId && !active) {
     await sql`update sessions set active_tenant_id = null where id = ${session.id}`;

@@ -32,6 +32,8 @@ import { organizationRoutes } from "./routes/organization.js";
 import { documentRoutes } from "./routes/documents.js";
 import { maternityRoutes } from "./routes/maternity.js";
 import { operationsRoutes } from "./routes/operations.js";
+import { contentRoutes } from "./routes/content.js";
+import { inventoryRoutes } from "./routes/inventory.js";
 
 function isFhirPath(path: string): boolean {
   return path.startsWith("/fhir/") || path.startsWith("/terminology/fhir/");
@@ -109,6 +111,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   app.route("/api/v1", documentRoutes);
   app.route("/api/v1", maternityRoutes);
   app.route("/api/v1", operationsRoutes);
+  app.route("/api/v1", contentRoutes);
+  app.route("/api/v1", inventoryRoutes);
 
   app.notFound((c) => {
     if (isFhirPath(c.req.path)) {

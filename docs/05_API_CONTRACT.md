@@ -38,6 +38,15 @@ All protected responses use no-store. Require `Idempotency-Key` for retryable cr
 | Credentials | POST `/credentials`; POST `/credentials/{id}/checks` | Quarantined upload references and verifier decisions |
 | Files | POST `/uploads`; POST `/uploads/{id}/complete`; GET `/documents/{id}/content` | Private staged uploads, scan gate and policy-checked download |
 | Finance | POST `/invoices`; POST `/payments`; POST `/payments/{id}/reversals` | Decimal amounts, idempotency and reconciliation |
+| Inventory | GET/POST `/inventory/items`, `/inventory/locations`, `/inventory/policies`; GET `/inventory/stock`, `/inventory/lots`, `/inventory/movements` | Catalogue, scope-aware balances and immutable movement history |
+| Inventory commands | POST `/inventory/receipts`, `/inventory/issues`, `/inventory/reservations`, `/inventory/requisitions`, `/inventory/transfers`, `/inventory/counts`, `/inventory/adjustments`, `/inventory/recalls` | Idempotent stock commands, FEFO issue and separation of duties |
+| Assets | GET/POST `/inventory/assets`; POST `/inventory/assets/{id}/events` | Asset lifecycle state machine and technical service release |
+| Inventory reports | GET `/inventory/reports/{report}` | Role-scoped operational reports; CSV export records `inventory_export_audit` |
+| Content | GET `/content`, `/content/{id}`, `/content/bookmarks/mine`; POST/DELETE `/content/{id}/bookmark`; POST `/content/{id}/report`; GET/PUT `/content/preferences/mine` | Audience- and visibility-scoped published feed without draft leakage |
+| Dashboards | GET `/dashboards/patient`, `/dashboards/clinician`, `/dashboards/specialist` | Permission-aware aggregates, assigned work and scoped content |
+| Editorial | GET/POST `/content/editorial/items`; PATCH `/content/editorial/items/{id}`; POST `.../review`, `.../publish`, `.../archive` | Draft, independent review and publication with expected versions |
+| Opportunities | GET `/opportunities`; POST `/opportunities`; POST `/opportunities/{id}/submit`, `/moderate` | Verified listings with independent moderation |
+| Access governance | GET/POST `/admin/role-grants`; POST `/admin/role-grants/{id}/decision`; GET/POST `/admin/care-team`; POST `/admin/care-team/{id}/revoke`; GET `/admin/access-review` | Time-bound grants, independent approval and recertification evidence |
 | Public health | POST `/public-health/reports` | Approved dataset and purpose, aggregate-first |
 | Telehealth | POST `/consultations/{id}/join-token` | Short-lived participant-scoped token after eligibility check |
 | Devices | POST `/integrations/devices/observations` | Signed adapter ingestion and device assignment validation |

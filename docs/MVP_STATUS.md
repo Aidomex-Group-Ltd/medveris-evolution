@@ -27,6 +27,10 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Configurable document templates, drafts, signatures, amendments and entered-in-error | Working, synthetic | `documents.ts`; hospital integration test |
 | Maternity episodes, labour observations, delivery and newborn records | Working, synthetic | `maternity.ts`; hospital integration test |
 | Bed readiness, housekeeping, portering, mortuary custody and technical services (engineering/CSSD) | Working, synthetic | `operations.ts`; hospital integration test |
+| Departmental inventory: location hierarchy, catalogue and units, immutable stock-movement ledger, FEFO lots, receipts, issues, reservations, requisitions, transfers, blind counts, adjustments, recalls, reports and CSV export audit | Working, synthetic | `inventory.ts`; migration 014/015; `tests/integration/inventory.test.ts` |
+| Fixed assets: register, commission, fault, maintenance, calibration and service release | Working, synthetic | `inventory.ts` asset endpoints; integration asset lifecycle test |
+| Role grants with independent approval, time bounds and revocation; care-team assignment and access review | Working, synthetic | migration 013; `content.ts` access-governance routes; `tests/integration/content.test.ts` |
+| Permission-aware dashboards and non-clinical content: patient/clinician/specialist dashboards, published feed, bookmarks, preferences, reporting, editorial review/publish/archive, opportunities and moderation | Working, synthetic | `content.ts`; content integration test; `/content` and dashboard web UI |
 | FHIR R4 read facade | Working subset | metadata, Patient, Encounter, Observation, Condition, AllergyIntolerance, DocumentReference, Provenance, Consent, AuditEvent |
 | Terminology facade | Working synthetic only | ValueSet expand/validate, CodeSystem lookup/validate |
 | Inpatient wards, beds, nursing care, handoffs and discharge | Working, synthetic | `tests/integration/departments.test.ts`; Wards/admission UI |

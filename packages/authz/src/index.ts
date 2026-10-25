@@ -1,8 +1,13 @@
 export const ROLES = [
   "patient",
+  "proxy",
   "receptionist",
   "nurse",
+  "midwife",
   "clinician",
+  "specialist_clinician",
+  "diagnostic_practitioner",
+  "department_lead",
   "facility_admin",
   "finance",
   "auditor",
@@ -21,6 +26,10 @@ export const ROLES = [
   "biomedical",
   "quality",
   "it_admin",
+  "research",
+  "content_editor",
+  "content_reviewer",
+  "opportunity_moderator",
 ] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -242,3 +251,13 @@ export class AuthzError extends Error {
   readonly status = 403;
   readonly code = "forbidden";
 }
+
+export * from "./permissions.js";
+export { authorize, assertAuthorized, POLICY_VERSION, PolicyDeniedError } from "./policy.js";
+export type {
+  PolicyActor,
+  ResourceContext,
+  ResourceKind,
+  PolicyDecision,
+  PolicyReason,
+} from "./policy.js";

@@ -11,7 +11,7 @@ export function requestActor(c: Context<AppEnv>): ActorContext {
   if (!auth) throw new NotFoundError("Authenticated actor context is missing");
   return {
     userId: auth.user.id,
-    roles: auth.activeTenant?.roles ?? [],
+    roles: auth.activeTenant?.roles ?? (auth.patientId ? ["patient"] : []),
     tenantId: auth.activeTenant?.id ?? null,
     patientId: auth.patientId,
     mfaVerified: auth.mfaVerified,

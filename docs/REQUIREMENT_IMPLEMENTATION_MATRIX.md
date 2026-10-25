@@ -25,7 +25,7 @@ Status definitions:
 | FND-08 | Protected-read audit before returning clinical content | 08, 17 | Identifiable reads are attributable | Encounter/emergency/telehealth/exchange reads write audit inside the transaction | Implemented; no exhaustive route-level audit assertion |
 | FND-09 | Optimistic concurrency, atomic clinical write/audit/outbox | 04, 06, 17 | Concurrent amendment and disposition races do not overwrite silently | Domain tests, stale amendment path, emergency stale-disposition test | Verified for covered commands |
 | FND-10 | Private uploads, quarantine and local/production adapters | 08, 16 | Credential evidence is not publicly addressable | Local storage adapter and quarantine metadata; production object store not configured | Partial; R2/provider blocked |
-| FND-11 | Local setup, migrations, seeds, synthetic reset and CI script | 14, 16 | Developers can reproduce the local system | `docs/LOCAL_DEVELOPMENT.md`, migrations 001–005, seed and reset scripts, committed CI workflow | Verified locally; hosted CI not executed |
+| FND-11 | Local setup, migrations, seeds, synthetic reset and CI script | 14, 16 | Developers can reproduce the local system | `docs/LOCAL_DEVELOPMENT.md`, migrations 001–015, seed and reset scripts, committed CI workflow | Verified locally; hosted CI not executed |
 | FND-12 | Production monitoring, backups, restore, alerting and incident response | 16 | Operations can recover and observe the service | No backup/restore drill, metrics, paging or on-call runbook executed | Missing / externally blocked by operations ownership |
 
 ## Patient and provider experience
@@ -121,14 +121,17 @@ Status definitions:
 | ADM-02 | Service catalogue and decimal pricing with explicit currency | 06, 17 | Finance bills accurate amounts | `service_catalog` numeric price + ISO currency; finance test | Verified |
 | ADM-03 | Invoices, payments, reversals and reconciliation | 06, 15 (AT11) | One financial effect per command | Invoice/payment/reversal APIs; integration test | Verified for manual records; no payment rail |
 | ADM-04 | Insurance/claims workflow | 06 | Claims are prepared and tracked | Claims table/API/UI | Implemented as local records; no clearing-house integration |
-| ADM-05 | Procurement and inventory | 06 | Stock and purchasing are managed | Pharmacy stock only; general procurement missing | Partial |
-| ADM-06 | Operational reports from stored data | 06, 07 | Managers see real local data | Finance summary and public-health aggregate; no broad BI layer | Partial |
+| ADM-05 | Procurement and inventory | 06 | Stock and purchasing are managed | Location hierarchy, catalogue/units, movement ledger, FEFO lots, receipts, issues, reservations, requisitions, transfers, counts, adjustments, recalls and assets; `tests/integration/inventory.test.ts` | Verified for local stock control; external supplier ordering remains out of scope |
+| ADM-06 | Operational reports from stored data | 06, 07 | Managers see real local data | Finance, public-health and inventory reports (stock-on-hand, low-stock, expiry, consumption, valuation, fulfilment, discrepancies, variance, downtime, maintenance, recall status) with audited CSV export | Implemented; no broad BI layer |
 | ADM-07 | Manual payment is not external settlement | 06, 17 | Staff do not mistake a recorded payment for cleared funds | Payment records are local/manual; claim states remain local | Implemented |
 | ADM-08 | Configurable departments, units, locations, cadres, job titles and catalogue bootstrap | 01, 05 | Administrators model the facility without code changes | `organization.ts`; hospital integration test | Verified |
 | ADM-09 | Workforce onboarding, assignments, privileges and training records | 01, 05 | HR moves a hire through review to active with scoped access | Onboarding transitions to active; hospital integration test | Verified |
 | ADM-10 | Configurable documentation templates, immutable versions, signatures, amendments and entered-in-error | 05, 09 | Services configure their own forms without losing record integrity | `documents.ts`; hospital integration test | Verified |
 | ADM-11 | Maternity episodes, labour observations, delivery and newborn records | 06 | Maternity staff document labour and birth in one episode | `maternity.ts`; hospital integration test | Verified |
 | ADM-12 | Bed readiness, housekeeping, portering, mortuary custody and technical services | 06 | Support services are tracked separately from clinical discharge | `operations.ts`; hospital integration test | Verified |
+| ADM-13 | Departmental inventory ledger and fixed assets | 06 | Ward, pharmacy, CSSD and biomedical staff manage stock and equipment with separation of duties | `apps/api/src/routes/inventory.ts`; migrations 014–015; inventory integration test | Verified for local synthetic stock, transfer, count, recall and asset workflows |
+| ADM-14 | Scoped role grants, care-team assignment and access recertification | 02, 05, 08 | Temporary access is requested, independently approved, time-bound and reviewable | `content.ts` governance routes; migration 013; content integration test | Verified |
+| ADM-15 | Permission-aware dashboards and non-clinical content governance | 02, 07 | Patients, clinicians, specialists and administrators see only authorized content | Patient/clinician/specialist dashboards, published feed, bookmarks, preferences, reports, editorial workflow and opportunities; content integration test | Verified for local synthetic content; no external content ingestion |
 
 ## Telemedicine, devices and bounded AI
 
