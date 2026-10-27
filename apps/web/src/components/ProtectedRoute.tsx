@@ -10,6 +10,8 @@ export function ProtectedRoute({ children, roles, platform, patient }: { childre
   if (loading) return <LoadingState label="Restoring session" />;
   if (!me) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (error) return <ErrorState message={error} onRetry={() => void refresh()} />;
+  const staffContext = Boolean(me.activeTenant) && !patient && (!me.patientId || Boolean(roles));
+  if (staffContext && !(me.user.mfaEnrolled && me.user.mfaVerified)) return <Navigate to="/mfa-setup" replace />;
   if (patient && !me.patientId) return <EmptyState title="Patient account required" description="This area is available only to a verified patient account." />;
   if (platform && me.platformRoles.length === 0) return <EmptyState title="Access denied" description="Independent credential reviewer permission is required." />;
   if (roles && !roles.some((role) => me.activeTenant?.roles.includes(role))) {

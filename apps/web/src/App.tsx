@@ -27,6 +27,7 @@ const RegisterPage = lazyPage(() => import("./pages/RegisterPage"), "RegisterPag
 const ForgotPasswordPage = lazyPage(() => import("./pages/ForgotPasswordPage"), "ForgotPasswordPage");
 const ResetPasswordPage = lazyPage(() => import("./pages/ResetPasswordPage"), "ResetPasswordPage");
 const VerifyEmailPage = lazyPage(() => import("./pages/VerifyEmailPage"), "VerifyEmailPage");
+const MfaSetupPage = lazyPage(() => import("./pages/MfaSetupPage"), "MfaSetupPage");
 const DashboardPage = lazyPage(() => import("./pages/DashboardPage"), "DashboardPage");
 const PatientsPage = lazyPage(() => import("./pages/PatientsPage"), "PatientsPage");
 const QueuesPage = lazyPage(() => import("./pages/QueuesPage"), "QueuesPage");
@@ -91,6 +92,7 @@ export function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/mfa-setup" element={<MfaSetupPage />} />
       <Route path="/directory" element={<DirectoryPage />} />
       <Route path="/directory/:publicId" element={<DirectoryDetailPage />} />
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
