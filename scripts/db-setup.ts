@@ -63,4 +63,24 @@ try {
   console.warn(`could not change database owner: ${(error as Error).message}`);
 }
 await admin.end();
+
+// PostgreSQL 14 and earlier create `public` owned by the bootstrap superuser;
+// the migration role must own it so synthetic resets can recreate it.
+const targetAdminUrl = new URL(adminUrl);
+targetAdminUrl.pathname = `/${targetDatabase}`;
+const targetAdmin = new Client({ connectionString: targetAdminUrl.toString() });
+await targetAdmin.connect();
+try {
+  await targetAdmin.query("BEGIN");
+  await targetAdmin.query("ALTER SCHEMA public OWNER TO medveris_migrator");
+  await targetAdmin.query("REVOKE ALL ON SCHEMA public FROM PUBLIC");
+  await targetAdmin.query("GRANT USAGE ON SCHEMA public TO medveris_runtime, medveris_jobs, medveris_exchange");
+  await targetAdmin.query("COMMIT");
+  console.log(`schema public in ${targetDatabase} is owned by medveris_migrator`);
+} catch (error) {
+  await targetAdmin.query("ROLLBACK").catch(() => undefined);
+  throw error;
+} finally {
+  await targetAdmin.end();
+}
 console.log("database roles and database are ready");

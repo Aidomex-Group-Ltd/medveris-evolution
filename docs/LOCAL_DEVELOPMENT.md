@@ -59,13 +59,18 @@ npm run build
 
 ## Database reset
 
-Stop the API and worker first. The reset command refuses production, non-synthetic database names and missing confirmation.
+Stop the API, worker, tests and any `psql` sessions first. The reset command refuses production, non-synthetic database names and missing confirmation.
 
 ```bash
+npm run db:reset:synthetic -- --check   # preflight only; changes nothing
 npm run db:reset:synthetic -- --yes
 ```
 
-Then restart the dev servers. The command drops the `app` and `public` schemas, recreates them, runs all migrations and reseeds synthetic data.
+Then restart the dev servers. Before any destructive step the command verifies that it is connected to the target database as `medveris_migrator`, that neither the migration nor runtime roles are SUPERUSER or BYPASSRLS, that `medveris_migrator` owns the `app` and `public` schemas, and that no other sessions are connected. It then drops and recreates both schemas and applies every migration in a single transaction, checks the RLS policies, helper functions and audit trigger, and commits only if all of that succeeds. Seeding runs afterwards as the runtime role in its own transaction.
+
+On PostgreSQL 14 and earlier, `public` is created owned by `postgres`. `npm run db:setup` transfers it to `medveris_migrator`; run it once before the first reset.
+
+`npm run db:migrate` fails if `schema_migrations` is current but helper functions, RLS policies or the audit immutability trigger are missing. That state needs a reset rather than more migrations.
 
 ## Configuration
 
