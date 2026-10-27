@@ -24,6 +24,8 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Facility administration, memberships, queue management | Working | API + admin console |
 | Configurable organisation: departments, units, locations, cadres, job titles and catalogue bootstrap | Working, synthetic | `organization.ts`; hospital integration test |
 | Workforce onboarding, assignments, privilege requests and training records | Working, synthetic | onboarding reaches active through review; hospital integration test |
+| Versioned Uganda onboarding catalogue with patient, clinical, facility-administrator and support-staff paths | Working, synthetic | migration 021; `onboarding.ts`; catalogue unit tests and onboarding integration test |
+| Caregiver proxy requests with patient or facility review, scoped access and audited decisions | Working, synthetic | `onboarding.ts` proxy routes; patient and facility queue UI |
 | Configurable document templates, drafts, signatures, amendments and entered-in-error | Working, synthetic | `documents.ts`; hospital integration test |
 | Maternity episodes, labour observations, delivery and newborn records | Working, synthetic | `maternity.ts`; hospital integration test |
 | Bed readiness, housekeeping, portering, mortuary custody and technical services (engineering/CSSD) | Working, synthetic | `operations.ts`; hospital integration test |

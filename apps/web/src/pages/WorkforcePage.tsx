@@ -1,12 +1,12 @@
 import { useState, type FormEvent } from "react";
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Tabs, Textarea } from "@medveris/ui";
+import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, SearchSelect, Select, Table, Tabs, Textarea } from "@medveris/ui";
 import { api } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
 
 interface Summary { activeStaff: number; openOnboarding: number; pendingPrivileges: number; enabledDepartments: number; expiredTraining: number }
-interface Department { id: string; code: string; name: string; departmentType: string; enabled: boolean; unitCount: number; staffCount: number }
+interface Department { id: string; code: string; name: string; departmentType: string; enabled: boolean; unitCount: number; staffCount: number; catalogueCode: string | null }
 interface OnboardingCase { id: string; status: string; currentStep: number; staffRef: string; givenName: string; familyName: string; professionalDisplayName: string | null; engagementType: string | null; startDate: string | null; primaryDepartment: string | null; createdAt: string }
 interface StaffRow { id: string; staffRef: string; givenName: string; familyName: string; professionalDisplayName: string | null; status: string; engagementId: string | null; engagementType: string | null; engagementStatus: string | null; jobTitle: string | null; primaryDepartment: string | null; approvedPrivileges: number }
 interface Privilege { id: string; code: string; name: string; category: string; requiresCredential: boolean }
@@ -105,9 +105,13 @@ function Structure() {
   );
 }
 
+interface CatalogueTitleOption { code: string; name: string; cadreCode: string; departmentCodes: string[]; requiresCredential: boolean; suggestedSystemRoles: string[] }
+interface CatalogueSpecialty { code: string; name: string }
+
 function Onboarding() {
   const cases = useQuery<{ cases: OnboardingCase[] }>("/workforce/onboarding");
   const departments = useQuery<{ departments: Department[] }>("/organization/departments");
+  const catalogue = useQuery<{ version: number; source: string; titles: CatalogueTitleOption[]; departments: { code: string; name: string }[]; catalogue: { specialties: CatalogueSpecialty[] } }>("/onboarding/catalogue");
   const action = useAction();
   const [givenName, setGivenName] = useState("");
   const [familyName, setFamilyName] = useState("");
@@ -115,20 +119,70 @@ function Onboarding() {
   const [engagementType, setEngagementType] = useState("employee");
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [primaryDepartmentId, setPrimaryDepartmentId] = useState("");
+  const [additionalDepartmentIds, setAdditionalDepartmentIds] = useState<string[]>([]);
+  const [specialtyCodes, setSpecialtyCodes] = useState<string[]>([]);
+  const [catalogueTitleCode, setCatalogueTitleCode] = useState("");
+  const [customTitleName, setCustomTitleName] = useState("");
+  const [customTitleExplanation, setCustomTitleExplanation] = useState("");
+  const [customRequestId, setCustomRequestId] = useState("");
+  const [customTitleStatus, setCustomTitleStatus] = useState<string | null>(null);
   const [decisionCaseId, setDecisionCaseId] = useState("");
   const [decision, setDecision] = useState<"approve" | "reject" | "return">("approve");
   const [reason, setReason] = useState("");
+
+  const selection = catalogue.data?.titles.find((title) => title.code === catalogueTitleCode) ?? null;
+  const allowedDepartments = selection
+    ? departments.data?.departments.filter((row) => !row.catalogueCode || selection.departmentCodes.includes(row.catalogueCode)) ?? []
+    : departments.data?.departments ?? [];
+
+  const selectedCatalogueDepartmentCodes = (departments.data?.departments ?? [])
+    .filter((row) => row.id === primaryDepartmentId || additionalDepartmentIds.includes(row.id))
+    .map((row) => row.catalogueCode)
+    .filter((code): code is string => Boolean(code));
+
+  async function requestCustomTitle() {
+    await action.run("custom-title", async () => {
+      const result = await api<{ request: { id: string; status: string } }>("/onboarding/custom-titles", {
+        method: "POST",
+        body: {
+          proposedName: customTitleName,
+          cadreCode: selection?.cadreCode,
+          departmentCodes: selectedCatalogueDepartmentCodes,
+          specialtyCodes,
+          explanation: customTitleExplanation,
+        },
+      });
+      setCustomRequestId(result.request.id);
+      setCustomTitleStatus(result.request.status);
+      return "Custom title request submitted. It stays pending and grants no role or privilege.";
+    });
+  }
 
   async function start(event: FormEvent) {
     event.preventDefault();
     await action.run("start", async () => {
       const result = await api<{ onboarding: { staffRef: string } }>("/workforce/onboarding", {
         method: "POST",
-        body: { givenName, familyName, email: email || undefined, engagementType, startDate, primaryDepartmentId: primaryDepartmentId || null },
+        body: {
+          givenName, familyName, email: email || undefined, engagementType, startDate,
+          primaryDepartmentId: primaryDepartmentId || null,
+          additionalDepartmentIds,
+          catalogueTitleCode: catalogueTitleCode || undefined,
+          catalogueCadreCode: selection?.cadreCode,
+          specialtyCodes,
+          customTitleRequestId: customRequestId || undefined,
+        },
       });
       setGivenName("");
       setFamilyName("");
       setEmail("");
+      setCatalogueTitleCode("");
+      setAdditionalDepartmentIds([]);
+      setSpecialtyCodes([]);
+      setCustomRequestId("");
+      setCustomTitleStatus(null);
+      setCustomTitleName("");
+      setCustomTitleExplanation("");
       cases.reload();
       return `Onboarding started for ${result.onboarding.staffRef}.`;
     });
@@ -158,8 +212,87 @@ function Onboarding() {
               <Field label="Email" htmlFor="ob-email"><Input id="ob-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
               <Field label="Engagement type"><Select value={engagementType} onChange={(event) => setEngagementType(event.target.value)}>{["employee", "contractor", "student", "intern", "trainee", "volunteer", "locum", "visiting-practitioner"].map((type) => <option key={type} value={type}>{type}</option>)}</Select></Field>
               <Field label="Start date" htmlFor="ob-start"><Input id="ob-start" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required /></Field>
-              <Field label="Primary department"><Select value={primaryDepartmentId} onChange={(event) => setPrimaryDepartmentId(event.target.value)}><option value="">Assign later</option>{departments.data?.departments.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</Select></Field>
+              <Field label="Catalogue title" hint={selection ? `${selection.cadreCode} · ${selection.suggestedSystemRoles.join(", ") || "No suggested system roles"}` : "Search by title, cadre or department. Selecting a title records the path and suggested roles; it grants nothing."}>
+                <SearchSelect
+                  aria-label="Search catalogue title"
+                  placeholder="Search titles…"
+                  value={catalogueTitleCode}
+                  options={(catalogue.data?.titles ?? []).map((title) => ({
+                    value: title.code,
+                    label: title.name,
+                    description: `${title.cadreCode}${title.requiresCredential ? " · credential required" : ""}`,
+                  }))}
+                  onChange={(next) => {
+                    setCatalogueTitleCode(next);
+                    const title = catalogue.data?.titles.find((row) => row.code === next);
+                    const selectedDepartments = (departments.data?.departments ?? []).filter((row) => row.id === primaryDepartmentId || additionalDepartmentIds.includes(row.id));
+                    if (title) {
+                      const allowedCodes = new Set(title.departmentCodes);
+                      if (selectedDepartments.some((row) => row.catalogueCode && !allowedCodes.has(row.catalogueCode))) {
+                        setPrimaryDepartmentId("");
+                        setAdditionalDepartmentIds([]);
+                      }
+                    }
+                  }}
+                />
+              </Field>
+              <Field label="Primary department" hint={selection ? `Catalogue departments: ${selection.departmentCodes.join(", ")}` : undefined}><Select value={primaryDepartmentId} onChange={(event) => setPrimaryDepartmentId(event.target.value)}><option value="">Assign later</option>{allowedDepartments.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</Select></Field>
             </div>
+            <fieldset className="mv-field">
+              <legend className="mv-field__label">Additional departments</legend>
+              <div className="mv-row" style={{ flexWrap: "wrap", gap: 12 }}>
+                {allowedDepartments.filter((row) => row.id !== primaryDepartmentId).map((row) => (
+                  <label key={row.id} className="mv-small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={additionalDepartmentIds.includes(row.id)}
+                      onChange={(event) => setAdditionalDepartmentIds((current) => event.target.checked
+                        ? [...current, row.id]
+                        : current.filter((id) => id !== row.id))}
+                    />
+                    {row.name}
+                  </label>
+                ))}
+              </div>
+              <span className="mv-field__hint">Multiple department assignments are allowed. They do not change your system role.</span>
+            </fieldset>
+            <fieldset className="mv-field">
+              <legend className="mv-field__label">Specialties (optional)</legend>
+              <div className="mv-row" style={{ flexWrap: "wrap", gap: 12 }}>
+                {(catalogue.data?.catalogue.specialties ?? []).map((specialty) => (
+                  <label key={specialty.code} className="mv-small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={specialtyCodes.includes(specialty.code)}
+                      onChange={(event) => setSpecialtyCodes((current) => event.target.checked
+                        ? [...current, specialty.code]
+                        : current.filter((code) => code !== specialty.code))}
+                    />
+                    {specialty.name}
+                  </label>
+                ))}
+              </div>
+              <span className="mv-field__hint">A specialty is recorded separately from the job title and grants no clinical privilege.</span>
+            </fieldset>
+            <fieldset className="mv-field">
+              <legend className="mv-field__label">Custom title request</legend>
+              {customRequestId ? (
+                <div className="mv-stack">
+                  <Badge tone="warning">Pending review</Badge>
+                  <span className="mv-small mv-muted">Request {customRequestId.slice(0, 8)}… stays pending. It grants no role or privilege until a facility reviewer records a decision.</span>
+                  <Button variant="secondary" size="sm" onClick={() => { setCustomRequestId(""); setCustomTitleStatus(null); }}>Remove request</Button>
+                </div>
+              ) : (
+                <div className="mv-stack">
+                  <Input aria-label="Proposed custom title" placeholder="Title not listed in the catalogue" value={customTitleName} onChange={(event) => setCustomTitleName(event.target.value)} />
+                  <Textarea aria-label="Custom title explanation" placeholder="Explain the role and why the catalogue does not cover it" value={customTitleExplanation} onChange={(event) => setCustomTitleExplanation(event.target.value)} minLength={10} />
+                  <Button variant="secondary" size="sm" onClick={() => void requestCustomTitle()} disabled={action.busy !== null || customTitleName.trim().length < 2 || customTitleExplanation.trim().length < 10}>
+                    {action.busy === "custom-title" ? "Submitting…" : "Request custom title"}
+                  </Button>
+                  {customTitleStatus ? <Badge tone="warning">{customTitleStatus}</Badge> : null}
+                </div>
+              )}
+            </fieldset>
             <Button type="submit" disabled={action.busy !== null || !givenName.trim() || !familyName.trim()}>{action.busy === "start" ? "Starting…" : "Start onboarding"}</Button>
           </form>
         </Card>

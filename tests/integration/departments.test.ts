@@ -307,12 +307,20 @@ describe("M2/M3 department workflows", () => {
   });
 
   it("reviews, dispenses and administers medication with stock controls", async () => {
-    const medicines = await expectOk(await call(pharmacist, "/api/v1/medicines"));
-    medicineId = medicines.medicines[0].id;
-    const lots = await expectOk(await call(pharmacist, "/api/v1/stock/lots"));
-    const lot = lots.lots.find((row: any) => row.medicineId === medicineId && !row.expired && Number(row.quantity) > 0);
-    expect(lot).toBeTruthy();
-    lotId = lot.id;
+    const medicine = await expectOk(await call(pharmacist, "/api/v1/medicines", {
+      method: "POST", body: JSON.stringify({
+        name: `Synthetic medicine ${Date.now()}`, strength: "5 mg", form: "tablet", route: "oral",
+      }),
+    }), 201);
+    medicineId = medicine.medicine.id;
+    const lot = await expectOk(await call(pharmacist, "/api/v1/stock/lots", {
+      method: "POST", body: JSON.stringify({
+        medicineId, lotNumber: `SYNTH-${Date.now()}`,
+        expiresOn: new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10),
+        quantity: 50, location: "Pharmacy main",
+      }),
+    }), 201);
+    lotId = lot.lot.id;
     const order = await expectOk(await call(clinician, "/api/v1/medication-orders", {
       method: "POST", body: JSON.stringify({
         patientId, encounterId, medicineId, doseText: "5 mg", route: "oral", frequency: "once daily", durationDays: 5,

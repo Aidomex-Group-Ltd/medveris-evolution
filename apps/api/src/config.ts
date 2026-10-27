@@ -25,6 +25,30 @@ export interface AppConfig {
   emergencyOverrideMinutes: number;
   emergencyReviewDueHours: number;
   devShowTotpSecrets: boolean;
+  map: {
+    renderer: "leaflet";
+    providerState: "disabled" | "osm" | "configured";
+    tileUrl: string | null;
+    attribution: string;
+    minZoom: number;
+    maxZoom: number;
+    geolocationEnabled: boolean;
+    geocodingEnabled: boolean;
+    routingEnabled: boolean;
+  };
+  directory: {
+    defaultCountry: string;
+    maxRadiusKm: number;
+    maxResults: number;
+    sponsoredListingsEnabled: boolean;
+  };
+  promotions: {
+    paymentProvider: string | null;
+    webhookSecret: string | null;
+  };
+  integrations: {
+    tokenTtlMinutes: number;
+  };
   features: Record<string, boolean>;
 }
 
@@ -57,6 +81,22 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
   if (terminologyMode === "production" && !terminologyProviderUrl) {
     throw new Error("TERMINOLOGY_MODE=production requires TERMINOLOGY_PROVIDER_URL");
   }
+  const mapProviderState = (env.MAP_TILE_PROVIDER ?? "osm") === "osm"
+    ? "osm"
+    : (env.MAP_TILE_PROVIDER ?? "osm") === "configured" ? "configured" : "disabled";
+  const defaultTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const defaultAttribution = "&copy; OpenStreetMap contributors";
+  const tileUrl = mapProviderState === "disabled"
+    ? null
+    : (env.MAP_TILE_URL || (mapProviderState === "osm" ? defaultTileUrl : null));
+  if (tileUrl && !tileUrl.startsWith("https://")) {
+    throw new Error("MAP_TILE_URL must use HTTPS");
+  }
+  if (mapProviderState !== "disabled" && !tileUrl) {
+    throw new Error("MAP_TILE_URL is required when the map tile provider is enabled");
+  }
+  const minZoom = Math.max(0, Math.min(integer(env.MAP_MIN_ZOOM, 3), 22));
+  const maxZoom = Math.max(minZoom, Math.min(integer(env.MAP_MAX_ZOOM, 19), 22));
   return {
     appEnv,
     origin,
@@ -84,6 +124,30 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     emergencyOverrideMinutes: integer(env.EMERGENCY_OVERRIDE_MINUTES, 60),
     emergencyReviewDueHours: integer(env.EMERGENCY_REVIEW_DUE_HOURS, 24),
     devShowTotpSecrets: bool(env.DEV_SHOW_TOTP_SECRETS, false),
+    map: {
+      renderer: "leaflet",
+      providerState: mapProviderState,
+      tileUrl,
+      attribution: env.MAP_ATTRIBUTION || defaultAttribution,
+      minZoom,
+      maxZoom,
+      geolocationEnabled: bool(env.MAP_GEOLOCATION_ENABLED, true),
+      geocodingEnabled: false,
+      routingEnabled: false,
+    },
+    directory: {
+      defaultCountry: env.DIRECTORY_DEFAULT_COUNTRY ?? "Uganda",
+      maxRadiusKm: Math.max(1, Math.min(integer(env.DIRECTORY_MAX_RADIUS_KM, 500), 2000)),
+      maxResults: Math.max(1, Math.min(integer(env.DIRECTORY_MAX_RESULTS, 100), 500)),
+      sponsoredListingsEnabled: bool(env.DIRECTORY_SPONSORED_LISTINGS, true),
+    },
+    promotions: {
+      paymentProvider: env.PROMOTION_PAYMENT_PROVIDER || null,
+      webhookSecret: env.PROMOTION_WEBHOOK_SECRET || null,
+    },
+    integrations: {
+      tokenTtlMinutes: Math.max(1, Math.min(integer(env.INTEGRATION_TOKEN_TTL_MINUTES, 15), 60)),
+    },
     features: {
       dicomweb: bool(env.FEATURE_DICOMWEB, false),
       lab: bool(env.FEATURE_LAB, false),
@@ -106,6 +170,23 @@ export function publicConfig(config: AppConfig) {
     fhir: {
       externalWritesEnabled: config.fhirExternalWritesEnabled,
       bulkExportEnabled: config.fhirBulkExportEnabled,
+    },
+    map: {
+      renderer: config.map.renderer,
+      providerState: config.map.providerState,
+      tileUrl: config.map.tileUrl,
+      attribution: config.map.attribution,
+      minZoom: config.map.minZoom,
+      maxZoom: config.map.maxZoom,
+      geolocationEnabled: config.map.geolocationEnabled,
+      geocodingEnabled: config.map.geocodingEnabled,
+      routingEnabled: config.map.routingEnabled,
+    },
+    directory: config.directory,
+    integrations: {
+      oauthProfiles: ["oauth2-client-credentials", "smart-backend-services"],
+      geocodingEnabled: false,
+      routingEnabled: false,
     },
   };
 }

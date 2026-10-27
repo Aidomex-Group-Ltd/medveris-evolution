@@ -93,6 +93,7 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 `tests/integration/hospital.test.ts` covers the organisation, documentation and support-service increment:
 
 - A non-workforce role cannot create a department; HR provisions a department and unit, starts onboarding, advances every stage to review and approves it to active.
+- Catalogue integrity, search, title resolution and role-path derivation are covered by unit tests; the onboarding integration test covers publication, staff onboarding from a catalogue title, patient self-service guidance and caregiver request/decision flows.
 - A template is published, a patient document recorded, signed with a digest and read back as two immutable versions.
 - A maternity episode accepts labour observations, a delivery record and a newborn record.
 - Housekeeping turns a task in-progress and completed; portering completes a patient transfer only with identity verification.

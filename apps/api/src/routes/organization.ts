@@ -14,7 +14,19 @@ import {
   unitSchema,
   uuidSchema,
 } from "@medveris/contracts";
-import { DEFAULT_DEPARTMENTS, DEFAULT_PRIVILEGES, canAdvanceOnboarding, randomStaffReference, type OnboardingStatus } from "@medveris/domain";
+import {
+  DEFAULT_DEPARTMENTS,
+  DEFAULT_PRIVILEGES,
+  UGANDA_CADRES,
+  UGANDA_ONBOARDING_CATALOGUE,
+  canAdvanceOnboarding,
+  catalogueCodeForDefaultDepartment,
+  randomStaffReference,
+  resolveCatalogueTitle,
+  type OnboardingCatalogue,
+  type OnboardingCatalogueJobTitle,
+  type OnboardingStatus,
+} from "@medveris/domain";
 import { assertWorkforceAccess } from "@medveris/authz";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
@@ -27,6 +39,58 @@ export const organizationRoutes = new Hono<AppEnv>();
 
 function hasRole(c: Parameters<typeof requireStaff>[0], ...roles: string[]): boolean {
   return requestActor(c).roles.some((role) => roles.includes(role));
+}
+
+
+async function ensureCatalogueJobTitle(
+  tx: Parameters<Parameters<typeof withStaffActor>[1]>[0],
+  tenantId: string,
+  title: OnboardingCatalogueJobTitle,
+): Promise<string> {
+  const cadre = await tx`
+    select id from cadres
+     where tenant_id = ${tenantId} and (catalogue_code = ${title.cadreCode} or code = ${title.cadreCode})
+     limit 1
+  `;
+  let cadreId = cadre[0]?.id as string | undefined;
+  if (!cadreId) {
+    cadreId = crypto.randomUUID();
+    const catalogueCadre = UGANDA_CADRES.find((item) => item.code === title.cadreCode);
+    await tx`
+      insert into cadres (id, tenant_id, code, name, category, catalogue_code, regulator_codes, requires_registration)
+      values (${cadreId}, ${tenantId}, ${title.cadreCode}, ${catalogueCadre?.name ?? title.cadreCode},
+        ${catalogueCadre?.category ?? "catalogue"}, ${title.cadreCode},
+        ${catalogueCadre?.regulatorCodes ?? []}, ${catalogueCadre?.requiresRegistration ?? false})
+      on conflict (tenant_id, code) do update set catalogue_code = excluded.catalogue_code,
+        regulator_codes = excluded.regulator_codes, requires_registration = excluded.requires_registration
+    `;
+    const created = await tx`select id from cadres where tenant_id = ${tenantId} and code = ${title.cadreCode}`;
+    cadreId = String(created[0]!.id);
+  }
+  const existing = await tx`
+    select id from job_titles
+     where tenant_id = ${tenantId}
+       and (code = ${title.code} or catalogue_code = ${title.code} or name = ${title.name})
+     limit 1
+  `;
+  if (existing[0]) {
+    const id = String(existing[0].id);
+    await tx`
+      update job_titles set cadre_id = ${cadreId}, code = ${title.code}, catalogue_code = ${title.code},
+        seniority = ${title.seniority}, requires_credential = ${title.requiresCredential},
+        privilege_codes = ${title.privilegeCodes}, suggested_system_roles = ${title.suggestedSystemRoles}
+       where id = ${id} and tenant_id = ${tenantId}
+    `;
+    return id;
+  }
+  const id = crypto.randomUUID();
+  await tx`
+    insert into job_titles (id, tenant_id, name, cadre_id, code, catalogue_code, seniority,
+      requires_credential, privilege_codes, suggested_system_roles)
+    values (${id}, ${tenantId}, ${title.name}, ${cadreId}, ${title.code}, ${title.code}, ${title.seniority},
+      ${title.requiresCredential}, ${title.privilegeCodes}, ${title.suggestedSystemRoles})
+  `;
+  return id;
 }
 
 async function uniqueStaffReference(tx: Parameters<Parameters<typeof withStaffActor>[1]>[0]): Promise<string> {
@@ -42,7 +106,7 @@ organizationRoutes.get("/organization/departments", async (c) => {
   requireStaff(c);
   const auth = c.get("auth")!;
   const rows = await withStaffActor(c, async (tx) => tx`
-    select d.id, d.code, d.name, d.department_type, d.parent_department_id, d.description, d.enabled, d.sort_order,
+    select d.id, d.code, d.name, d.department_type, d.parent_department_id, d.description, d.enabled, d.sort_order, d.catalogue_code,
       (select count(*)::int from units u where u.department_id = d.id) as unit_count,
       (select count(*)::int from department_assignments a where a.department_id = d.id and a.ends_on is null) as staff_count
       from departments d where d.tenant_id = ${auth.activeTenant!.id}
@@ -117,10 +181,16 @@ organizationRoutes.post("/organization/catalogue", async (c) => {
       if (!departmentId) {
         departmentId = crypto.randomUUID();
         await tx`
-          insert into departments (id, tenant_id, code, name, department_type, sort_order, created_by)
-          values (${departmentId}, ${auth.activeTenant!.id}, ${department.code}, ${department.name}, ${department.type}, ${index}, ${auth.user.id})
+          insert into departments (id, tenant_id, code, name, department_type, sort_order, created_by, catalogue_code)
+          values (${departmentId}, ${auth.activeTenant!.id}, ${department.code}, ${department.name}, ${department.type},
+            ${index}, ${auth.user.id}, ${catalogueCodeForDefaultDepartment(department.code)})
         `;
         departments += 1;
+      } else {
+        await tx`
+          update departments set catalogue_code = ${catalogueCodeForDefaultDepartment(department.code)}
+           where id = ${departmentId} and catalogue_code is null
+        `;
       }
       for (const unit of department.units) {
         const found = await tx`
@@ -138,12 +208,20 @@ organizationRoutes.post("/organization/catalogue", async (c) => {
         const found = await tx`
           select id from cadres where tenant_id = ${auth.activeTenant!.id} and code = ${cadre.code}
         `;
+        const catalogueCadre = UGANDA_CADRES.find((item) => item.code === cadre.code);
         if (!found[0]) {
           await tx`
-            insert into cadres (id, tenant_id, code, name, category)
-            values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${cadre.code}, ${cadre.name}, ${cadre.category})
+            insert into cadres (id, tenant_id, code, name, category, catalogue_code, regulator_codes, requires_registration)
+            values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${cadre.code}, ${cadre.name}, ${cadre.category},
+              ${catalogueCadre ? cadre.code : null}, ${catalogueCadre?.regulatorCodes ?? []}, ${catalogueCadre?.requiresRegistration ?? false})
           `;
           cadres += 1;
+        } else if (catalogueCadre) {
+          await tx`
+            update cadres set catalogue_code = ${cadre.code}, regulator_codes = ${catalogueCadre.regulatorCodes},
+              requires_registration = ${catalogueCadre.requiresRegistration}
+             where id = ${found[0].id} and catalogue_code is null
+          `;
         }
       }
     }
@@ -362,47 +440,170 @@ organizationRoutes.post("/workforce/onboarding", async (c) => {
   const auth = c.get("auth")!;
   const body = await parseJson(c, onboardingStartSchema);
   const result = await withStaffActor(c, async (tx) => {
-    const staffId = crypto.randomUUID();
     const engagementId = crypto.randomUUID();
     const caseId = crypto.randomUUID();
-    const staffRef = await uniqueStaffReference(tx);
-    if (body.jobTitleId) {
-      const title = await tx`select id from job_titles where id = ${body.jobTitleId} and tenant_id = ${auth.activeTenant!.id}`;
-      if (!title[0]) throw new ValidationError("The selected job title does not exist");
-    }
-    if (body.primaryDepartmentId) {
-      const department = await tx`select id from departments where id = ${body.primaryDepartmentId} and tenant_id = ${auth.activeTenant!.id}`;
-      if (!department[0]) throw new ValidationError("The selected department does not exist");
-    }
-    await tx`
-      insert into staff_persons (id, staff_ref, given_name, family_name, preferred_name, professional_display_name, email, phone, preferred_language)
-      values (${staffId}, ${staffRef}, ${body.givenName}, ${body.familyName}, ${body.preferredName || null},
-        ${body.professionalDisplayName || null}, ${body.email || null}, ${body.phone || null}, ${body.preferredLanguage})
+    const published = await tx`
+      select version, content from onboarding_catalogues
+       where country_code = 'UG' and status = 'published' order by version desc limit 1
     `;
+    const catalogue = (published[0]?.content as OnboardingCatalogue | undefined) ?? UGANDA_ONBOARDING_CATALOGUE;
+    const catalogueVersion = Number(published[0]?.version ?? catalogue.version);
+    const selection = body.catalogueTitleCode
+      ? resolveCatalogueTitle(catalogue, body.catalogueTitleCode, body.catalogueCadreCode || null)
+      : null;
+    if (selection && body.requestedSystemRoles.length) {
+      const allowed = new Set(selection.requestedSystemRoles);
+      const unexpected = body.requestedSystemRoles.filter((role) => !allowed.has(role));
+      if (unexpected.length) {
+        throw new ValidationError("Requested system roles are not suggested by the selected catalogue title", { unexpected });
+      }
+    }
+    const unknownSpecialties = body.specialtyCodes.filter((code) => !catalogue.specialties.some((specialty) => specialty.code === code));
+    if (unknownSpecialties.length) throw new ValidationError("Unknown catalogue specialty", { unknownSpecialties });
+    const departmentIds = [...new Set([body.primaryDepartmentId, ...body.additionalDepartmentIds].filter((id): id is string => Boolean(id)))];
+    const departments = new Map<string, { id: string; code: string; catalogue_code: string | null }>();
+    for (const departmentId of departmentIds) {
+      const department = await requireRows(await tx`
+        select id, code, catalogue_code from departments where id = ${departmentId} and tenant_id = ${auth.activeTenant!.id}
+      `, "The selected department does not exist");
+      if (selection) {
+        const departmentCode = String(department.catalogueCode ?? department.code ?? "");
+        if (department.catalogueCode && !selection.departmentCodes.includes(departmentCode)) {
+          throw new ValidationError(`The selected department is not listed for ${selection.title.name}`, {
+            allowedDepartmentCodes: selection.departmentCodes,
+          });
+        }
+      }
+      departments.set(departmentId, department as unknown as { id: string; code: string; catalogue_code: string | null });
+    }
+    let jobTitleId = body.jobTitleId ?? null;
+    if (jobTitleId) {
+      const title = await requireRows(await tx`
+        select id, code, catalogue_code from job_titles where id = ${jobTitleId} and tenant_id = ${auth.activeTenant!.id}
+      `, "The selected job title does not exist");
+      if (selection) {
+        const selectedCode = String(title.catalogueCode ?? title.code ?? "");
+        if (selectedCode && selectedCode !== selection.title.code) {
+          throw new ValidationError("The selected job title does not match the catalogue title");
+        }
+      }
+      jobTitleId = String(title.id);
+    } else if (selection) {
+      jobTitleId = await ensureCatalogueJobTitle(tx, auth.activeTenant!.id, selection.title);
+    }
+    let customTitleRequest: { id: string; status: string; approvedJobTitleId: string | null } | null = null;
+    if (body.customTitleRequestId) {
+      const request = await requireRows(await tx`
+        select id, status, approved_job_title_id from job_title_requests
+         where id = ${body.customTitleRequestId} and tenant_id = ${auth.activeTenant!.id}
+      `, "Custom title request not found");
+      if (!["pending", "approved"].includes(String(request.status))) {
+        throw new ValidationError("The custom title request has already been rejected");
+      }
+      customTitleRequest = {
+        id: String(request.id),
+        status: String(request.status),
+        approvedJobTitleId: request.approvedJobTitleId ? String(request.approvedJobTitleId) : null,
+      };
+      if (selection) throw new ValidationError("A catalogue title and a custom title request cannot both be selected");
+      if (customTitleRequest.approvedJobTitleId) jobTitleId = customTitleRequest.approvedJobTitleId;
+    }
+    const cadreCode = selection?.cadreCode ?? body.catalogueCadreCode ?? null;
+    const policies = cadreCode
+      ? await tx`
+          select cadre_code, credential_type, regulator_code, requires_document, requires_licence, review_required
+            from facility_credential_policies
+           where tenant_id = ${auth.activeTenant!.id} and active and (cadre_code = ${cadreCode} or cadre_code is null)
+        `
+      : [];
+    let staffId: string;
+    let staffRef: string;
+    let reusedStaffPerson = false;
+    if (body.staffPersonId) {
+      const staff = await requireRows(await tx`
+        select id, staff_ref from staff_persons where id = ${body.staffPersonId}
+      `, "The existing staff person was not found");
+      staffId = String(staff.id);
+      staffRef = String(staff.staffRef);
+      reusedStaffPerson = true;
+      const duplicate = await tx`
+        select id from engagements
+         where tenant_id = ${auth.activeTenant!.id} and staff_person_id = ${staffId}
+           and status not in ('ended','terminated')
+         limit 1
+      `;
+      if (duplicate.length) throw new ConflictError("This staff person already has an active or pending affiliation at this facility");
+    } else {
+      staffId = crypto.randomUUID();
+      staffRef = await uniqueStaffReference(tx);
+      await tx`
+        insert into staff_persons (id, staff_ref, given_name, family_name, preferred_name, professional_display_name, email, phone, preferred_language)
+        values (${staffId}, ${staffRef}, ${body.givenName}, ${body.familyName}, ${body.preferredName || null},
+          ${body.professionalDisplayName || null}, ${body.email || null}, ${body.phone || null}, ${body.preferredLanguage})
+      `;
+    }
     await tx`
       insert into engagements (id, tenant_id, staff_person_id, employee_number, engagement_type, employer, start_date, end_date,
         job_title_id, grade, status)
       values (${engagementId}, ${auth.activeTenant!.id}, ${staffId}, ${body.employeeNumber || null}, ${body.engagementType},
-        ${body.employer || null}, ${body.startDate}, ${body.endDate ?? null}, ${body.jobTitleId ?? null}, ${body.grade || null}, 'pending')
+        ${body.employer || null}, ${body.startDate}, ${body.endDate ?? null}, ${jobTitleId}, ${body.grade || null}, 'pending')
     `;
-    if (body.primaryDepartmentId) {
+    for (const [index, departmentId] of departmentIds.entries()) {
+      const isPrimary = departmentId === body.primaryDepartmentId;
       await tx`
         insert into department_assignments (id, tenant_id, engagement_id, department_id, unit_id, is_primary, appointment_title, starts_on, created_by)
-        values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${engagementId}, ${body.primaryDepartmentId},
-          ${body.primaryUnitId ?? null}, true, ${body.appointmentTitle || null}, ${body.startDate}, ${auth.user.id})
+        values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${engagementId}, ${departmentId},
+          ${isPrimary ? body.primaryUnitId ?? null : null}, ${isPrimary || (index === 0 && !body.primaryDepartmentId)},
+          ${body.appointmentTitle || null}, ${body.startDate}, ${auth.user.id})
       `;
     }
+    const requestedSystemRoles = body.requestedSystemRoles.length
+      ? body.requestedSystemRoles
+      : selection?.requestedSystemRoles ?? [];
     await tx`
-      insert into onboarding_cases (id, tenant_id, staff_person_id, engagement_id, status, current_step, data, created_by)
+      insert into onboarding_cases (id, tenant_id, staff_person_id, engagement_id, status, current_step, data, created_by,
+        path, catalogue_country_code, catalogue_version, catalogue_title_code, catalogue_cadre_code,
+        regulator_codes, credential_required, requested_system_roles, specialty_codes, custom_title_request_id,
+        credential_policy_snapshot)
       values (${caseId}, ${auth.activeTenant!.id}, ${staffId}, ${engagementId}, 'invited', 1,
-        ${tx.json({ cadreId: body.cadreId ?? null, source: "workforce-onboarding" } as never)}, ${auth.user.id})
+        ${tx.json({
+          cadreId: body.cadreId ?? null,
+          source: "workforce-onboarding",
+          staffPersonReused: reusedStaffPerson,
+          additionalDepartmentIds: departmentIds.filter((id) => id !== body.primaryDepartmentId),
+          catalogue: selection ? { countryCode: "UG", version: catalogueVersion, title: selection.title, path: selection.path } : null,
+          customTitleRequest: customTitleRequest
+            ? { id: customTitleRequest.id, status: customTitleRequest.status, grantsNothing: true }
+            : null,
+        } as never)}, ${auth.user.id}, ${selection?.path ?? "administrative"}, ${selection ? "UG" : null},
+        ${selection ? catalogueVersion : null}, ${selection?.title.code ?? null}, ${cadreCode},
+        ${selection?.regulatorCodes ?? []}, ${selection?.credentialRequired ?? false}, ${requestedSystemRoles},
+        ${body.specialtyCodes}, ${body.customTitleRequestId ?? null},
+        ${tx.json({ catalogueVersion, cadreCode, policies } as never)})
     `;
+    if (customTitleRequest) {
+      await tx`
+        update job_title_requests set onboarding_case_id = ${caseId}, updated_at = now()
+         where id = ${customTitleRequest.id} and requested_by = ${auth.user.id} and status = 'pending'
+      `;
+    }
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "workforce.onboarding.start", {
       resourceType: "OnboardingCase", resourceId: caseId,
-      metadata: { staffRef, engagementId, engagementType: body.engagementType, departmentId: body.primaryDepartmentId ?? null },
+      metadata: {
+        staffRef, engagementId, engagementType: body.engagementType,
+        departmentId: body.primaryDepartmentId ?? null,
+        additionalDepartmentIds: departmentIds.filter((id) => id !== body.primaryDepartmentId),
+        reusedStaffPerson,
+        path: selection?.path ?? "administrative",
+        catalogueTitleCode: selection?.title.code ?? null,
+        catalogueVersion: selection ? catalogueVersion : null,
+        specialtyCodes: body.specialtyCodes,
+        customTitleRequestId: body.customTitleRequestId ?? null,
+        credentialPolicySnapshotRows: policies.length,
+      },
     }));
     await writeOutbox(tx, { tenantId: auth.activeTenant!.id, eventType: "workforce.onboarding.started", aggregateId: caseId, payload: { staffRef } });
-    return { caseId, staffId, engagementId, staffRef };
+    return { caseId, staffId, engagementId, staffRef, path: selection?.path ?? "administrative", requestedSystemRoles };
   });
   return c.json({ ok: true, onboarding: result }, 201);
 });

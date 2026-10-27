@@ -8,7 +8,18 @@ import {
   isPatientPublicId,
   nextEntryStatus,
   randomPatientPublicId,
+  DEFAULT_PRIVILEGES,
+  UGANDA_CATALOGUE_VERSION,
+  UGANDA_ONBOARDING_CATALOGUE,
+  catalogueIntegrityIssues,
+  isClinicalCadre,
+  jobTitleByCode,
+  onboardingPathForTitle,
+  regulatorCodesForCadre,
+  searchCatalogue,
+  titleDepartmentCodes,
 } from "@medveris/domain";
+import { ROLES } from "@medveris/authz";
 
 describe("patient public identifier", () => {
   it("is randomized, non-sequential and matches the transcription-safe alphabet", () => {
@@ -84,5 +95,43 @@ describe("follow-up and referral tracking transitions", () => {
     expect(canTransitionReferral("accepted", "completed")).toBe(true);
     expect(canTransitionReferral("declined", "completed")).toBe(false);
     expect(canTransitionReferral("completed", "cancelled")).toBe(false);
+  });
+});
+
+describe("Uganda onboarding catalogue", () => {
+  it("is internally consistent and references only known privileges and roles", () => {
+    expect(catalogueIntegrityIssues(UGANDA_ONBOARDING_CATALOGUE, {
+      knownPrivilegeCodes: DEFAULT_PRIVILEGES.map((item) => item.code),
+      knownSystemRoles: ROLES,
+    })).toEqual([]);
+  });
+
+  it("keeps a version, country and non-legal notice", () => {
+    expect(UGANDA_ONBOARDING_CATALOGUE.countryCode).toBe("UG");
+    expect(UGANDA_ONBOARDING_CATALOGUE.version).toBe(UGANDA_CATALOGUE_VERSION);
+    expect(UGANDA_ONBOARDING_CATALOGUE.notice.toLowerCase()).toContain("not an exhaustive");
+  });
+
+  it("maps clinical, nursing, support and administrative titles to distinct onboarding paths", () => {
+    const path = (code: string) => onboardingPathForTitle(UGANDA_ONBOARDING_CATALOGUE, jobTitleByCode(UGANDA_ONBOARDING_CATALOGUE, code)!);
+    expect(path("MED-OFF-STD")).toBe("clinician");
+    expect(path("MIDWIFE-STD")).toBe("nurse");
+    expect(path("HOUSEKEEPER-STD")).toBe("support");
+    expect(path("HR-OFF-STD")).toBe("administrative");
+    expect(path("HOSP-MGR-STD")).toBe("facility_admin");
+  });
+
+  it("returns department and regulator metadata for a selected title", () => {
+    expect(titleDepartmentCodes(UGANDA_ONBOARDING_CATALOGUE, "MED-OFF-STD")).toContain("OPD");
+    expect(regulatorCodesForCadre(UGANDA_ONBOARDING_CATALOGUE, "MED-OFF")).toEqual(["UMDPC"]);
+    expect(isClinicalCadre(UGANDA_ONBOARDING_CATALOGUE, "MIDWIFE")).toBe(true);
+    expect(isClinicalCadre(UGANDA_ONBOARDING_CATALOGUE, "HOUSEKEEPER")).toBe(false);
+  });
+
+  it("searches by text, cadre and department without exposing unreviewed free text", () => {
+    const result = searchCatalogue(UGANDA_ONBOARDING_CATALOGUE, { q: "midwife" });
+    expect(result.titles.some((title) => title.code === "MIDWIFE-STD")).toBe(true);
+    const byDepartment = searchCatalogue(UGANDA_ONBOARDING_CATALOGUE, { departmentCode: "THEATRE" });
+    expect(byDepartment.titles.every((title) => title.departmentCodes.includes("THEATRE"))).toBe(true);
   });
 });

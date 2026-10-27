@@ -286,20 +286,33 @@ export const credentialSchema = z.object({
   subjectType: z.enum(["practitioner", "facility"]),
   subjectUserId: uuidSchema.optional().nullable(),
   subjectTenantId: uuidSchema.optional().nullable(),
+  onboardingCaseId: uuidSchema.optional().nullable(),
   credentialType: z.string().trim().min(1).max(120),
   issuer: z.string().trim().min(1).max(300),
   jurisdiction: z.string().trim().min(1).max(120),
+  regulatorCode: z.string().trim().max(40).optional().or(z.literal("")),
+  registrationNumber: z.string().trim().max(120).optional().or(z.literal("")),
+  licenceNumber: z.string().trim().max(120).optional().or(z.literal("")),
   credentialNumber: z.string().trim().min(1).max(120),
+  qualifications: z.string().trim().max(2000).optional().or(z.literal("")),
+  specialtyCredentials: z.array(z.string().trim().min(1).max(160)).max(20).default([]),
   scope: z.string().trim().max(1000).optional().or(z.literal("")),
   issuedOn: z.string().date(),
   expiresOn: z.string().date(),
-  evidenceUploadId: uuidSchema,
+  evidenceUploadId: uuidSchema.optional().nullable(),
 });
 
 export const credentialDecisionSchema = z.object({
   decision: z.enum(["verified", "rejected"]),
   reason: z.string().trim().min(10).max(2000),
   checksPerformed: z.string().trim().min(5).max(3000),
+  expiresOn: z.string().date().optional().nullable(),
+});
+
+export const facilityCredentialDecisionSchema = z.object({
+  decision: z.enum(["verified", "rejected", "suspended", "expired"]),
+  reason: z.string().trim().min(10).max(2000),
+  checksPerformed: z.string().trim().max(3000).optional().or(z.literal("")),
   expiresOn: z.string().date().optional().nullable(),
 });
 
@@ -929,7 +942,71 @@ export const onboardingStartSchema = z.object({
   cadreId: uuidSchema.optional().nullable(),
   primaryDepartmentId: uuidSchema.optional().nullable(),
   primaryUnitId: uuidSchema.optional().nullable(),
+  additionalDepartmentIds: z.array(uuidSchema).max(20).default([]),
   appointmentTitle: z.string().trim().max(160).optional().or(z.literal("")),
+  catalogueTitleCode: z.string().trim().max(80).optional().or(z.literal("")),
+  catalogueCadreCode: z.string().trim().max(80).optional().or(z.literal("")),
+  specialtyCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+  customTitleRequestId: uuidSchema.optional().nullable(),
+  staffPersonId: uuidSchema.optional().nullable(),
+  catalogueVersion: z.number().int().positive().optional(),
+  requestedSystemRoles: z.array(roleSchema).max(5).default([]),
+});
+
+export const onboardingCataloguePublishSchema = z.object({
+  countryCode: z.string().trim().length(2).toUpperCase().default("UG"),
+  version: z.number().int().positive(),
+  notice: z.string().trim().max(4000).optional(),
+  content: z.unknown().optional(),
+  status: z.enum(["draft", "published"]).default("published"),
+});
+
+export const onboardingCatalogueDraftPublishSchema = z.object({
+  reason: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const customTitleRequestSchema = z.object({
+  proposedName: z.string().trim().min(2).max(160),
+  cadreCode: z.string().trim().max(80).optional().or(z.literal("")),
+  departmentCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+  specialtyCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+  explanation: z.string().trim().min(10).max(2000),
+  onboardingCaseId: uuidSchema.optional().nullable(),
+});
+
+export const customTitleDecisionSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  reason: z.string().trim().min(10).max(2000),
+  approvedName: z.string().trim().min(2).max(160).optional(),
+});
+
+export const facilityCredentialPolicySchema = z.object({
+  cadreCode: z.string().trim().max(80).optional().or(z.literal("")),
+  credentialType: z.string().trim().min(2).max(120),
+  regulatorCode: z.string().trim().max(40).optional().or(z.literal("")),
+  requiresDocument: z.boolean().default(true),
+  requiresLicence: z.boolean().default(true),
+  reviewRequired: z.boolean().default(true),
+  active: z.boolean().default(true),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const proxyScopesSchema = z.enum(["profile", "appointments", "records", "consent"]);
+
+export const proxyRequestSchema = z.object({
+  proxyEmail: emailSchema.optional(),
+  proxyUserId: uuidSchema.optional(),
+  relationship: z.string().trim().min(2).max(80),
+  scopes: z.array(proxyScopesSchema).min(1).max(4),
+  expiresAt: z.string().datetime({ offset: true }).optional().nullable(),
+}).refine((value) => Boolean(value.proxyEmail || value.proxyUserId), {
+  message: "A proxy email or user identifier is required",
+  path: ["proxyEmail"],
+});
+
+export const proxyDecisionSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  reason: z.string().trim().min(10).max(1000),
 });
 
 export const onboardingUpdateSchema = z.object({
@@ -1609,4 +1686,271 @@ export const inventoryAssetEventSchema = z.object({
   nextMaintenanceOn: z.string().date().optional().nullable(),
   nextCalibrationOn: z.string().date().optional().nullable(),
   expectedVersion: z.number().int().min(1),
+});
+
+// Public provider directory, discovery and claims.
+export const facilityTypeSchema = z.enum([
+  "hospital","clinic","health-centre","diagnostic-centre","pharmacy",
+  "dental","eye","mental-health","rehabilitation","maternity","other",
+]);
+export const directoryBranchSchema = z.object({
+  name: z.string().trim().min(2).max(200),
+  isPrimary: z.boolean().default(false),
+  addressLine1: z.string().trim().max(300).optional().or(z.literal("")),
+  addressLine2: z.string().trim().max(300).optional().or(z.literal("")),
+  city: z.string().trim().max(160).optional().or(z.literal("")),
+  region: z.string().trim().max(160).optional().or(z.literal("")),
+  district: z.string().trim().max(160).optional().or(z.literal("")),
+  locality: z.string().trim().max(160).optional().or(z.literal("")),
+  country: z.string().trim().min(2).max(120),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
+  coordinateSource: z.enum(["unknown","facility-supplied","authorized-correction","third-party-derived","map-pin"]).default("unknown"),
+  locationStatus: z.enum(["unconfirmed","confirmed","disputed"]).default("unconfirmed"),
+  publicPhone: z.string().trim().max(60).optional().or(z.literal("")),
+  publicEmail: z.string().email().max(320).optional().or(z.literal("")),
+  website: z.string().url().max(2000).optional().or(z.literal("")),
+  openingHours: z.record(z.string(), z.string()).default({}),
+  openingExceptions: z.array(z.object({ date: z.string().date(), note: z.string().trim().max(500) })).max(100).default([]),
+  accessibility: z.record(z.string(), z.union([z.boolean(), z.string().max(500)])).default({}),
+  status: z.enum(["active","closed","relocated"]).default("active"),
+});
+
+export const directoryFacilityCreateSchema = z.object({
+  name: z.string().trim().min(2).max(300),
+  slug: z.string().trim().min(2).max(160).regex(/^[a-z0-9][a-z0-9-]+$/).optional(),
+  facilityType: facilityTypeSchema,
+  description: z.string().trim().max(4000).optional().or(z.literal("")),
+  country: z.string().trim().min(2).max(120),
+  region: z.string().trim().max(160).optional().or(z.literal("")),
+  district: z.string().trim().max(160).optional().or(z.literal("")),
+  locality: z.string().trim().max(160).optional().or(z.literal("")),
+  publicPhone: z.string().trim().max(60).optional().or(z.literal("")),
+  publicEmail: z.string().email().max(320).optional().or(z.literal("")),
+  website: z.string().url().max(2000).optional().or(z.literal("")),
+  medverisParticipation: z.enum(["none","direct","connected"]).default("none"),
+  sourceKind: z.enum(["authoritative-import","facility-submitted","claim","medveris-registered"]).default("facility-submitted"),
+  sourceName: z.string().trim().max(300).optional().or(z.literal("")),
+  sourceUrl: z.string().url().max(2000).optional().or(z.literal("")),
+  sourceLicense: z.string().trim().max(1000).optional().or(z.literal("")),
+  sourceRetrievedOn: z.string().date().optional().nullable(),
+  nextConfirmationOn: z.string().date().optional().nullable(),
+  branches: z.array(directoryBranchSchema).max(50).default([]),
+  services: z.array(z.object({
+    code: z.string().trim().min(2).max(80),
+    name: z.string().trim().min(2).max(300),
+    category: z.enum(["outpatient","inpatient","emergency","maternal","child-health","diagnostics","pharmacy","dental","eye","mental-health","rehabilitation","surgery","other"]),
+    description: z.string().trim().max(2000).optional().or(z.literal("")),
+    availabilityNote: z.string().trim().max(500).optional().or(z.literal("")),
+    publicContact: z.string().trim().max(200).optional().or(z.literal("")),
+  })).max(100).default([]),
+  capabilities: z.array(z.object({
+    code: z.string().trim().min(2).max(80),
+    name: z.string().trim().min(2).max(300),
+    status: z.enum(["declared","documented","verified","suspended"]).default("declared"),
+    evidenceSource: z.string().trim().max(1000).optional().or(z.literal("")),
+  })).max(100).default([]),
+});
+
+export const directoryFacilityUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(300).optional(),
+  description: z.string().trim().max(4000).optional().or(z.literal("")),
+  publicPhone: z.string().trim().max(60).optional().or(z.literal("")),
+  publicEmail: z.string().email().max(320).optional().or(z.literal("")),
+  website: z.string().url().max(2000).optional().or(z.literal("")),
+  version: z.number().int().min(1),
+});
+
+export const directoryServiceSchema = z.object({
+  code: z.string().trim().min(2).max(80),
+  name: z.string().trim().min(2).max(300),
+  category: z.enum(["outpatient","inpatient","emergency","maternal","child-health","diagnostics","pharmacy","dental","eye","mental-health","rehabilitation","surgery","other"]),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
+  availabilityNote: z.string().trim().max(500).optional().or(z.literal("")),
+  publicContact: z.string().trim().max(200).optional().or(z.literal("")),
+  branchId: uuidSchema.optional().nullable(),
+});
+
+export const directoryCapabilitySchema = z.object({
+  code: z.string().trim().min(2).max(80),
+  name: z.string().trim().min(2).max(300),
+  status: z.enum(["declared","documented","verified","suspended"]).default("declared"),
+  evidenceSource: z.string().trim().max(1000).optional().or(z.literal("")),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const directoryClaimSchema = z.object({
+  representativeName: z.string().trim().min(2).max(200),
+  roleTitle: z.string().trim().min(2).max(160),
+  email: z.string().email().max(320),
+  phone: z.string().trim().max(60).optional().or(z.literal("")),
+  authorityBasis: z.string().trim().min(10).max(2000),
+  evidence: z.string().trim().max(4000).optional().or(z.literal("")),
+});
+
+export const directoryClaimDecisionSchema = z.object({
+  decision: z.enum(["verify","reject","withdraw"]),
+  reason: z.string().trim().min(5).max(2000),
+});
+
+export const directoryModerationSchema = z.object({
+  decision: z.enum(["publish","suspend","archive","approve-profile"]),
+  note: z.string().trim().min(5).max(2000),
+});
+
+export const directoryDuplicateReviewSchema = z.object({
+  decision: z.enum(["merge","reject"]),
+  note: z.string().trim().min(5).max(2000),
+});
+
+export const directoryReportSchema = z.object({
+  reportType: z.enum(["abuse","closed","relocated","location","other"]),
+  detail: z.string().trim().min(10).max(4000),
+  contact: z.string().trim().max(320).optional().or(z.literal("")),
+});
+
+export const directoryReportResolutionSchema = z.object({
+  decision: z.enum(["resolved","dismissed"]),
+  resolution: z.string().trim().min(5).max(2000),
+});
+
+export const directoryConfirmationSchema = z.object({
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+  nextDueOn: z.string().date().optional().nullable(),
+});
+
+export const directoryEditRequestSchema = z.object({
+  payload: z.record(z.string(), z.unknown()),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const directoryEditDecisionSchema = z.object({
+  decision: z.enum(["approve","reject"]),
+  reason: z.string().trim().min(5).max(2000),
+});
+
+// Sponsored placement and configurable packages.
+export const sponsoredPlacementSurfaceSchema = z.enum(["search","featured-card","map","category"]);
+export const sponsoredPackageSchema = z.object({
+  code: z.string().trim().min(2).max(80).regex(/^[A-Za-z0-9][A-Za-z0-9._-]+$/),
+  name: z.string().trim().min(2).max(200),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
+  price: z.number().min(0).max(100000000),
+  currency: z.string().trim().length(3).regex(/^[A-Z]{3}$/),
+  durationDays: z.number().int().min(1).max(366),
+  eligibleCountries: z.array(z.string().trim().min(2).max(120)).max(50).default([]),
+  eligibleFacilityTypes: z.array(facilityTypeSchema).max(30).default([]),
+  eligibleServiceCategories: z.array(z.string().trim().min(2).max(80)).max(50).default([]),
+  placementSurface: sponsoredPlacementSurfaceSchema,
+  sponsoredSlots: z.number().int().min(1).max(20).default(1),
+  maxActivePerFacility: z.number().int().min(1).max(20).default(1),
+  requirements: z.string().trim().max(2000).optional().or(z.literal("")),
+  cancellationPolicy: z.string().trim().max(2000).optional().or(z.literal("")),
+  startsOn: z.string().date().optional().nullable(),
+  endsOn: z.string().date().optional().nullable(),
+  active: z.boolean().default(true),
+});
+
+export const sponsoredCampaignSchema = z.object({
+  packageId: uuidSchema,
+  facilityId: uuidSchema,
+  branchId: uuidSchema.optional().nullable(),
+  scopeCountry: z.string().trim().max(120).optional().or(z.literal("")),
+  scopeRegion: z.string().trim().max(160).optional().or(z.literal("")),
+  scopeDistrict: z.string().trim().max(160).optional().or(z.literal("")),
+  scopeLocality: z.string().trim().max(160).optional().or(z.literal("")),
+  serviceCategories: z.array(z.string().trim().min(2).max(80)).max(50).default([]),
+  startsOn: z.string().date(),
+  endsOn: z.string().date(),
+});
+
+export const sponsorshipDecisionSchema = z.object({
+  decision: z.enum(["approve","reject"]),
+  note: z.string().trim().min(5).max(2000),
+});
+
+export const promotionPaymentConfirmSchema = z.object({
+  providerReference: z.string().trim().min(2).max(300),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const promotionPaymentInitiateSchema = z.object({
+  method: z.enum(["manual","bank-transfer","mobile-money","card"]).default("manual"),
+  provider: z.string().trim().max(120).optional().or(z.literal("")),
+  providerReference: z.string().trim().max(300).optional().or(z.literal("")),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const directoryEventSchema = z.object({
+  eventType: z.enum(["impression","detail-open","pin-interaction","contact-click","directions-click","booking-initiation"]),
+  facilityPublicId: z.string().trim().min(2).max(80),
+  campaignId: uuidSchema.optional().nullable(),
+  surface: z.enum(["search","featured-card","map","category","detail"]).default("search"),
+});
+
+// Hospital integration clients and API products.
+export const apiProductSchema = z.object({
+  code: z.string().trim().min(2).max(80).regex(/^[a-z0-9][a-z0-9._-]+$/),
+  name: z.string().trim().min(2).max(200),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
+  serviceFamily: z.string().trim().min(2).max(120),
+  dataClassification: z.enum(["none","aggregate","directory","clinical"]),
+  requiredScopes: z.array(z.string().trim().min(2).max(160)).max(30).default([]),
+  rateLimitPerMinute: z.number().int().min(1).max(10000).default(60),
+  dailyQuota: z.number().int().min(1).max(10000000).default(10000),
+  supportLevel: z.string().trim().max(120).default("standard"),
+  sandboxAvailable: z.boolean().default(true),
+  commercialStatus: z.enum(["included","undecided","paid"]).default("undecided"),
+  enabled: z.boolean().default(true),
+});
+
+export const integrationApplicationSchema = z.object({
+  name: z.string().trim().min(2).max(200),
+  organization: z.string().trim().min(2).max(300),
+  tenantId: uuidSchema.optional().nullable(),
+  callbackUrl: z.string().url().max(2000).optional().or(z.literal("")),
+  technicalContact: z.string().trim().min(3).max(320),
+  privacyContact: z.string().trim().max(320).optional().or(z.literal("")),
+  incidentContact: z.string().trim().max(320).optional().or(z.literal("")),
+  existingVendor: z.string().trim().max(200).optional().or(z.literal("")),
+  intendedUse: z.string().trim().min(10).max(4000),
+  patientPopulations: z.array(z.string().trim().min(2).max(200)).max(20).default([]),
+  processingLocations: z.array(z.string().trim().min(2).max(200)).max(20).default([]),
+  supportedStandards: z.array(z.string().trim().min(2).max(120)).max(20).default([]),
+  legalBasis: z.string().trim().max(2000).optional().or(z.literal("")),
+  dataSharingNotes: z.string().trim().max(4000).optional().or(z.literal("")),
+  products: z.array(z.string().trim().min(2).max(80)).min(1).max(20),
+});
+
+export const integrationClientDecisionSchema = z.object({
+  decision: z.enum(["activate","reject","suspend","revoke"]),
+  reason: z.string().trim().min(5).max(2000),
+});
+
+export const integrationTokenSchema = z.object({
+  grant_type: z.literal("client_credentials"),
+  client_id: z.string().trim().min(4).max(200),
+  client_secret: z.string().trim().min(8).max(500),
+  scope: z.string().trim().max(2000).optional(),
+});
+
+export const partnerPatientMatchSchema = z.object({
+  givenName: z.string().trim().min(1).max(160),
+  familyName: z.string().trim().min(1).max(160),
+  dateOfBirth: z.string().date(),
+  sex: z.string().trim().max(30).optional().or(z.literal("")),
+  publicId: z.string().trim().max(80).optional().or(z.literal("")),
+  externalSystem: z.string().trim().max(120).optional().or(z.literal("")),
+  externalIdentifier: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
+export const partnerPatientLinkSchema = z.object({
+  patientId: uuidSchema,
+  externalSystem: z.string().trim().min(2).max(120),
+  externalIdentifier: z.string().trim().min(1).max(200),
+  sourceVersion: z.string().trim().max(120).optional().or(z.literal("")),
+});
+
+export const partnerPatientUnlinkSchema = z.object({
+  reason: z.string().trim().min(5).max(2000),
 });

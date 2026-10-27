@@ -2,7 +2,15 @@ import { createHash } from "node:crypto";
 import { createSql, setLocalContext } from "@medveris/db";
 import type { Tx } from "@medveris/db";
 import { encryptSecret, generateTotpSecret, hashPassword } from "@medveris/auth";
-import { DEFAULT_DEPARTMENTS, DEFAULT_PRIVILEGES, canonicalJson, contentDigest } from "@medveris/domain";
+import {
+  DEFAULT_DEPARTMENTS,
+  DEFAULT_PRIVILEGES,
+  UGANDA_CADRES,
+  UGANDA_ONBOARDING_CATALOGUE,
+  canonicalJson,
+  catalogueCodeForDefaultDepartment,
+  contentDigest,
+} from "@medveris/domain";
 import { hmacHex } from "@medveris/auth";
 import { loadConfig } from "../apps/api/src/config.js";
 import { assertSyntheticEnvironment, loadLocalEnv, requireEnv } from "./lib.js";
@@ -85,7 +93,13 @@ async function context(tx: Tx, tenantId: string | null, userId: string | null, r
   await setLocalContext(tx, { tenantId, userId, patientId, actorKind, roles });
 }
 
+async function platformContext(tx: Tx, userId: string | null) {
+  await setLocalContext(tx, { userId, actorKind: "staff", platformRole: "platform_operator" });
+}
+
 const passwordHash = await hashPassword(PASSWORD);
+const ugandaCatalogueDigest = await contentDigest(UGANDA_ONBOARDING_CATALOGUE);
+const ugandaCadres = new Map(UGANDA_CADRES.map((cadre) => [cadre.code, cadre]));
 
 async function person(
   tx: Tx,
@@ -111,6 +125,10 @@ async function person(
 }
 
 try {
+  const [schema] = await sql`select to_regprocedure('app.current_tenant()') is not null as intact`;
+  if (!schema?.intact) {
+    throw new Error("app.current_tenant() is missing, so RLS policies are gone; recreate the synthetic schema before seeding (docs/LOCAL_DEVELOPMENT.md)");
+  }
   await sql.begin(async (tx) => {
     await tx`
       insert into tenants (id, name, slug, facility_type, city, country, email, phone, status, public_listing)
@@ -162,8 +180,25 @@ try {
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-quality-a")}, ${tenantA}, ${users.quality}, ${["quality"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
 
     await context(tx, tenantB, users.admin, ["facility_admin"], null);
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-admin-b")}, ${tenantB}, ${users.admin}, ${["facility_admin"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-clinician-b")}, ${tenantB}, ${users.clinicianB}, ${["clinician"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into platform_roles (user_id, role) values (${users.reviewer}, 'credential_reviewer') on conflict do nothing`;
+    await tx`insert into platform_roles (user_id, role) values (${users.reviewer}, 'platform_operator') on conflict do nothing`;
+
+    await platformContext(tx, users.reviewer);
+    await tx`
+      update onboarding_catalogues set status = 'retired', retired_by = ${users.reviewer}, retired_at = now()
+       where country_code = 'UG' and status = 'published' and version <> ${UGANDA_ONBOARDING_CATALOGUE.version}
+    `;
+    await tx`
+      insert into onboarding_catalogues (id, country_code, version, status, notice, content, content_digest, created_by, published_by, published_at)
+      values (${hashId("uganda-catalogue-v1")}, 'UG', ${UGANDA_ONBOARDING_CATALOGUE.version}, 'published',
+        ${UGANDA_ONBOARDING_CATALOGUE.notice}, ${tx.json(UGANDA_ONBOARDING_CATALOGUE as never)}, ${ugandaCatalogueDigest},
+        ${users.reviewer}, ${users.reviewer}, now())
+      on conflict (country_code, version) do update set status = 'published', notice = excluded.notice,
+        content = excluded.content, content_digest = excluded.content_digest, published_by = excluded.published_by,
+        published_at = excluded.published_at, retired_by = null, retired_at = null
+    `;
 
     await context(tx, tenantA, users.clinician, ["clinician"], null);
     for (const [key, id, given, family, dob, sex, publicId] of [
@@ -368,10 +403,11 @@ try {
     for (const [index, department] of DEFAULT_DEPARTMENTS.entries()) {
       const departmentId = hashId(`department-${department.code}`);
       await tx`
-        insert into departments (id, tenant_id, code, name, department_type, description, sort_order, created_by)
+        insert into departments (id, tenant_id, code, name, department_type, description, sort_order, created_by, catalogue_code)
         values (${departmentId}, ${tenantA}, ${department.code}, ${department.name}, ${department.type},
-          'Synthetic default department catalogue entry', ${index}, ${users.admin})
-        on conflict (tenant_id, code) do nothing
+          'Synthetic default department catalogue entry', ${index}, ${users.admin},
+          ${catalogueCodeForDefaultDepartment(department.code)})
+        on conflict (tenant_id, code) do update set catalogue_code = excluded.catalogue_code
       `;
       for (const unit of department.units) {
         await tx`
@@ -381,10 +417,13 @@ try {
         `;
       }
       for (const cadre of department.cadres) {
+        const catalogueCadre = ugandaCadres.get(cadre.code);
         await tx`
-          insert into cadres (id, tenant_id, code, name, category)
-          values (${hashId(`cadre-${cadre.code}`)}, ${tenantA}, ${cadre.code}, ${cadre.name}, ${cadre.category})
-          on conflict (tenant_id, code) do nothing
+          insert into cadres (id, tenant_id, code, name, category, catalogue_code, regulator_codes, requires_registration)
+          values (${hashId(`cadre-${cadre.code}`)}, ${tenantA}, ${cadre.code}, ${cadre.name}, ${cadre.category},
+            ${catalogueCadre ? cadre.code : null}, ${catalogueCadre?.regulatorCodes ?? []}, ${catalogueCadre?.requiresRegistration ?? false})
+          on conflict (tenant_id, code) do update set catalogue_code = excluded.catalogue_code,
+            regulator_codes = excluded.regulator_codes, requires_registration = excluded.requires_registration
         `;
       }
     }
@@ -397,9 +436,14 @@ try {
       `;
     }
     await tx`
-      insert into job_titles (id, tenant_id, name, cadre_id)
-      values (${hashId("job-title-medical-officer")}, ${tenantA}, 'Medical officer', ${hashId("cadre-MED-OFF")})
-      on conflict (tenant_id, name) do nothing
+      insert into job_titles (id, tenant_id, name, cadre_id, code, catalogue_code, seniority,
+        requires_credential, privilege_codes, suggested_system_roles)
+      values (${hashId("job-title-medical-officer")}, ${tenantA}, 'Medical officer', ${hashId("cadre-MED-OFF")},
+        'MED-OFF-STD', 'MED-OFF-STD', 'standard', true,
+        ${["CLIN-ASSESS", "CLIN-SIGN", "PRESCRIBE", "ORDER-DIAG"]}, ${["clinician"]})
+      on conflict (tenant_id, name) do update set code = excluded.code, catalogue_code = excluded.catalogue_code,
+        seniority = excluded.seniority, requires_credential = excluded.requires_credential,
+        privilege_codes = excluded.privilege_codes, suggested_system_roles = excluded.suggested_system_roles
     `;
 
     await context(tx, tenantA, users.hr, ["hr"], null);
@@ -592,6 +636,156 @@ try {
       insert into integration_configs (id, tenant_id, adapter, enabled, config, configured_by)
       values (${hashId("integration-lab")}, ${tenantA}, 'laboratory', false, ${tx.json({ status: "disabled", displayName: "Laboratory results", note: "Integration unavailable in this release" })}, ${users.admin})
       on conflict (id) do nothing
+    `;
+
+    // Public provider directory, sponsored placement and integration catalogue.
+    await platformContext(tx, users.reviewer);
+    const facilities = {
+      kampala: hashId("dir-facility-kampala"),
+      entebbe: hashId("dir-facility-entebbe"),
+      naguru: hashId("dir-facility-naguru"),
+      jinja: hashId("dir-facility-jinja"),
+    } as const;
+    const branches = {
+      kampala: hashId("dir-branch-kampala"),
+      entebbe: hashId("dir-branch-entebbe"),
+      naguru: hashId("dir-branch-naguru"),
+      jinja: hashId("dir-branch-jinja"),
+    } as const;
+    await tx`
+      insert into directory_facilities (
+        id, public_id, slug, name, facility_type, description, country, region, district, locality,
+        public_phone, public_email, website, medveris_participation, publication_status, status,
+        claimed_tenant_id, claimed_by_user_id, credential_status, capability_status, source_kind,
+        source_name, source_license, last_confirmed_on, next_confirmation_on, created_by
+      ) values
+        (${facilities.kampala}, 'MV-DIR-KLA-01', 'kampala-community-clinic', 'Kampala Community Clinic',
+         'clinic', 'Synthetic public listing for a Medveris-connected outpatient clinic.', 'Uganda', 'Central',
+         'Kampala', 'Kampala Central', '+256-000-000-101', 'directory@kampala.example', 'https://kampala.example',
+         'direct', 'published', 'active', ${tenantA}, ${users.admin}, 'verified', 'verified', 'medveris-registered',
+         'Medveris synthetic seed', 'Synthetic data', current_date, current_date + 180, ${users.reviewer}),
+        (${facilities.entebbe}, 'MV-DIR-ENT-01', 'entebbe-family-health-centre', 'Entebbe Family Health Centre',
+         'health-centre', 'Synthetic family health centre listing.', 'Uganda', 'Central', 'Wakiso', 'Entebbe',
+         '+256-000-000-102', 'directory@entebbe.example', null, 'connected', 'published', 'active',
+         ${tenantB}, ${users.admin}, 'verified', 'documented', 'medveris-registered',
+         'Medveris synthetic seed', 'Synthetic data', current_date, current_date + 180, ${users.reviewer}),
+        (${facilities.naguru}, 'MV-DIR-NAG-01', 'naguru-diagnostic-centre', 'Naguru Diagnostic Centre',
+         'diagnostic-centre', 'Synthetic diagnostic centre with imaging and laboratory services.', 'Uganda', 'Central',
+         'Kampala', 'Naguru', '+256-000-000-103', null, null, 'none', 'published', 'active', null, null,
+         'unverified', 'declared', 'facility-submitted', 'Facility submission', null, current_date, current_date + 90, ${users.reviewer}),
+        (${facilities.jinja}, 'MV-DIR-JIN-01', 'jinja-road-pharmacy', 'Jinja Road Pharmacy',
+         'pharmacy', 'Synthetic community pharmacy pending editorial review.', 'Uganda', 'Central',
+         'Kampala', 'Jinja Road', '+256-000-000-104', null, null, 'none', 'pending-review', 'active', null, null,
+         'unverified', 'none', 'facility-submitted', 'Facility submission', null, null, current_date + 90, ${users.reviewer})
+      on conflict (public_id) do update set name = excluded.name, description = excluded.description,
+        publication_status = excluded.publication_status, claimed_tenant_id = excluded.claimed_tenant_id,
+        credential_status = excluded.credential_status, capability_status = excluded.capability_status,
+        last_confirmed_on = excluded.last_confirmed_on, updated_at = now()
+    `;
+    await tx`
+      insert into directory_branches (
+        id, facility_id, name, is_primary, address_line1, city, region, district, locality, country,
+        latitude, longitude, coordinate_source, location_status, public_phone, opening_hours, accessibility
+      ) values
+        (${branches.kampala}, ${facilities.kampala}, 'Kampala Central', true, 'Plot 10 Synthetic Road', 'Kampala',
+         'Central', 'Kampala', 'Kampala Central', 'Uganda', 0.313600, 32.581100, 'facility-supplied', 'confirmed',
+         '+256-000-000-101', ${tx.json({ mon: "08:00-18:00", tue: "08:00-18:00", wed: "08:00-18:00", thu: "08:00-18:00", fri: "08:00-18:00", sat: "09:00-14:00" })},
+         ${tx.json({ wheelchairAccess: true, parking: true })}),
+        (${branches.entebbe}, ${facilities.entebbe}, 'Entebbe Main', true, 'Plot 4 Synthetic Avenue', 'Entebbe',
+         'Central', 'Wakiso', 'Entebbe', 'Uganda', 0.051200, 32.463700, 'facility-supplied', 'confirmed',
+         '+256-000-000-102', ${tx.json({ mon: "08:00-17:00", tue: "08:00-17:00", wed: "08:00-17:00", thu: "08:00-17:00", fri: "08:00-17:00" })},
+         ${tx.json({ wheelchairAccess: true })}),
+        (${branches.naguru}, ${facilities.naguru}, 'Naguru Main', true, 'Plot 22 Synthetic Close', 'Kampala',
+         'Central', 'Kampala', 'Naguru', 'Uganda', 0.347600, 32.600000, 'map-pin', 'unconfirmed',
+         '+256-000-000-103', ${tx.json({ mon: "07:00-20:00", tue: "07:00-20:00", wed: "07:00-20:00", thu: "07:00-20:00", fri: "07:00-20:00", sat: "08:00-14:00" })},
+         ${tx.json({})}),
+        (${branches.jinja}, ${facilities.jinja}, 'Jinja Road', true, 'Plot 8 Synthetic Plaza', 'Kampala',
+         'Central', 'Kampala', 'Jinja Road', 'Uganda', 0.326000, 32.610000, 'facility-supplied', 'unconfirmed',
+         '+256-000-000-104', ${tx.json({ mon: "08:00-20:00", tue: "08:00-20:00", wed: "08:00-20:00", thu: "08:00-20:00", fri: "08:00-20:00", sat: "08:00-18:00" })},
+         ${tx.json({})})
+      on conflict (facility_id, name) do update set latitude = excluded.latitude, longitude = excluded.longitude,
+        location_status = excluded.location_status, opening_hours = excluded.opening_hours, updated_at = now()
+    `;
+    await tx`
+      insert into directory_services (id, facility_id, code, name, category, description, availability_note)
+      values
+        (${hashId("dir-svc-kla-opd")}, ${facilities.kampala}, 'OPD', 'Outpatient consultations', 'outpatient', 'General outpatient care (synthetic listing).', 'Weekday walk-in and appointment slots'),
+        (${hashId("dir-svc-kla-mat")}, ${facilities.kampala}, 'MAT', 'Maternal health', 'maternal', 'Antenatal and postnatal care (synthetic listing).', null),
+        (${hashId("dir-svc-kla-lab")}, ${facilities.kampala}, 'LAB', 'Laboratory testing', 'diagnostics', 'Routine laboratory testing (synthetic listing).', null),
+        (${hashId("dir-svc-ent-opd")}, ${facilities.entebbe}, 'OPD', 'Family outpatient care', 'outpatient', 'Family outpatient care (synthetic listing).', null),
+        (${hashId("dir-svc-ent-chd")}, ${facilities.entebbe}, 'CHD', 'Child health', 'child-health', 'Child health and immunisation (synthetic listing).', null),
+        (${hashId("dir-svc-nag-img")}, ${facilities.naguru}, 'IMG', 'Diagnostic imaging', 'diagnostics', 'Imaging services (synthetic listing).', 'Referral may be required'),
+        (${hashId("dir-svc-nag-lab")}, ${facilities.naguru}, 'LAB', 'Laboratory testing', 'diagnostics', 'Laboratory testing (synthetic listing).', null),
+        (${hashId("dir-svc-jin-phm")}, ${facilities.jinja}, 'PHM', 'Community pharmacy', 'pharmacy', 'Community pharmacy (synthetic listing).', null)
+      on conflict (facility_id, code) do update set name = excluded.name, category = excluded.category, updated_at = now()
+    `;
+    await tx`
+      insert into directory_capabilities (id, facility_id, code, name, status, evidence_source, verified_at, verified_by, notes)
+      values
+        (${hashId("dir-cap-kla-emg")}, ${facilities.kampala}, 'emergency', 'Emergency care', 'verified', 'Synthetic verification record', now(), ${users.reviewer}, null),
+        (${hashId("dir-cap-kla-img")}, ${facilities.kampala}, 'imaging', 'Diagnostic imaging', 'verified', 'Synthetic verification record', now(), ${users.reviewer}, null),
+        (${hashId("dir-cap-kla-lab")}, ${facilities.kampala}, 'laboratory', 'Laboratory services', 'verified', 'Synthetic verification record', now(), ${users.reviewer}, null),
+        (${hashId("dir-cap-ent-lab")}, ${facilities.entebbe}, 'laboratory', 'Laboratory services', 'documented', 'Synthetic document reference', null, null, null),
+        (${hashId("dir-cap-nag-img")}, ${facilities.naguru}, 'imaging', 'Diagnostic imaging', 'declared', 'Facility declaration', null, null, null)
+      on conflict (facility_id, code) do update set name = excluded.name, status = excluded.status, updated_at = now()
+    `;
+
+    const searchPackage = hashId("sponsored-package-search");
+    const campaignId = hashId("sponsored-campaign-kampala");
+    const paymentId = hashId("sponsored-payment-kampala");
+    await tx`
+      insert into sponsored_packages (
+        id, code, name, description, price, currency, duration_days, eligible_countries,
+        eligible_facility_types, eligible_service_categories, placement_surface, sponsored_slots,
+        max_active_per_facility, requirements, cancellation_policy, active, created_by
+      ) values (
+        ${searchPackage}, 'SEARCH-BOOST-30', 'Search boost (30 days)',
+        'Up to two clearly labelled sponsored placements in directory search for 30 days.',
+        150000, 'UGX', 30, ${["Uganda"]}, ${["clinic", "hospital", "health-centre"]}, ${[]},
+        'search', 2, 1, 'Listing must be published and pass editorial review.',
+        'No refund after the campaign starts. Editorial approval is independent of payment.',
+        true, ${users.reviewer}
+      )
+      on conflict (code) do update set name = excluded.name, price = excluded.price, currency = excluded.currency,
+        sponsored_slots = excluded.sponsored_slots, active = excluded.active, updated_at = now()
+    `;
+    await tx`
+      insert into sponsored_campaigns (
+        id, package_id, facility_id, branch_id, package_name_snapshot, amount_snapshot, currency_snapshot,
+        duration_days_snapshot, placement_surface, sponsored_slots, scope_country, service_categories,
+        starts_on, ends_on, status, payment_status, editorial_status, created_by, reviewed_by, reviewed_at
+      ) values (
+        ${campaignId}, ${searchPackage}, ${facilities.kampala}, ${branches.kampala}, 'Search boost (30 days)',
+        150000, 'UGX', 30, 'search', 2, 'Uganda', ${["outpatient", "maternal", "diagnostics"]},
+        current_date - 1, current_date + 29, 'active', 'paid', 'approved', ${users.admin}, ${users.reviewer}, now()
+      )
+      on conflict (id) do update set status = excluded.status, payment_status = excluded.payment_status,
+        editorial_status = excluded.editorial_status, starts_on = excluded.starts_on, ends_on = excluded.ends_on, updated_at = now()
+    `;
+    await tx`
+      insert into sponsored_payments (
+        id, campaign_id, amount, currency, method, provider, provider_reference, status, idempotency_key, confirmed_by, confirmed_at, notes
+      ) values (
+        ${paymentId}, ${campaignId}, 150000, 'UGX', 'manual', 'manual', 'SYNTH-SPONSOR-0001', 'confirmed',
+        'seed:sponsorship:kampala:0001', ${users.finance}, now(), 'Synthetic payment record; no real funds moved'
+      )
+      on conflict (idempotency_key) do nothing
+    `;
+
+    await tx`
+      insert into api_products (
+        id, code, name, description, service_family, data_classification, required_scopes,
+        rate_limit_per_minute, daily_quota, support_level, sandbox_available, commercial_status, enabled
+      ) values
+        (${hashId("api-product-directory")}, 'directory.read', 'Public directory read',
+         'Read published facility, branch, service and capability information.',
+         'directory', 'directory', ${["integration.directory.read"]}, 120, 20000, 'standard', true, 'included', true),
+        (${hashId("api-product-patient-match")}, 'patient.identity', 'Patient identity matching',
+         'Match and link partner patient identifiers after human confirmation. Never returns clinical records.',
+         'identity', 'clinical', ${["integration.patient.match", "integration.patient.link"]},
+         60, 5000, 'standard', true, 'included', true)
+      on conflict (code) do update set name = excluded.name, description = excluded.description,
+        required_scopes = excluded.required_scopes, enabled = excluded.enabled, updated_at = now()
     `;
   });
 

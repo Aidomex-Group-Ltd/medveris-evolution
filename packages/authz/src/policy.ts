@@ -114,9 +114,9 @@ export interface PolicyDecision {
 
 const staffPermissionPrefixes = [
   "clinical.", "nursing.", "ward.", "medication.", "diagnostic.", "exchange.",
-  "organization.", "workforce.", "role_grant.", "privilege.", "credential.",
+  "organization.", "workforce.", "onboarding.", "role_grant.", "privilege.", "credential.",
   "care_team.", "finance.", "public_health.", "content.", "dashboard.",
-  "inventory.", "audit.", "platform.",
+  "inventory.", "directory.", "promotion.", "integration.", "audit.", "platform.",
 ];
 
 function isStaffPermission(permission: Permission): boolean {

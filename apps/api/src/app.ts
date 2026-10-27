@@ -29,11 +29,15 @@ import { aiRoutes } from "./routes/ai.js";
 import { emergencyRoutes } from "./routes/emergency.js";
 import { careRoutes } from "./routes/care.js";
 import { organizationRoutes } from "./routes/organization.js";
+import { onboardingRoutes } from "./routes/onboarding.js";
 import { documentRoutes } from "./routes/documents.js";
 import { maternityRoutes } from "./routes/maternity.js";
 import { operationsRoutes } from "./routes/operations.js";
 import { contentRoutes } from "./routes/content.js";
 import { inventoryRoutes } from "./routes/inventory.js";
+import { directoryRoutes } from "./routes/directory.js";
+import { promotionRoutes } from "./routes/promotions.js";
+import { integrationRoutes } from "./routes/integrations.js";
 
 function isFhirPath(path: string): boolean {
   return path.startsWith("/fhir/") || path.startsWith("/terminology/fhir/");
@@ -108,11 +112,15 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   app.route("/api/v1", emergencyRoutes);
   app.route("/api/v1", careRoutes);
   app.route("/api/v1", organizationRoutes);
+  app.route("/api/v1", onboardingRoutes);
   app.route("/api/v1", documentRoutes);
   app.route("/api/v1", maternityRoutes);
   app.route("/api/v1", operationsRoutes);
   app.route("/api/v1", contentRoutes);
   app.route("/api/v1", inventoryRoutes);
+  app.route("/api/v1", directoryRoutes);
+  app.route("/api/v1", promotionRoutes);
+  app.route("/api/v1", integrationRoutes);
 
   app.notFound((c) => {
     if (isFhirPath(c.req.path)) {

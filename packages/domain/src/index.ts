@@ -1,4 +1,7 @@
+import { DomainError } from "./errors.js";
+export { DomainError } from "./errors.js";
 export * from "./catalog.js";
+export * from "./onboarding-catalogue.js";
 export type EncounterState =
   | "planned"
   | "arrived"
@@ -35,10 +38,6 @@ export function nextEntryStatus(current: ClinicalEntryStatus, action: "sign" | "
   }
   if (current !== "signed" && current !== "amended") throw new DomainError("Only a signed entry can be marked entered-in-error");
   return "entered-in-error";
-}
-
-export class DomainError extends Error {
-  readonly status = 422;
 }
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";

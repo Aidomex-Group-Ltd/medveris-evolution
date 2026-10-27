@@ -10,6 +10,7 @@ export {
   LoadingState,
   Notice,
   PageHeader,
+  SearchSelect,
   Select,
   Table,
   Tabs,

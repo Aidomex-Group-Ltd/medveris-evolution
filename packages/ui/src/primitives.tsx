@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { useId, useMemo, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 
@@ -33,6 +33,135 @@ export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className="mv-input mv-select" {...props} />;
+}
+
+export interface SearchOption {
+  value: string;
+  label: string;
+  description?: string;
+  disabled?: boolean;
+}
+
+export function SearchSelect({
+  options,
+  value,
+  onChange,
+  placeholder = "Search…",
+  id,
+  disabled = false,
+  emptyMessage = "No matches",
+  "aria-label": ariaLabel,
+}: {
+  options: SearchOption[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  id?: string;
+  disabled?: boolean;
+  emptyMessage?: string;
+  "aria-label"?: string;
+}) {
+  const generatedId = useId();
+  const listId = `${id ?? generatedId}-listbox`;
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const selected = options.find((option) => option.value === value);
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return options;
+    return options.filter((option) =>
+      `${option.label} ${option.description ?? ""} ${option.value}`.toLowerCase().includes(needle),
+    );
+  }, [options, query]);
+
+  function commit(option: SearchOption | undefined) {
+    if (!option || option.disabled) return;
+    onChange(option.value);
+    setQuery("");
+    setOpen(false);
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setOpen(true);
+      setActive((index) => Math.min(index + 1, Math.max(0, filtered.length - 1)));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      if (open && filtered[active]) {
+        event.preventDefault();
+        commit(filtered[active]);
+      }
+    } else if (event.key === "Escape") {
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div className="mv-search-select">
+      <input
+        id={id}
+        className="mv-input"
+        role="combobox"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        autoComplete="off"
+        disabled={disabled}
+        placeholder={placeholder}
+        value={open ? query : selected?.label ?? ""}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setActive(0);
+          setOpen(true);
+        }}
+        onFocus={() => {
+          setQuery("");
+          setOpen(true);
+        }}
+        onBlur={() => setOpen(false)}
+        onKeyDown={onKeyDown}
+      />
+      {selected && !open ? (
+        <button
+          type="button"
+          className="mv-search-select__clear"
+          aria-label={`Clear ${selected.label}`}
+          onClick={() => {
+            onChange("");
+            setQuery("");
+          }}
+        >
+          ×
+        </button>
+      ) : null}
+      {open ? (
+        <ul id={listId} className="mv-search-select__list" role="listbox" aria-label={ariaLabel ?? "Options"}>
+          {filtered.length ? filtered.map((option, index) => (
+            <li
+              key={option.value}
+              role="option"
+              aria-selected={option.value === value}
+              aria-disabled={option.disabled || undefined}
+              className={`mv-search-select__option${index === active ? " is-active" : ""}`}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                commit(option);
+              }}
+              onMouseEnter={() => setActive(index)}
+            >
+              <strong>{option.label}</strong>
+              {option.description ? <span className="mv-small mv-muted">{option.description}</span> : null}
+            </li>
+          )) : <li className="mv-search-select__option mv-muted" role="presentation">{emptyMessage}</li>}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 export function Card({ title, description, actions, children, className = "" }: { title?: string; description?: string; actions?: ReactNode; children: ReactNode; className?: string }) {

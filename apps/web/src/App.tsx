@@ -41,6 +41,15 @@ import { MaternityPage } from "./pages/MaternityPage";
 import { OperationsPage } from "./pages/OperationsPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { ContentPage } from "./pages/ContentPage";
+import { DirectoryPage } from "./pages/DirectoryPage";
+import { DirectoryDetailPage } from "./pages/DirectoryDetailPage";
+import { ProviderDirectoryPage } from "./pages/ProviderDirectoryPage";
+import { PromotionsPage } from "./pages/PromotionsPage";
+import { DirectoryGovernancePage } from "./pages/DirectoryGovernancePage";
+import { OnboardingPage } from "./pages/OnboardingPage";
+import { OnboardingWorkflowPage } from "./pages/OnboardingWorkflowPage";
+import { CatalogueEditorPage } from "./pages/CatalogueEditorPage";
+import { CaregiversPage } from "./pages/CaregiversPage";
 
 function NotFoundPage() {
   return (
@@ -56,6 +65,8 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/directory" element={<DirectoryPage />} />
+      <Route path="/directory/:publicId" element={<DirectoryDetailPage />} />
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route index element={<DashboardPage />} />
         <Route path="patients" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><PatientsPage /></ProtectedRoute>} />
@@ -91,7 +102,15 @@ export function App() {
         <Route path="credentials" element={<ProtectedRoute><CredentialsPage /></ProtectedRoute>} />
         <Route path="documents" element={<ProtectedRoute roles={["clinician", "nurse", "records", "receptionist", "facility_admin", "hr", "quality"]}><DocumentsPage /></ProtectedRoute>} />
         <Route path="workforce" element={<ProtectedRoute roles={["hr", "facility_admin"]}><WorkforcePage /></ProtectedRoute>} />
+        <Route path="onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
+        <Route path="caregivers" element={<ProtectedRoute patient><CaregiversPage /></ProtectedRoute>} />
+        <Route path="caregiver-requests" element={<ProtectedRoute roles={["facility_admin", "records"]}><CaregiversPage /></ProtectedRoute>} />
+        <Route path="onboarding-workflow" element={<ProtectedRoute><OnboardingWorkflowPage /></ProtectedRoute>} />
+        <Route path="catalogue-editor" element={<ProtectedRoute><CatalogueEditorPage /></ProtectedRoute>} />
         <Route path="admin" element={<ProtectedRoute roles={["facility_admin"]}><AdminPage /></ProtectedRoute>} />
+        <Route path="provider-directory" element={<ProtectedRoute roles={["facility_admin"]}><ProviderDirectoryPage /></ProtectedRoute>} />
+        <Route path="promotions" element={<ProtectedRoute roles={["facility_admin"]}><PromotionsPage /></ProtectedRoute>} />
+        <Route path="directory-governance" element={<ProtectedRoute platform><DirectoryGovernancePage /></ProtectedRoute>} />
         <Route path="reviewer" element={<ProtectedRoute platform><ReviewerPage /></ProtectedRoute>} />
         <Route path="security" element={<ProtectedRoute><SecurityPage /></ProtectedRoute>} />
         <Route path="*" element={<NotFoundPage />} />

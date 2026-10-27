@@ -84,6 +84,10 @@ export function requirePlatformReviewer(c: Context<AppEnv>): AuthContext {
   return auth;
 }
 
+export function isPlatformOperator(c: Context<AppEnv>): boolean {
+  return requireAuth(c).platformRoles.includes("platform_operator");
+}
+
 export function actorFrom(auth: AuthContext): ActorContext {
   const roles: Role[] = auth.activeTenant?.roles ?? (auth.patientId ? ["patient"] : []);
   return {
@@ -108,7 +112,24 @@ export async function withActor<T>(c: Context<AppEnv>, fn: (tx: Tx) => Promise<T
     patientId: auth.patientId,
     actorKind,
     roles: actor.roles,
-    platformRole: auth.platformRoles.includes("credential_reviewer") ? "credential_reviewer" : null,
+    platformRole: auth.platformRoles.includes("platform_operator")
+      ? "platform_operator"
+      : auth.platformRoles.includes("credential_reviewer") ? "credential_reviewer" : null,
+  }, fn);
+}
+
+export async function withPlatformActor<T>(c: Context<AppEnv>, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  const auth = requireAuth(c);
+  if (!auth.platformRoles.includes("platform_operator")) {
+    throw new ForbiddenError("Platform operator permission is required");
+  }
+  const deps = c.get("deps");
+  return withContext(deps.sql, {
+    tenantId: auth.activeTenant?.id ?? null,
+    userId: auth.user.id,
+    actorKind: "staff",
+    roles: auth.activeTenant?.roles ?? [],
+    platformRole: "platform_operator",
   }, fn);
 }
 

@@ -16,6 +16,8 @@ All protected responses use no-store. Require `Idempotency-Key` for retryable cr
 | Auth | Provider callbacks; POST `/auth/logout` | Use selected identity-provider flow and revoke current session |
 | Sessions | GET `/me`; DELETE `/me/sessions/{id}` | Current context and session controls |
 | Onboarding | POST `/tenants`; POST `/patients` | Register facility or patient without verified-credential claims |
+| Onboarding catalogue | GET `/onboarding/catalogue`, `/onboarding/catalogue/versions`; POST `/onboarding/catalogue/publish`; GET `/onboarding/me` | Versioned Uganda catalogue, integrity-checked operator publication and role-specific guidance without implicit clinical grants |
+| Caregiver proxies | POST `/onboarding/proxies/requests`; GET `/onboarding/proxies`, `/onboarding/proxies/mine`, `/onboarding/proxies/queue`; POST `/onboarding/proxies/{id}/decision` | Patient invitation with explicit scopes and either patient or authorised facility review; decisions are audited |
 | Membership | GET/POST `/tenants/{tenantId}/memberships` | Administrative scope and MFA required for assignment changes |
 | Locator | POST `/patients/resolve` | Exact ID plus approved identity confirmation, rate-limited and audited |
 | Patient portal | GET `/me/patient`; GET `/me/records` | Released records and verified subject linkage only |
