@@ -1,7 +1,8 @@
 import { Client } from "pg";
-import { databaseName, loadLocalEnv, sqlLiteral } from "./lib.js";
+import { assertRoleProvisioningInputs, databaseName, loadLocalEnv, sqlLiteral } from "./lib.js";
 
 loadLocalEnv();
+if (process.env.MIGRATION_DATABASE_URL) assertRoleProvisioningInputs(process.env);
 
 const adminUrl = process.env.PGADMIN_URL ?? "postgres://postgres:postgres@localhost:5432/postgres";
 const migrationUrl = process.env.MIGRATION_DATABASE_URL ?? "postgres://medveris_migrator:medveris_migrator_dev@localhost:5432/medveris_dev";

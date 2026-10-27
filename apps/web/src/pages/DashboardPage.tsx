@@ -4,13 +4,13 @@ import { useAuth } from "../lib/auth";
 import { useQuery } from "../lib/useQuery";
 import type { Queue, WorklistEncounter } from "../lib/types";
 
-interface FeedItem { id: string; title: string; summary: string; content_type: string; publication_date: string | null; source_organization: string | null }
+interface FeedItem { id: string; title: string; summary: string; contentType: string; publicationDate: string | null; sourceOrganization: string | null }
 
 interface PatientDashboard {
   content: FeedItem[];
   contentTotal: number;
-  appointments: Array<{ id: string; start_at: string; duration_minutes: number; reason: string; status: string; facility_name: string }>;
-  followUps: Array<{ id: string; due_date: string; instructions: string | null; status: string }>;
+  appointments: Array<{ id: string; startAt: string; durationMinutes: number; reason: string; status: string; facilityName: string }>;
+  followUps: Array<{ id: string; dueDate: string; instructions: string | null; status: string }>;
   releases: { facilities: number };
   activeConsents: number;
 }
@@ -18,20 +18,21 @@ interface PatientDashboard {
 interface ClinicianDashboard {
   content: FeedItem[];
   contentTotal: number;
-  appointments: Array<{ id: string; start_at: string; duration_minutes: number; reason: string; status: string; public_id: string; given_name: string; family_name: string }>;
-  worklist: Array<{ id: string; state: string; type: string; opened_at: string; public_id: string; given_name: string; family_name: string }>;
+  appointments: Array<{ id: string; startAt: string; durationMinutes: number; reason: string; status: string; publicId: string; givenName: string; familyName: string }>;
+  worklist: Array<{ id: string; state: string; type: string; openedAt: string; publicId: string; givenName: string; familyName: string }>;
   counts: { resultsAwaitingReview: number; pendingFollowUps: number; outstandingReferrals: number };
 }
 
 interface SpecialistDashboard {
   content: FeedItem[];
   contentTotal: number;
-  diagnosticWorklist: Array<{ id: string; name: string; status: string; priority: string; order_type: string; public_id: string; given_name: string; family_name: string }>;
-  specialtyReferrals: Array<{ id: string; reason: string; priority: string; status: string; to_facility: string | null; public_id: string; given_name: string; family_name: string }>;
+  diagnosticWorklist: Array<{ id: string; name: string; status: string; priority: string; orderType: string; publicId: string; givenName: string; familyName: string }>;
+  specialtyReferrals: Array<{ id: string; reason: string; priority: string; status: string; toFacility: string | null; publicId: string; givenName: string; familyName: string }>;
   specialties: string[];
 }
 
-function human(value: string): string {
+function human(value: string | null | undefined): string {
+  if (!value) return "Content";
   return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
@@ -42,7 +43,7 @@ function ContentPreview({ items, total }: { items: FeedItem[]; total: number }) 
       {items.map((item) => (
         <div key={item.id}>
           <strong>{item.title}</strong>
-          <div className="mv-small mv-muted">{human(item.content_type)} · {item.source_organization ?? "Medveris"} · {item.publication_date ?? "—"}</div>
+          <div className="mv-small mv-muted">{human(item.contentType)} · {item.sourceOrganization ?? "Medveris"} · {item.publicationDate ?? "—"}</div>
           <div className="mv-small">{item.summary}</div>
         </div>
       ))}
@@ -69,14 +70,14 @@ function PatientHome() {
         </Card>
         <Card title="Upcoming appointments">
           {dashboard.loading ? <LoadingState /> : !dashboard.data?.appointments.length ? <EmptyState title="No upcoming appointment" description="Contact your facility front desk to schedule a visit." /> : (
-            <DataList items={dashboard.data.appointments.map((appointment) => ({ label: new Date(appointment.start_at).toLocaleString(), value: <>{appointment.reason} <Badge tone="info">{appointment.facility_name}</Badge></> }))} />
+            <DataList items={dashboard.data.appointments.map((appointment) => ({ label: new Date(appointment.startAt).toLocaleString(), value: <>{appointment.reason} <Badge tone="info">{appointment.facilityName}</Badge></> }))} />
           )}
         </Card>
       </div>
       <div className="mv-grid mv-grid--2">
         <Card title="Follow-up instructions">
           {dashboard.loading ? <LoadingState /> : !dashboard.data?.followUps.length ? <EmptyState title="No pending follow-up" description="Your care team has not recorded a pending follow-up." /> : (
-            <DataList items={dashboard.data.followUps.map((followUp) => ({ label: followUp.due_date, value: followUp.instructions ?? "Follow-up due" }))} />
+            <DataList items={dashboard.data.followUps.map((followUp) => ({ label: followUp.dueDate, value: followUp.instructions ?? "Follow-up due" }))} />
           )}
         </Card>
         <Card title="Health library" description="Patient education and advisories published for patients.">
@@ -151,7 +152,7 @@ function StaffOverview() {
             {clinicianDashboard.loading ? <LoadingState /> : clinicianDashboard.error ? <ErrorState message={clinicianDashboard.error} onRetry={clinicianDashboard.reload} /> : !clinicianDashboard.data?.appointments.length ? <EmptyState title="No assigned appointments" description="Your schedule is clear for the next day." /> : (
               <ul className="mv-stack" style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {clinicianDashboard.data.appointments.slice(0, 5).map((appointment) => (
-                  <li key={appointment.id}><strong>{appointment.given_name} {appointment.family_name}</strong><div className="mv-small mv-muted">{new Date(appointment.start_at).toLocaleString()} · {appointment.reason}</div></li>
+                  <li key={appointment.id}><strong>{appointment.givenName} {appointment.familyName}</strong><div className="mv-small mv-muted">{new Date(appointment.startAt).toLocaleString()} · {appointment.reason}</div></li>
                 ))}
               </ul>
             )}
@@ -177,7 +178,7 @@ function StaffOverview() {
             {specialistDashboard.loading ? <LoadingState /> : specialistDashboard.error ? <ErrorState message={specialistDashboard.error} onRetry={specialistDashboard.reload} /> : !specialistDashboard.data?.diagnosticWorklist.length ? <EmptyState title="Worklist is clear" description="No diagnostic items are awaiting specialty handling." /> : (
               <ul className="mv-stack" style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {specialistDashboard.data.diagnosticWorklist.slice(0, 6).map((item) => (
-                  <li key={item.id} className="mv-spread"><span>{item.name}<div className="mv-small mv-muted">{item.given_name} {item.family_name} · <span className="mv-id">{item.public_id}</span></div></span><Badge tone={item.priority === "emergency" ? "danger" : item.priority === "urgent" ? "warning" : "neutral"}>{item.priority}</Badge></li>
+                  <li key={item.id} className="mv-spread"><span>{item.name}<div className="mv-small mv-muted">{item.givenName} {item.familyName} · <span className="mv-id">{item.publicId}</span></div></span><Badge tone={item.priority === "emergency" ? "danger" : item.priority === "urgent" ? "warning" : "neutral"}>{item.priority}</Badge></li>
                 ))}
               </ul>
             )}
@@ -186,7 +187,7 @@ function StaffOverview() {
             {specialistDashboard.loading ? <LoadingState /> : !specialistDashboard.data?.specialtyReferrals.length ? <EmptyState title="No pending referrals" description="No referrals are pending for your specialty." /> : (
               <ul className="mv-stack" style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {specialistDashboard.data.specialtyReferrals.slice(0, 6).map((referral) => (
-                  <li key={referral.id}><strong>{referral.given_name} {referral.family_name}</strong><div className="mv-small mv-muted">{referral.reason} · {referral.to_facility ?? "internal"} · <Badge tone="warning">{referral.priority}</Badge></div></li>
+                  <li key={referral.id}><strong>{referral.givenName} {referral.familyName}</strong><div className="mv-small mv-muted">{referral.reason} · {referral.toFacility ?? "internal"} · <Badge tone="warning">{referral.priority}</Badge></div></li>
                 ))}
               </ul>
             )}

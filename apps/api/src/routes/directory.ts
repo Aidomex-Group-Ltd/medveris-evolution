@@ -261,8 +261,15 @@ async function sponsoredFor(sql: ReturnType<Context<AppEnv>["get"]> | any, confi
        order by md5(c.id::text || to_char(now(), 'YYYY-MM-DD-HH24'))
        limit 12
     `;
-    const slots = rows.reduce((sum, row) => sum + Number(row.sponsoredSlots ?? 1), 0);
-    return rows.slice(0, Math.max(1, Math.min(slots, 6))).map(mapFacility);
+    const seen = new Set<string>();
+    const oneCampaignPerFacility = rows.filter((row) => {
+      const id = String(row.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    const slots = oneCampaignPerFacility.reduce((sum, row) => sum + Number(row.sponsoredSlots ?? 1), 0);
+    return oneCampaignPerFacility.slice(0, Math.max(1, Math.min(slots, 6))).map(mapFacility);
   });
 }
 

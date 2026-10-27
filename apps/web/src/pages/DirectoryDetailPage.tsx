@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Badge, Button, Card, DataList, ErrorState, Field, Input, LoadingState, Notice, Select, Textarea } from "@medveris/ui";
+import { BrandMark } from "../components/BrandMark";
 import { api, errorMessage } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { useQuery } from "../lib/useQuery";
@@ -54,7 +55,7 @@ export function DirectoryDetailPage() {
   return (
     <div className="mv-public">
       <header className="mv-public__header">
-        <Link to="/" className="mv-brand" aria-label="Medveris home"><span className="mv-brand__mark" aria-hidden="true">M</span><span>Medveris<small>Public provider directory</small></span></Link>
+        <Link to="/" className="mv-brand" aria-label="Medveris home"><BrandMark /><span>Medveris<small>Public provider directory</small></span></Link>
         <nav className="mv-row"><Link to="/directory">Back to search</Link><Link to="/login">Sign in</Link></nav>
       </header>
       <main className="mv-public__main mv-stack">

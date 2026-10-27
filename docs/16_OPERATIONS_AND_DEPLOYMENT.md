@@ -6,6 +6,16 @@ Local: synthetic PostgreSQL, test identity adapter/mail sink, local object emula
 
 Provision API/static assets, Hyperdrive binding, PostgreSQL roles and migrations, private object stores, queues/dead-letter handling, signing keys, telemetry and DNS/TLS. Verify current provider limits and regions rather than copying hard-coded quota values. Clinical query caching is disabled. Anonymous static assets may be cached; authenticated data and permission decisions are not. Verify egress and object-delivery paths under real credentials.
 
+### Cloudflare staging (`medveris-staging`)
+
+`wrangler.jsonc` top level is local `wrangler dev` only; `env.staging` is the deployable Worker. `npm run deploy:staging:check` runs every gate without creating, uploading, migrating or deploying anything and exits non-zero while any prerequisite is missing; `npm run deploy:staging` runs the same gate, deploys, then probes `/api/v1/health/live` and `/api/v1/health/ready`. Neither script runs migrations.
+
+1. Staging database: a hosted PostgreSQL 14+ server that is separate from production, contains no real patient data and is reachable by Hyperdrive over TLS. The provider must allow creating `medveris_exchange` (`NOLOGIN BYPASSRLS`) and SECURITY DEFINER ownership by `medveris_migrator`. Migrations are tested on PostgreSQL 14; run the integration suite against the chosen major version first.
+2. Roles: put `PGADMIN_URL`, `MIGRATION_DATABASE_URL`, `DATABASE_URL`, `JOBS_DATABASE_URL`, `MIGRATOR_PASSWORD`, `RUNTIME_PASSWORD`, `JOBS_PASSWORD` and `APP_ENV=staging` in a mode-0600 file outside the repository (`~/.config/medveris/staging/db.env`), then run `node --env-file=<file> node_modules/.bin/tsx scripts/db-setup.ts` and the same for `scripts/db-migrate.ts`. Do not `source` the file in a shell: `&` in the connection URLs splits the assignments and the scripts silently fall back to the local `.env`. `db:setup` refuses development passwords and an admin URL on a different server for any database other than `medveris_dev`/`medveris_test`.
+3. Hyperdrive: create two configs with query caching disabled, `medveris-staging-runtime` (user `medveris_runtime`) and `medveris-staging-jobs` (user `medveris_jobs`), both on `medveris_staging`. Prefer the dashboard so passwords never appear in process arguments or shell history. Put the two IDs in `env.staging.hyperdrive`.
+4. Secrets: `SESSION_SECRET`, `AUDIT_SIGNING_KEY` and `MFA_ENCRYPTION_KEY` live in `~/.config/medveris/staging/secrets.env` (mode 0600). The deploy script uploads them only to fill secrets the Worker lacks and never overwrites existing values; rotating the data-bound keys needs a reviewed rotation procedure.
+5. Objects: `medveris-staging-uploads` is private (no r2.dev URL, no custom domain, no CORS). All object access goes through authenticated Worker routes.
+
 ## CI and release pipeline
 
 Pull request → formatting and type checks → domain tests → PostgreSQL migration/isolation/contract tests → browser flows → production build → dependency/secret checks → deploy staging → smoke and migration rehearsal → review release evidence → authorized production rollout → monitored verification. Use least-privilege CI credentials and protected environments. Pin build dependencies and preserve a lockfile. Do not create CI jobs that print all environment variables.

@@ -57,7 +57,8 @@ const UNITS = [
 export function EmergencyCasePage() {
   const { id = "" } = useParams();
   const detail = useQuery<Detail>(`/emergency/cases/${id}`);
-  if (detail.loading) return <LoadingState label="Loading emergency case" />;
+  const [triageSaved, setTriageSaved] = useState(false);
+  if (detail.loading && !detail.data) return <LoadingState label="Loading emergency case" />;
   if (detail.error) return <ErrorState message={detail.error} onRetry={detail.reload} />;
   if (!detail.data) return <EmptyState title="Emergency case not found" description="The case may belong to another facility." />;
   const record = detail.data.case;
@@ -95,6 +96,7 @@ export function EmergencyCasePage() {
           <p className="mv-small mv-muted">Registered {formatDateTime(record.createdAt)}</p>
         </Card>
         <Card title="Triage">
+          {triageSaved && detail.data.triage.length ? <Notice tone="success">Triage saved. The encounter moved to triaged.</Notice> : null}
           {!detail.data.triage.length ? <EmptyState title="Not triaged" description="Record triage before clinical note documentation." /> : (
             <div className="mv-stack" style={{ gap: 8 }}>
               {detail.data.triage.map((row) => (
@@ -109,7 +111,7 @@ export function EmergencyCasePage() {
         </Card>
       </div>
 
-      {active && !detail.data.triage.length ? <TriagePanel encounterId={record.encounterId} onSaved={detail.reload} /> : null}
+      {active && !detail.data.triage.length ? <TriagePanel encounterId={record.encounterId} onSaved={() => { setTriageSaved(true); detail.reload(); }} /> : null}
       {active ? <ObservationForm caseId={record.id} onSaved={detail.reload} /> : null}
 
       <Card title="Serial observations" description="Measured time, validated LOINC identity and UCUM units are shown. No physiological alert threshold is applied.">

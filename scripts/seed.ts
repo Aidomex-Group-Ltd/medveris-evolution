@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { chmodSync, writeFileSync } from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
 import { createSql, setLocalContext } from "@medveris/db";
 import type { Tx } from "@medveris/db";
 import { encryptSecret, generateTotpSecret, hashPassword } from "@medveris/auth";
@@ -16,11 +18,22 @@ import { loadConfig } from "../apps/api/src/config.js";
 import { assertSyntheticEnvironment, loadLocalEnv, requireEnv } from "./lib.js";
 
 loadLocalEnv();
-assertSyntheticEnvironment();
+const stagingSeed = assertSyntheticEnvironment();
+
+const LOCAL_PASSWORD = "Medveris!2026";
+const totpExportFile = stagingSeed ? requireEnv("SEED_TOTP_EXPORT_FILE") : null;
+if (totpExportFile) {
+  const rel = relative(process.cwd(), resolve(totpExportFile));
+  if (!rel.startsWith("..") && !isAbsolute(rel)) throw new Error("SEED_TOTP_EXPORT_FILE must be outside the repository");
+}
+const PASSWORD = stagingSeed ? requireEnv("SEED_ACCOUNT_PASSWORD") : LOCAL_PASSWORD;
+if (stagingSeed && (PASSWORD.length < 16 || PASSWORD === LOCAL_PASSWORD)) {
+  throw new Error("SEED_ACCOUNT_PASSWORD must be at least 16 characters and differ from the local default");
+}
+const seededTotp = new Map<string, string>();
 
 const config = loadConfig();
 const sql = createSql(requireEnv("DATABASE_URL"), { max: 5 });
-const PASSWORD = "Medveris!2026";
 
 const tenantA = "11111111-1111-4111-8111-111111111111";
 const tenantB = "22222222-2222-4222-8222-222222222222";
@@ -121,6 +134,7 @@ async function person(
       email_verified_at = excluded.email_verified_at, totp_secret_enc = excluded.totp_secret_enc,
       mfa_enrolled_at = excluded.mfa_enrolled_at, status = 'active', updated_at = now()
   `;
+  if (secret) seededTotp.set(email, secret);
   return secret;
 }
 
@@ -789,10 +803,16 @@ try {
     `;
   });
 
+  if (totpExportFile) {
+    writeFileSync(totpExportFile, JSON.stringify(Object.fromEntries(seededTotp), null, 2), { mode: 0o600 });
+    chmodSync(totpExportFile, 0o600);
+  }
+
   console.log(JSON.stringify({
     ok: true,
     synthetic: true,
-    password: PASSWORD,
+    password: stagingSeed ? "(SEED_ACCOUNT_PASSWORD)" : PASSWORD,
+    totpSecrets: totpExportFile ? `written to ${totpExportFile} (0600)` : "local development endpoint",
     facilities: { kampala: tenantA, entebbe: tenantB },
     accounts: {
       admin: "admin@medveris.local",

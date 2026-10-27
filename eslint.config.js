@@ -5,6 +5,9 @@ export default tseslint.config(
     ignores: [
       "**/node_modules/**",
       "**/dist/**",
+      "**/build/**",
+      "**/coverage/**",
+      "**/.wrangler/**",
       "**/.data/**",
       "**/.mail-sink/**",
       "**/playwright-report/**",

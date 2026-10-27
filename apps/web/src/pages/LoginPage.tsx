@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button, Card, ErrorState, Field, Input, Notice } from "@medveris/ui";
+import { BrandMark } from "../components/BrandMark";
 import { api, errorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -67,7 +68,7 @@ export function LoginPage() {
     <div className="mv-auth">
       <section className="mv-auth__intro">
         <Link to="/" className="mv-brand" style={{ color: "inherit" }}>
-          <span className="mv-brand__mark" aria-hidden="true">M</span>
+          <BrandMark />
           <span>Medveris<small style={{ color: "#bcd7ce" }}>Synthetic outpatient foundation</small></span>
         </Link>
         <div>

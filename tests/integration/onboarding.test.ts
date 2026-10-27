@@ -152,6 +152,9 @@ describe("role-based onboarding paths", () => {
     const clinicianView = await expectOk(await call(clinician, "/api/v1/onboarding/me"));
     expect(clinicianView.path).toBe("clinician");
     expect(clinicianView.steps.some((step: any) => step.key === "credentials")).toBe(true);
+    expect(Array.isArray(clinicianView.staff.regulatorCodes)).toBe(true);
+    expect(Array.isArray(clinicianView.staff.requestedSystemRoles)).toBe(true);
+    expect(Array.isArray(clinicianView.staff.approvedSystemRoles)).toBe(true);
     const adminView = await expectOk(await call(admin, "/api/v1/onboarding/me"));
     expect(adminView.path).toBe("facility_admin");
     expect(adminView.steps.some((step: any) => step.key === "departments")).toBe(true);
@@ -324,6 +327,11 @@ describe("facility credential review and tenant isolation", () => {
       method: "POST",
       body: JSON.stringify({ filename: "licence.pdf", declaredType: "application/pdf", dataBase64: pdf }),
     }), 201);
+    const content = await call(admin, `/api/v1/uploads/${upload.upload.id}/content`);
+    expect(content.status).toBe(200);
+    expect(Buffer.from(await content.arrayBuffer()).toString("base64")).toBe(pdf);
+    expect((await call(reviewer, `/api/v1/uploads/${upload.upload.id}/content`)).status).toBe(200);
+    expect((await call(patient, `/api/v1/uploads/${upload.upload.id}/content`)).status).toBe(404);
 
     const submitted = await expectOk(await call(admin, "/api/v1/credentials", {
       method: "POST",
@@ -375,6 +383,38 @@ describe("facility credential review and tenant isolation", () => {
 
     const queue = await expectOk(await call(hr, "/api/v1/credentials/facility/queue"));
     expect(queue.queue.some((row: any) => row.id === submitted.credentialId)).toBe(false);
+  });
+
+  it("lets an independent platform reviewer see and decide a submitted credential", async () => {
+    const submitted = await expectOk(await call(admin, "/api/v1/credentials", {
+      method: "POST",
+      body: JSON.stringify({
+        subjectType: "practitioner",
+        credentialType: "Professional licence",
+        issuer: "Uganda Medical and Dental Practitioners Council",
+        jurisdiction: "Uganda",
+        regulatorCode: "UMDPC",
+        registrationNumber: `PLAT-REG-${stamp}`,
+        licenceNumber: `PLAT-LIC-${stamp}`,
+        credentialNumber: `PLAT-CRED-${stamp}`,
+        qualifications: "Synthetic MBChB",
+        issuedOn: "2025-01-01",
+        expiresOn: "2027-01-01",
+      }),
+    }), 201);
+    const before = await expectOk(await call(reviewer, "/api/v1/credentials/queue"));
+    expect(before.queue.some((row: any) => row.id === submitted.credentialId)).toBe(true);
+    await expectOk(await call(reviewer, `/api/v1/credentials/${submitted.credentialId}/decision`, {
+      method: "POST",
+      body: JSON.stringify({
+        decision: "verified",
+        reason: "Independent platform review against the synthetic register",
+        checksPerformed: "Checked registration and licence numbers against the synthetic UMDPC register",
+      }),
+    }));
+    const after = await expectOk(await call(reviewer, "/api/v1/credentials/queue"));
+    expect(after.queue.some((row: any) => row.id === submitted.credentialId)).toBe(false);
+    expect((await call(admin, "/api/v1/credentials/queue")).status).toBe(403);
   });
 
   it("does not expose another facility's onboarding credential queue or affiliations", async () => {

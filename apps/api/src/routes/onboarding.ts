@@ -532,7 +532,9 @@ onboardingRoutes.get("/onboarding/me", async (c) => {
     const person = await tx`
       select s.id, s.staff_ref, s.given_name, s.family_name, s.identity_verified_at, s.status,
              o.id as case_id, o.status as case_status, o.path, o.catalogue_title_code, o.catalogue_cadre_code,
-             o.regulator_codes, o.credential_required, o.requested_system_roles, o.approved_system_roles
+             coalesce(o.regulator_codes, '{}') as regulator_codes, o.credential_required,
+             coalesce(o.requested_system_roles, '{}') as requested_system_roles,
+             coalesce(o.approved_system_roles, '{}') as approved_system_roles
         from staff_persons s
         left join lateral (
           select * from onboarding_cases x where x.staff_person_id = s.id order by x.created_at desc limit 1

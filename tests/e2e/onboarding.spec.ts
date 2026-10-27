@@ -16,6 +16,9 @@ async function signInStaff(page: Page, email: string): Promise<void> {
 test("clinician reviews onboarding guidance and searches the Uganda catalogue", async ({ page }) => {
   await signInStaff(page, "clinician@medveris.local");
   await page.getByRole("link", { name: "Onboarding", exact: true }).click();
+  await expect(page).toHaveURL(/\/onboarding-workflow$/);
+  await expect(page.getByRole("heading", { name: "Staff Onboarding" })).toBeVisible();
+  await page.goto("/onboarding");
   await expect(page.getByRole("heading", { name: "Your onboarding path" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Uganda onboarding catalogue" })).toBeVisible();
   await page.getByLabel("Search catalogue").fill("Medical Officer");

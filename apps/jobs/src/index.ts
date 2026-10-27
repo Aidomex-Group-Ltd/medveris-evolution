@@ -1,6 +1,6 @@
 import { createSql } from "@medveris/db";
-import { claimOutboxEvent, completeOutboxEvent, dispatchLocalEvent, failOutboxEvent, stableProcessor } from "./outbox.js";
 import { checkpointAllTenants } from "./integrity.js";
+import { runJobsCycle } from "./cycle.js";
 
 try {
   process.loadEnvFile(`${process.cwd()}/.env`);
@@ -19,35 +19,16 @@ const sql = createSql(databaseUrl, { max: 4 });
 
 let stopping = false;
 
-async function drain(): Promise<number> {
-  let processed = 0;
-  for (;;) {
-    const event = await claimOutboxEvent(sql);
-    if (!event) break;
-    try {
-      const result = dispatchLocalEvent(event);
-      await completeOutboxEvent(sql, event, stableProcessor(event), result.detail);
-      processed += 1;
-    } catch (error) {
-      await failOutboxEvent(sql, event, (error as Error).message);
-    }
-  }
-  return processed;
-}
-
 async function cycle(): Promise<void> {
-  const processed = await drain();
-  try {
-    const checkpoints = await checkpointAllTenants(sql, signingKey!, keyId);
-    if (processed || checkpoints.length) {
-      console.log(JSON.stringify({
-        event: "jobs_cycle",
-        processed,
-        checkpoints: checkpoints.map((checkpoint) => ({ tenant: checkpoint.tenantId, batch: checkpoint.batchNumber, count: checkpoint.eventCount })),
-      }));
-    }
-  } catch (error) {
-    console.error(JSON.stringify({ event: "checkpoint_failed", message: (error as Error).message }));
+  const { processed, checkpoints, checkpointError } = await runJobsCycle(sql, signingKey!, keyId);
+  if (checkpointError) {
+    console.error(JSON.stringify({ event: "checkpoint_failed", message: checkpointError }));
+  } else if (processed || checkpoints.length) {
+    console.log(JSON.stringify({
+      event: "jobs_cycle",
+      processed,
+      checkpoints: checkpoints.map((checkpoint) => ({ tenant: checkpoint.tenantId, batch: checkpoint.batchNumber, count: checkpoint.eventCount })),
+    }));
   }
 }
 

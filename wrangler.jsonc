@@ -1,0 +1,65 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Top level is for local `wrangler dev` only. Deploy staging with `npm run deploy:staging`,
+  // which refuses placeholder IDs and verifies the remote Hyperdrive configs and bucket.
+  // There is no production environment yet.
+  "name": "medveris-local",
+  // Pins every remote command to the MedVeris account regardless of which account Wrangler is logged into.
+  "account_id": "6337ed24a5f8ff4ec3f74517a55a7e6b",
+  "main": "apps/api/src/worker.ts",
+  "compatibility_date": "2026-10-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./apps/web/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/fhir/*", "/terminology/*"]
+  },
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": { "enabled": true, "invocation_logs": true },
+    "traces": { "enabled": true }
+  },
+  // Local connection strings come from CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+  // and CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_JOBS; never commit them here.
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "local-only" },
+    { "binding": "HYPERDRIVE_JOBS", "id": "local-only" }
+  ],
+  "env": {
+    "staging": {
+      "name": "medveris-staging",
+      "workers_dev": true,
+      "preview_urls": false,
+      // Both Hyperdrive configs must be created with --caching-disabled: clinical and
+      // permission-dependent query results must never be served from a shared cache.
+      // HYPERDRIVE connects as medveris_runtime and HYPERDRIVE_JOBS as medveris_jobs, both to
+      // medveris_staging; `npm run deploy:staging:check` verifies this against the remote configs.
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "83900f032d264402bf1aaf495f4b0d23" },
+        { "binding": "HYPERDRIVE_JOBS", "id": "13b44b13563a4d3690caf6484acaff4e" }
+      ],
+      "r2_buckets": [
+        { "binding": "UPLOADS", "bucket_name": "medveris-staging-uploads" }
+      ],
+      "triggers": { "crons": ["*/5 * * * *"] },
+      "vars": {
+        "APP_ENV": "staging",
+        "APP_ORIGIN": "https://medveris-staging.aidomexgroupltd.workers.dev",
+        "EXPECTED_DATABASE_NAME": "medveris_staging",
+        "AUDIT_SIGNING_KEY_ID": "staging-key-1",
+        "EMAIL_ADAPTER": "local",
+        "STORAGE_ADAPTER": "r2",
+        "TERMINOLOGY_MODE": "synthetic",
+        "DEV_SHOW_TOTP_SECRETS": "false",
+        "FHIR_EXTERNAL_WRITES_ENABLED": "false",
+        "FHIR_BULK_EXPORT_ENABLED": "false"
+      },
+      "secrets": {
+        "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY"]
+      }
+    }
+  }
+}

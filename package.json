@@ -16,6 +16,8 @@
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:reset:synthetic": "tsx scripts/db-reset-synthetic.ts",
+    "secrets:local": "tsx scripts/setup-secrets.ts local",
+    "secrets:staging": "tsx scripts/setup-secrets.ts staging",
     "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev:api\" \"npm run dev:web\"",
     "dev:api": "tsx watch apps/api/src/server.ts",
     "dev:web": "vite --config apps/web/vite.config.ts",
@@ -31,6 +33,9 @@
     "test:e2e": "playwright test",
     "smoke:workers": "node scripts/workers-smoke.mjs",
     "smoke:clinical": "node scripts/clinical-smoke.mjs",
+    "cf:dev": "npm run build:web && wrangler dev",
+    "deploy:staging:check": "node scripts/staging-deploy.mjs --dry-run",
+    "deploy:staging": "node scripts/staging-deploy.mjs",
     "start": "node apps/api/dist/server.mjs"
   },
   "dependencies": {

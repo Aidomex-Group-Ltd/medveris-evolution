@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button, Card, ErrorState, Field, Input, Notice, Select } from "@medveris/ui";
+import { BrandMark } from "../components/BrandMark";
 import { api, errorMessage } from "../lib/api";
 
 export function RegisterPage() {
@@ -57,7 +58,7 @@ export function RegisterPage() {
     <div className="mv-auth">
       <section className="mv-auth__intro">
         <Link to="/" className="mv-brand" style={{ color: "inherit" }}>
-          <span className="mv-brand__mark" aria-hidden="true">M</span>
+          <BrandMark />
           <span>Medveris<small style={{ color: "#bcd7ce" }}>Free registration</small></span>
         </Link>
         <div>

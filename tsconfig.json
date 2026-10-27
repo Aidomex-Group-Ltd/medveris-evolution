@@ -2,6 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    "allowJs": true,
     "baseUrl": ".",
     "paths": {
       "@medveris/auth": ["packages/auth/src/index.ts"],

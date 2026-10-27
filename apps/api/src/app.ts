@@ -6,7 +6,7 @@ import { AppError, nativeErrorBody } from "./lib/errors.js";
 import { AuthzError } from "@medveris/authz";
 import { DomainError } from "@medveris/domain";
 import { operationOutcome } from "./fhir/router.js";
-import type { AppDeps, AppEnv } from "./types.js";
+import type { AppBaseDeps, AppEnv } from "./types.js";
 import { publicRoutes } from "./routes/public.js";
 import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
@@ -54,7 +54,7 @@ function fhirResponse(c: Context<AppEnv>, body: unknown, status: number) {
   });
 }
 
-export function createApp(deps: AppDeps): Hono<AppEnv> {
+export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
   app.use("*", authMiddleware(deps));

@@ -12,57 +12,57 @@ interface AccessSummary { permissions: string[]; roles: string[] }
 
 interface FeedItem {
   id: string;
-  content_type: string;
+  contentType: string;
   slug: string;
   title: string;
   summary: string;
-  source_organization: string | null;
-  publication_date: string | null;
+  sourceOrganization: string | null;
+  publicationDate: string | null;
   audience: string;
-  specialty_tags: string[];
-  visibility_scope: string;
+  specialtyTags: string[];
+  visibilityScope: string;
   attribution: string | null;
-  sponsorship_disclosure: string | null;
-  peer_review_status: string | null;
-  correction_status: string | null;
-  clinical_reviewed: boolean;
-  published_at: string | null;
-  review_due_on: string | null;
-  source_name: string | null;
+  sponsorshipDisclosure: string | null;
+  peerReviewStatus: string | null;
+  correctionStatus: string | null;
+  clinicalReviewed: boolean;
+  publishedAt: string | null;
+  reviewDueOn: string | null;
+  sourceName: string | null;
 }
 
-interface ContentDetail { item: FeedItem & { body: string | null; source_url: string | null; reuse_terms: string | null; findings_summary: string | null; limitations: string | null; population: string | null; study_type: string | null; correction_note: string | null }; bookmarked: boolean }
+interface ContentDetail { item: FeedItem & { body: string | null; sourceUrl: string | null; reuseTerms: string | null; findingsSummary: string | null; limitations: string | null; population: string | null; studyType: string | null; correctionNote: string | null }; bookmarked: boolean }
 
-interface Bookmark { id: string; title: string; summary: string; content_type: string; publication_date: string | null; source_organization: string | null }
+interface Bookmark { id: string; title: string; summary: string; contentType: string; publicationDate: string | null; sourceOrganization: string | null }
 
 interface Preferences { language: string; geography: string | null; specialtyTags: string[]; interests: string[]; hidePatientOpportunities: boolean; hideProfessionalOpportunities: boolean }
 
 interface Opportunity {
   id: string;
-  opportunity_type: string;
+  opportunityType: string;
   title: string;
   description: string;
   organization: string;
   audience: string;
-  specialty_tags: string[];
+  specialtyTags: string[];
   eligibility: string | null;
   location: string | null;
   remote: boolean;
-  application_url: string | null;
-  contact_route: string | null;
-  opens_on: string | null;
-  closes_on: string | null;
+  applicationUrl: string | null;
+  contactRoute: string | null;
+  opensOn: string | null;
+  closesOn: string | null;
   compensation: string | null;
-  cpd_details: string | null;
-  verification_status: string;
-  sponsorship_status: string;
+  cpdDetails: string | null;
+  verificationStatus: string;
+  sponsorshipStatus: string;
 }
 
-interface EditorialItem { id: string; content_type: string; slug: string; title: string; status: string; version: number; visibility_scope: string; publication_date: string | null; review_due_on: string | null; updated_at: string; author_name: string }
+interface EditorialItem { id: string; contentType: string; slug: string; title: string; status: string; version: number; visibilityScope: string; publicationDate: string | null; reviewDueOn: string | null; updatedAt: string; authorName: string }
 
-interface RoleGrant { id: string; user_id: string; user_name: string; email: string; role: string; department_name: string | null; status: string; scope_note: string | null; starts_at: string; expires_at: string | null; requested_by_name: string | null; approved_by_name: string | null }
+interface RoleGrant { id: string; userId: string; userName: string; email: string; role: string; departmentName: string | null; status: string; scopeNote: string | null; startsAt: string; expiresAt: string | null; requestedByName: string | null; approvedByName: string | null }
 
-interface CareTeamMember { id: string; patient_id: string; public_id: string; given_name: string; family_name: string; user_name: string | null; relationship: string; department_name: string | null; status: string; starts_at: string; ends_at: string | null }
+interface CareTeamMember { id: string; patientId: string; publicId: string; givenName: string; familyName: string; userName: string | null; relationship: string; departmentName: string | null; status: string; startsAt: string; endsAt: string | null }
 
 const CONTENT_TYPES = [
   ["public-health-advisory", "Public-health advisory"],
@@ -185,12 +185,12 @@ function FeedWorkspace() {
               <li key={row.id} className="mv-spread">
                 <div>
                   <strong>{row.title}</strong>
-                  <div className="mv-small mv-muted">{typeLabel(row.content_type)} · {row.source_name ?? row.source_organization ?? "Medveris"} · {formatDate(row.publication_date)}</div>
+                  <div className="mv-small mv-muted">{typeLabel(row.contentType)} · {row.sourceName ?? row.sourceOrganization ?? "Medveris"} · {formatDate(row.publicationDate)}</div>
                   <div className="mv-small">{row.summary}</div>
                   <div className="mv-row" style={{ marginTop: 6 }}>
                     <Badge tone="neutral">{human(row.audience)}</Badge>
-                    {row.clinical_reviewed ? <Badge tone="success">Clinically reviewed</Badge> : <Badge tone="warning">Not clinically reviewed</Badge>}
-                    {row.correction_status && row.correction_status !== "none" ? <Badge tone="danger">{human(row.correction_status)}</Badge> : null}
+                    {row.clinicalReviewed ? <Badge tone="success">Clinically reviewed</Badge> : <Badge tone="warning">Not clinically reviewed</Badge>}
+                    {row.correctionStatus && row.correctionStatus !== "none" ? <Badge tone="danger">{human(row.correctionStatus)}</Badge> : null}
                   </div>
                 </div>
                 <div className="mv-row">
@@ -207,15 +207,15 @@ function FeedWorkspace() {
           {item.loading ? <LoadingState /> : item.error ? <ErrorState message={item.error} onRetry={item.reload} /> : item.data ? (
             <div className="mv-stack">
               <h3 style={{ margin: 0 }}>{item.data.item.title}</h3>
-              <div className="mv-small mv-muted">{typeLabel(item.data.item.content_type)} · {item.data.item.source_name ?? item.data.item.source_organization ?? "Medveris"} · {formatDate(item.data.item.publication_date)} · reviewed {formatDate(item.data.item.review_due_on)}</div>
+              <div className="mv-small mv-muted">{typeLabel(item.data.item.contentType)} · {item.data.item.sourceName ?? item.data.item.sourceOrganization ?? "Medveris"} · {formatDate(item.data.item.publicationDate)} · reviewed {formatDate(item.data.item.reviewDueOn)}</div>
               <p className="mv-pre">{item.data.item.summary}</p>
               {item.data.item.body ? <div className="mv-pre">{item.data.item.body}</div> : null}
-              {item.data.item.findings_summary ? <p><strong>Findings:</strong> {item.data.item.findings_summary}</p> : null}
+              {item.data.item.findingsSummary ? <p><strong>Findings:</strong> {item.data.item.findingsSummary}</p> : null}
               {item.data.item.limitations ? <p><strong>Limitations:</strong> {item.data.item.limitations}</p> : null}
-              {item.data.item.correction_note ? <Notice tone="warning" title="Correction">{item.data.item.correction_note}</Notice> : null}
+              {item.data.item.correctionNote ? <Notice tone="warning" title="Correction">{item.data.item.correctionNote}</Notice> : null}
               {item.data.item.attribution ? <p className="mv-small mv-muted">Attribution: {item.data.item.attribution}</p> : null}
-              {item.data.item.sponsorship_disclosure ? <p className="mv-small mv-muted">Sponsorship: {item.data.item.sponsorship_disclosure}</p> : null}
-              {item.data.item.source_url ? <p className="mv-small"><a href={item.data.item.source_url} target="_blank" rel="noreferrer">Open source</a></p> : null}
+              {item.data.item.sponsorshipDisclosure ? <p className="mv-small mv-muted">Sponsorship: {item.data.item.sponsorshipDisclosure}</p> : null}
+              {item.data.item.sourceUrl ? <p className="mv-small"><a href={item.data.item.sourceUrl} target="_blank" rel="noreferrer">Open source</a></p> : null}
               <div className="mv-row">
                 {item.data.bookmarked ? <Button variant="secondary" onClick={() => void removeBookmark(item.data!.item.id)} disabled={action.busy !== null}>Remove bookmark</Button> : <Button onClick={() => void bookmark(item.data!.item.id)} disabled={action.busy !== null}>Save bookmark</Button>}
               </div>
@@ -257,7 +257,7 @@ function SavedWorkspace() {
         {bookmarks.loading ? <LoadingState /> : bookmarks.error ? <ErrorState message={bookmarks.error} onRetry={bookmarks.reload} /> : !bookmarks.data?.items.length ? <EmptyState title="No bookmarks" description="Save content from the health library to find it here." /> : (
           <Table head={["Title", "Type", "Published"]}>
             {bookmarks.data.items.map((row) => (
-              <tr key={row.id}><td><strong>{row.title}</strong><div className="mv-small mv-muted">{row.summary}</div></td><td>{typeLabel(row.content_type)}</td><td>{formatDate(row.publication_date)}</td></tr>
+              <tr key={row.id}><td><strong>{row.title}</strong><div className="mv-small mv-muted">{row.summary}</div></td><td>{typeLabel(row.contentType)}</td><td>{formatDate(row.publicationDate)}</td></tr>
             ))}
           </Table>
         )}
@@ -333,13 +333,13 @@ function OpportunitiesWorkspace() {
               <li key={row.id}>
                 <div className="mv-spread">
                   <strong>{row.title}</strong>
-                  <div className="mv-row"><Badge tone={row.verification_status === "source-verified" ? "success" : row.verification_status === "details-checked" ? "info" : "warning"}>{human(row.verification_status)}</Badge><Button variant="ghost" size="sm" onClick={() => void bookmark(row.id)} disabled={action.busy !== null}>Bookmark</Button><Button variant="ghost" size="sm" onClick={() => setReporting(row.id)}>Report</Button></div>
+                  <div className="mv-row"><Badge tone={row.verificationStatus === "source-verified" ? "success" : row.verificationStatus === "details-checked" ? "info" : "warning"}>{human(row.verificationStatus)}</Badge><Button variant="ghost" size="sm" onClick={() => void bookmark(row.id)} disabled={action.busy !== null}>Bookmark</Button><Button variant="ghost" size="sm" onClick={() => setReporting(row.id)}>Report</Button></div>
                 </div>
-                <div className="mv-small mv-muted">{human(row.opportunity_type)} · {row.organization} · {row.location ?? (row.remote ? "Remote" : "Location not stated")} · closes {formatDate(row.closes_on)}</div>
+                <div className="mv-small mv-muted">{human(row.opportunityType)} · {row.organization} · {row.location ?? (row.remote ? "Remote" : "Location not stated")} · closes {formatDate(row.closesOn)}</div>
                 <p className="mv-small">{row.description}</p>
                 {row.eligibility ? <p className="mv-small"><strong>Eligibility:</strong> {row.eligibility}</p> : null}
-                {row.sponsorship_status !== "none" ? <Badge tone="warning">{human(row.sponsorship_status)}</Badge> : null}
-                {row.application_url ? <p className="mv-small"><a href={row.application_url} target="_blank" rel="noreferrer">Application details</a></p> : null}
+                {row.sponsorshipStatus !== "none" ? <Badge tone="warning">{human(row.sponsorshipStatus)}</Badge> : null}
+                {row.applicationUrl ? <p className="mv-small"><a href={row.applicationUrl} target="_blank" rel="noreferrer">Application details</a></p> : null}
               </li>
             ))}
           </ul>
@@ -431,10 +431,10 @@ function EditorialWorkspace({ can }: { can: (permission: string) => boolean }) {
           <Table head={["Title", "Status", "Version", "Updated", "Actions"]}>
             {items.data.items.map((row) => (
               <tr key={row.id}>
-                <td><strong>{row.title}</strong><div className="mv-small mv-muted">{typeLabel(row.content_type)} · {row.author_name} · {human(row.visibility_scope)}</div></td>
+                <td><strong>{row.title}</strong><div className="mv-small mv-muted">{typeLabel(row.contentType)} · {row.authorName} · {human(row.visibilityScope)}</div></td>
                 <td><Badge tone={row.status === "published" ? "success" : row.status === "in-review" ? "info" : row.status === "archived" ? "neutral" : "warning"}>{human(row.status)}</Badge></td>
                 <td>{row.version}</td>
-                <td>{formatDateTime(row.updated_at)}</td>
+                <td>{formatDateTime(row.updatedAt)}</td>
                 <td>
                   <div className="mv-row">
                     {can("content.review") && ["draft", "in-review"].includes(row.status) ? <Button variant="secondary" size="sm" onClick={() => setTarget({ id: row.id, action: "review", version: row.version, title: row.title })}>Review</Button> : null}
@@ -454,7 +454,7 @@ function EditorialWorkspace({ can }: { can: (permission: string) => boolean }) {
 function GovernanceWorkspace({ can, roles }: { can: (permission: string) => boolean; roles: string[] }) {
   const grants = useQuery<{ grants: RoleGrant[] }>(can("role_grant.request") ? "/admin/role-grants" : null);
   const careTeam = useQuery<{ assignments: CareTeamMember[] }>(can("care_team.read") ? "/admin/care-team" : null);
-  const review = useQuery<{ grants: RoleGrant[]; careTeam: CareTeamMember[]; credentials: Array<{ credential_type: string; status: string; expires_on: string | null; total: number }> }>(can("audit.read") ? "/admin/access-review" : null);
+  const review = useQuery<{ grants: RoleGrant[]; careTeam: CareTeamMember[]; credentials: Array<{ credentialType: string; status: string; expiresOn: string | null; total: number }> }>(can("audit.read") ? "/admin/access-review" : null);
   const action = useAction();
   const [grantForm, setGrantForm] = useState({ userId: "", role: "nurse", scopeNote: "", expiresAt: "" });
   const [decision, setDecision] = useState<{ id: string; decision: "approved" | "rejected" | "revoked" } | null>(null);
@@ -527,10 +527,10 @@ function GovernanceWorkspace({ can, roles }: { can: (permission: string) => bool
               <Table head={["Member", "Role", "Status", "Expires", "Actions"]}>
                 {grants.data.grants.map((grant) => (
                   <tr key={grant.id}>
-                    <td><strong>{grant.user_name}</strong><div className="mv-small mv-muted">{grant.email}</div></td>
-                    <td>{human(grant.role)}{grant.department_name ? <div className="mv-small mv-muted">{grant.department_name}</div> : null}</td>
+                    <td><strong>{grant.userName}</strong><div className="mv-small mv-muted">{grant.email}</div></td>
+                    <td>{human(grant.role)}{grant.departmentName ? <div className="mv-small mv-muted">{grant.departmentName}</div> : null}</td>
                     <td><Badge tone={grant.status === "approved" ? "success" : grant.status === "rejected" || grant.status === "revoked" ? "danger" : "warning"}>{human(grant.status)}</Badge></td>
-                    <td>{formatDateTime(grant.expires_at)}</td>
+                    <td>{formatDateTime(grant.expiresAt)}</td>
                     <td>
                       {canApprove && grant.status === "requested" ? <div className="mv-row"><Button size="sm" onClick={() => setDecision({ id: grant.id, decision: "approved" })}>Approve</Button><Button size="sm" variant="secondary" onClick={() => setDecision({ id: grant.id, decision: "rejected" })}>Reject</Button></div> : canApprove && grant.status === "approved" ? <Button size="sm" variant="ghost" onClick={() => setDecision({ id: grant.id, decision: "revoked" })}>Revoke</Button> : <span className="mv-small mv-muted">—</span>}
                     </td>
@@ -567,8 +567,8 @@ function GovernanceWorkspace({ can, roles }: { can: (permission: string) => bool
               <Table head={["Patient", "Member", "Status", "Actions"]}>
                 {careTeam.data.assignments.map((row) => (
                   <tr key={row.id}>
-                    <td><strong>{row.given_name} {row.family_name}</strong><div className="mv-small mv-muted"><span className="mv-id">{row.public_id}</span> · {human(row.relationship)}</div></td>
-                    <td>{row.user_name ?? "—"}{row.department_name ? <div className="mv-small mv-muted">{row.department_name}</div> : null}</td>
+                    <td><strong>{row.givenName} {row.familyName}</strong><div className="mv-small mv-muted"><span className="mv-id">{row.publicId}</span> · {human(row.relationship)}</div></td>
+                    <td>{row.userName ?? "—"}{row.departmentName ? <div className="mv-small mv-muted">{row.departmentName}</div> : null}</td>
                     <td><Badge tone={row.status === "active" ? "success" : "neutral"}>{human(row.status)}</Badge></td>
                     <td>{canManageTeam && row.status === "active" ? <Button size="sm" variant="ghost" onClick={() => void revokeTeam(row.id)} disabled={action.busy !== null}>Revoke</Button> : <span className="mv-small mv-muted">—</span>}</td>
                   </tr>
@@ -589,7 +589,7 @@ function GovernanceWorkspace({ can, roles }: { can: (permission: string) => bool
               </div>
               <Table head={["Credential type", "Status", "Expires", "Count"]}>
                 {review.data.credentials.map((row) => (
-                  <tr key={`${row.credential_type}-${row.status}-${row.expires_on ?? "none"}`}><td>{human(row.credential_type)}</td><td>{human(row.status)}</td><td>{formatDate(row.expires_on)}</td><td>{row.total}</td></tr>
+                  <tr key={`${row.credentialType}-${row.status}-${row.expiresOn ?? "none"}`}><td>{human(row.credentialType)}</td><td>{human(row.status)}</td><td>{formatDate(row.expiresOn)}</td><td>{row.total}</td></tr>
                 ))}
               </Table>
             </div>

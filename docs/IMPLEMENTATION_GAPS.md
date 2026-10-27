@@ -4,7 +4,7 @@ This file separates harmless local-development gaps from items that block produc
 
 ## Must resolve before any real patient data
 
-1. **Deployment target.** The API runs under Node/Hono locally. A Cloudflare Worker bundle builds, but no Wrangler configuration, Hyperdrive binding test, R2 binding test or edge compatibility test exists. Do not claim Workers readiness.
+1. **Deployment target.** The API runs under Node/Hono locally. `wrangler.jsonc` defines a `medveris-staging` Worker and the private R2 bucket `medveris-staging-uploads` exists, but no staging PostgreSQL database or Hyperdrive config exists yet, so the Worker has never run against Hyperdrive or R2 in Cloudflare. Do not claim Workers readiness.
 2. **Secrets and keys.** `.env` contains local secrets. Production needs a managed secret store, key rotation, separation of audit/MFA/session keys and documented recovery.
 3. **Backups and restore.** No automated backup, point-in-time recovery drill or restore verification has been performed.
 4. **CI/CD.** A GitHub Actions verification workflow is committed, but it has not yet been executed in a hosted runner and there is no deployment approval gate or environment promotion process.

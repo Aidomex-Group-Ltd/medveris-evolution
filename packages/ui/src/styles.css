@@ -56,7 +56,8 @@ button, input, select, textarea { font: inherit; }
   overflow-y: auto;
 }
 .mv-brand { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; font-weight: 700; letter-spacing: 0.03em; }
-.mv-brand__mark { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: #2f9a7c; color: #04241c; font-weight: 800; }
+.mv-brand__mark { flex: none; width: 34px; height: 34px; padding: 3px; border-radius: 9px; display: grid; place-items: center; background: #ffffff; box-shadow: 0 0 0 1px rgba(14,43,36,0.12); }
+.mv-brand__mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .mv-brand small { display: block; font-weight: 500; color: #a9c6bd; letter-spacing: 0; }
 .mv-sidebar__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .mv-nav { display: flex; flex-direction: column; gap: 2px; }

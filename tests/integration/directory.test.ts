@@ -118,6 +118,8 @@ describe("public directory and discovery", () => {
     expect(body.facilities.length).toBeGreaterThan(0);
     expect(body.facilities.every((facility: any) => facility.publicationStatus === "published")).toBe(true);
     expect(body.facilities.some((facility: any) => facility.name.includes("Jinja Road Pharmacy"))).toBe(false);
+    const listed = [...body.sponsored, ...body.facilities].map((facility: any) => facility.id);
+    expect(new Set(listed).size).toBe(listed.length);
     const kampala = await expectOk(await publicCall("/api/v1/public/directory/facilities/MV-DIR-KLA-01"));
     expect(kampala.facility.branches[0].latitude).toBeTruthy();
     expect(kampala.facility.services.length).toBeGreaterThan(0);

@@ -1,55 +1,75 @@
-import { Link, Route, Routes } from "react-router-dom";
-import { EmptyState, PageHeader } from "@medveris/ui";
+import { lazy, Suspense, type ComponentType } from "react";
+import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { EmptyState, LoadingState, PageHeader } from "@medveris/ui";
 import { AppShell } from "./components/AppShell";
+import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
-import { RegisterPage } from "./pages/RegisterPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { PatientsPage } from "./pages/PatientsPage";
-import { QueuesPage } from "./pages/QueuesPage";
-import { WorklistPage } from "./pages/WorklistPage";
-import { EncounterPage } from "./pages/EncounterPage";
-import { PatientPortalPage } from "./pages/PatientPortalPage";
-import { ConsentPage } from "./pages/ConsentPage";
-import { AccessHistoryPage } from "./pages/AccessHistoryPage";
-import { ExchangePage } from "./pages/ExchangePage";
-import { CredentialsPage } from "./pages/CredentialsPage";
-import { AdminPage } from "./pages/AdminPage";
-import { ReviewerPage } from "./pages/ReviewerPage";
-import { SecurityPage } from "./pages/SecurityPage";
-import { WardsPage } from "./pages/WardsPage";
-import { TheatrePage } from "./pages/TheatrePage";
-import { TheatreCasePage } from "./pages/TheatreCasePage";
-import { AdmissionDetailPage } from "./pages/AdmissionDetailPage";
-import { DiagnosticsPage } from "./pages/DiagnosticsPage";
-import { OrderDetailPage } from "./pages/OrderDetailPage";
-import { PharmacyPage } from "./pages/PharmacyPage";
-import { FinancePage } from "./pages/FinancePage";
-import { InvoiceDetailPage } from "./pages/InvoiceDetailPage";
-import { ProgrammesPage } from "./pages/ProgrammesPage";
-import { PublicHealthPage } from "./pages/PublicHealthPage";
-import { TelehealthPage } from "./pages/TelehealthPage";
-import { DevicesPage } from "./pages/DevicesPage";
-import { AIPage } from "./pages/AIPage";
-import { EmergencyPage } from "./pages/EmergencyPage";
-import { EmergencyCasePage } from "./pages/EmergencyCasePage";
-import { CareCoordinationPage } from "./pages/CareCoordinationPage";
-import { AppointmentsPage } from "./pages/AppointmentsPage";
-import { WorkforcePage } from "./pages/WorkforcePage";
-import { DocumentsPage } from "./pages/DocumentsPage";
-import { MaternityPage } from "./pages/MaternityPage";
-import { OperationsPage } from "./pages/OperationsPage";
-import { InventoryPage } from "./pages/InventoryPage";
-import { ContentPage } from "./pages/ContentPage";
-import { DirectoryPage } from "./pages/DirectoryPage";
-import { DirectoryDetailPage } from "./pages/DirectoryDetailPage";
-import { ProviderDirectoryPage } from "./pages/ProviderDirectoryPage";
-import { PromotionsPage } from "./pages/PromotionsPage";
-import { DirectoryGovernancePage } from "./pages/DirectoryGovernancePage";
-import { OnboardingPage } from "./pages/OnboardingPage";
-import { OnboardingWorkflowPage } from "./pages/OnboardingWorkflowPage";
-import { CatalogueEditorPage } from "./pages/CatalogueEditorPage";
-import { CaregiversPage } from "./pages/CaregiversPage";
+
+function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K): ComponentType {
+  const Page = lazy(async () => {
+    const component: ComponentType = (await load())[name];
+    return { default: component };
+  });
+  return function LazyPage() {
+    const { pathname } = useLocation();
+    return (
+      <PageErrorBoundary key={pathname}>
+        <Suspense fallback={<LoadingState label="Loading workspace" />}>
+          <Page />
+        </Suspense>
+      </PageErrorBoundary>
+    );
+  };
+}
+
+const RegisterPage = lazyPage(() => import("./pages/RegisterPage"), "RegisterPage");
+const DashboardPage = lazyPage(() => import("./pages/DashboardPage"), "DashboardPage");
+const PatientsPage = lazyPage(() => import("./pages/PatientsPage"), "PatientsPage");
+const QueuesPage = lazyPage(() => import("./pages/QueuesPage"), "QueuesPage");
+const WorklistPage = lazyPage(() => import("./pages/WorklistPage"), "WorklistPage");
+const EncounterPage = lazyPage(() => import("./pages/EncounterPage"), "EncounterPage");
+const PatientPortalPage = lazyPage(() => import("./pages/PatientPortalPage"), "PatientPortalPage");
+const ConsentPage = lazyPage(() => import("./pages/ConsentPage"), "ConsentPage");
+const AccessHistoryPage = lazyPage(() => import("./pages/AccessHistoryPage"), "AccessHistoryPage");
+const ExchangePage = lazyPage(() => import("./pages/ExchangePage"), "ExchangePage");
+const CredentialsPage = lazyPage(() => import("./pages/CredentialsPage"), "CredentialsPage");
+const AdminPage = lazyPage(() => import("./pages/AdminPage"), "AdminPage");
+const ReviewerPage = lazyPage(() => import("./pages/ReviewerPage"), "ReviewerPage");
+const SecurityPage = lazyPage(() => import("./pages/SecurityPage"), "SecurityPage");
+const WardsPage = lazyPage(() => import("./pages/WardsPage"), "WardsPage");
+const TheatrePage = lazyPage(() => import("./pages/TheatrePage"), "TheatrePage");
+const TheatreCasePage = lazyPage(() => import("./pages/TheatreCasePage"), "TheatreCasePage");
+const AdmissionDetailPage = lazyPage(() => import("./pages/AdmissionDetailPage"), "AdmissionDetailPage");
+const DiagnosticsPage = lazyPage(() => import("./pages/DiagnosticsPage"), "DiagnosticsPage");
+const OrderDetailPage = lazyPage(() => import("./pages/OrderDetailPage"), "OrderDetailPage");
+const PharmacyPage = lazyPage(() => import("./pages/PharmacyPage"), "PharmacyPage");
+const FinancePage = lazyPage(() => import("./pages/FinancePage"), "FinancePage");
+const InvoiceDetailPage = lazyPage(() => import("./pages/InvoiceDetailPage"), "InvoiceDetailPage");
+const ProgrammesPage = lazyPage(() => import("./pages/ProgrammesPage"), "ProgrammesPage");
+const PublicHealthPage = lazyPage(() => import("./pages/PublicHealthPage"), "PublicHealthPage");
+const TelehealthPage = lazyPage(() => import("./pages/TelehealthPage"), "TelehealthPage");
+const DevicesPage = lazyPage(() => import("./pages/DevicesPage"), "DevicesPage");
+const AIPage = lazyPage(() => import("./pages/AIPage"), "AIPage");
+const EmergencyPage = lazyPage(() => import("./pages/EmergencyPage"), "EmergencyPage");
+const EmergencyCasePage = lazyPage(() => import("./pages/EmergencyCasePage"), "EmergencyCasePage");
+const CareCoordinationPage = lazyPage(() => import("./pages/CareCoordinationPage"), "CareCoordinationPage");
+const AppointmentsPage = lazyPage(() => import("./pages/AppointmentsPage"), "AppointmentsPage");
+const WorkforcePage = lazyPage(() => import("./pages/WorkforcePage"), "WorkforcePage");
+const DocumentsPage = lazyPage(() => import("./pages/DocumentsPage"), "DocumentsPage");
+const MaternityPage = lazyPage(() => import("./pages/MaternityPage"), "MaternityPage");
+const OperationsPage = lazyPage(() => import("./pages/OperationsPage"), "OperationsPage");
+const InventoryPage = lazyPage(() => import("./pages/InventoryPage"), "InventoryPage");
+const ContentPage = lazyPage(() => import("./pages/ContentPage"), "ContentPage");
+const DirectoryPage = lazyPage(() => import("./pages/DirectoryPage"), "DirectoryPage");
+const DirectoryDetailPage = lazyPage(() => import("./pages/DirectoryDetailPage"), "DirectoryDetailPage");
+const ProviderDirectoryPage = lazyPage(() => import("./pages/ProviderDirectoryPage"), "ProviderDirectoryPage");
+const PromotionsPage = lazyPage(() => import("./pages/PromotionsPage"), "PromotionsPage");
+const DirectoryGovernancePage = lazyPage(() => import("./pages/DirectoryGovernancePage"), "DirectoryGovernancePage");
+const OnboardingPage = lazyPage(() => import("./pages/OnboardingPage"), "OnboardingPage");
+const OnboardingWorkflowPage = lazyPage(() => import("./pages/OnboardingWorkflowPage"), "OnboardingWorkflowPage");
+const CatalogueEditorPage = lazyPage(() => import("./pages/CatalogueEditorPage"), "CatalogueEditorPage");
+const CaregiversPage = lazyPage(() => import("./pages/CaregiversPage"), "CaregiversPage");
 
 function NotFoundPage() {
   return (

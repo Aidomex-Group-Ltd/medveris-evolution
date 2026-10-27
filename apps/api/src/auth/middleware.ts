@@ -3,13 +3,13 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { withContext, type Tx } from "@medveris/db";
 import type { ActorContext, Role } from "@medveris/authz";
 import { ForbiddenError, UnauthorizedError } from "../lib/errors.js";
-import type { AppDeps, AppEnv, AuthContext } from "../types.js";
+import type { AppBaseDeps, AppBindings, AppDeps, AppEnv, AuthContext } from "../types.js";
 import { loadAuthContext, revokeSession, SESSION_COOKIE, type NewSession } from "./session.js";
 
 export function setSessionCookie(c: Context<AppEnv>, session: NewSession): void {
   setCookie(c, SESSION_COOKIE, session.token, {
     httpOnly: true,
-    secure: c.get("deps").config.appEnv === "production",
+    secure: c.get("deps").config.appEnv === "production" || c.get("deps").config.origin.startsWith("https://"),
     sameSite: "Strict",
     path: "/",
     maxAge: Math.floor((session.expiresAt.getTime() - Date.now()) / 1000),
@@ -20,21 +20,29 @@ export function clearSessionCookie(c: Context<AppEnv>): void {
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
 }
 
-export function authMiddleware(deps: AppDeps): MiddlewareHandler<AppEnv> {
+function resolveDeps(c: Context<AppEnv>, deps: AppBaseDeps): AppDeps {
+  const bound = (c.env as AppBindings | undefined)?.requestDeps;
+  if (bound) return bound;
+  if (!deps.sql) throw new Error("No database client is bound to this request");
+  return { ...deps, sql: deps.sql };
+}
+
+export function authMiddleware(deps: AppBaseDeps): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    c.set("deps", deps);
+    const requestDeps = resolveDeps(c, deps);
+    c.set("deps", requestDeps);
     const token = getCookie(c, SESSION_COOKIE);
     let auth: AuthContext | null = null;
     if (token) {
       try {
-        auth = await loadAuthContext(deps.sql, token);
+        auth = await loadAuthContext(requestDeps.sql, token);
       } catch {
         auth = null;
       }
     }
     c.set("auth", auth);
     if (auth && ["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && isCsrfProtected(c.req.path)) {
-      const supplied = c.req.header(deps.config.csrfHeader) ?? "";
+      const supplied = c.req.header(requestDeps.config.csrfHeader) ?? "";
       if (!supplied || supplied !== auth.session.csrfToken) {
         throw new ForbiddenError("CSRF validation failed");
       }
@@ -130,6 +138,18 @@ export async function withPlatformActor<T>(c: Context<AppEnv>, fn: (tx: Tx) => P
     actorKind: "staff",
     roles: auth.activeTenant?.roles ?? [],
     platformRole: "platform_operator",
+  }, fn);
+}
+
+/** Platform credential review runs as `credential_reviewer` even when the user also operates the platform. */
+export async function withReviewerActor<T>(c: Context<AppEnv>, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  const auth = requirePlatformReviewer(c);
+  return withContext(c.get("deps").sql, {
+    tenantId: auth.activeTenant?.id ?? null,
+    userId: auth.user.id,
+    actorKind: "staff",
+    roles: auth.activeTenant?.roles ?? [],
+    platformRole: "credential_reviewer",
   }, fn);
 }
 

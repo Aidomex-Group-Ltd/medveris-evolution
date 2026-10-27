@@ -7,7 +7,7 @@ import {
   uuidSchema,
 } from "@medveris/contracts";
 import { canManageTenant, type ActorContext } from "@medveris/authz";
-import { requireAuth, requirePlatformReviewer, requireStaff, withActor, withStaffActor } from "../auth/middleware.js";
+import { requireAuth, requirePlatformReviewer, requireStaff, withActor, withReviewerActor, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
@@ -91,7 +91,10 @@ credentialRoutes.post("/uploads", async (c) => {
   try {
     await deps.storage.put(result.objectKey, bytes);
   } catch (error) {
-    await deps.sql`update uploads set scan_status = 'rejected', status = 'rejected', scan_detail = ${`storage-failure: ${(error as Error).message}`} where id = ${id}`;
+    await withStaffActor(c, async (tx) => tx`
+      update uploads set scan_status = 'rejected', status = 'rejected', scan_detail = ${`storage-failure: ${(error as Error).message}`}
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+    `);
     throw error;
   }
   await withStaffActor(c, async (tx) => {
@@ -122,9 +125,12 @@ credentialRoutes.get("/uploads/:id/content", async (c) => {
   const auth = requireAuth(c);
   const deps = c.get("deps");
   const id = uuidSchema.parse(c.req.param("id"));
-  const upload = (await deps.sql`select id, tenant_id, owner_user_id, filename, detected_type, object_key, scan_status, status, size_bytes from uploads where id = ${id} limit 1`)[0];
-  if (!upload) throw new NotFoundError("Document not found");
   const reviewer = auth.platformRoles.includes("credential_reviewer");
+  const readContext = reviewer ? withReviewerActor : withActor;
+  const upload = (await readContext(c, async (tx) => tx`
+    select id, tenant_id, owner_user_id, filename, detected_type, object_key, scan_status, status, size_bytes from uploads where id = ${id} limit 1
+  `))[0];
+  if (!upload) throw new NotFoundError("Document not found");
   const sameTenant = auth.activeTenant?.id === upload.tenantId;
   if (!reviewer && !sameTenant && auth.user.id !== upload.ownerUserId) throw new NotFoundError("Document not found");
   if (upload.scanStatus !== "clean" || upload.status !== "available") throw new NotFoundError("Document is not available");
@@ -261,7 +267,7 @@ credentialRoutes.get("/credentials/facility", async (c) => {
 
 credentialRoutes.get("/credentials/queue", async (c) => {
   const auth = requirePlatformReviewer(c);
-  const rows = await withActor(c, async (tx) => tx`
+  const rows = await withReviewerActor(c, async (tx) => tx`
     select c.id, c.subject_type, c.subject_user_id, c.subject_tenant_id, c.credential_type, c.issuer, c.jurisdiction,
            c.credential_number, c.scope, c.issued_on, c.expires_on, c.status, c.created_at, c.submitted_by,
            su.display_name as submitter_name, su.email as submitter_email,
@@ -424,7 +430,7 @@ credentialRoutes.post("/credentials/:id/decision", async (c) => {
   const deps = c.get("deps");
   const id = uuidSchema.parse(c.req.param("id"));
   const body = await parseJson(c, credentialDecisionSchema);
-  await withActor(c, async (tx) => {
+  await withReviewerActor(c, async (tx) => {
     const rows = await tx`select id, submitted_by, subject_user_id, subject_tenant_id, expires_on, status from credentials where id = ${id} for update`;
     const credential = rows[0];
     if (!credential) throw new NotFoundError("Credential not found");

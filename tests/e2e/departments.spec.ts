@@ -65,6 +65,7 @@ test("finance and public-health workspaces open with their own permissions", asy
   await expect(page.getByRole("link", { name: "Public health", exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
   await signInStaff(page, "publichealth@medveris.local");
   await page.getByRole("link", { name: "Public health", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Aggregate reporting" })).toBeVisible();

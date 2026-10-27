@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Badge, Button } from "@medveris/ui";
+import { BrandMark } from "./BrandMark";
 import { useAuth } from "../lib/auth";
 import type { Role } from "../lib/types";
 
@@ -146,7 +147,7 @@ export function AppShell() {
       <aside id="app-sidebar" className={`mv-sidebar${navOpen ? " mv-sidebar--open" : ""}`}>
         <div className="mv-sidebar__head">
           <NavLink to="/" className="mv-brand" aria-label="Medveris home">
-            <span className="mv-brand__mark" aria-hidden="true">M</span>
+            <BrandMark />
             <span>Medveris<small>Outpatient foundation</small></span>
           </NavLink>
           <button ref={closeButtonRef} type="button" className="mv-nav-close" aria-label="Close navigation" onClick={closeNavigation}>
@@ -207,7 +208,7 @@ export function AppShell() {
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
           <NavLink to="/" className="mv-mobile-brand" aria-label="Medveris home">
-            <span className="mv-brand__mark" aria-hidden="true">M</span>
+            <BrandMark />
             <span>Medveris</span>
           </NavLink>
           <div className="context">

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, Select } from "@medveris/ui";
+import { BrandMark } from "../components/BrandMark";
 import { api } from "../lib/api";
 import { useQuery } from "../lib/useQuery";
 
@@ -212,7 +213,7 @@ export function DirectoryPage() {
   return (
     <div className="mv-public">
       <header className="mv-public__header">
-        <Link to="/" className="mv-brand" aria-label="Medveris home"><span className="mv-brand__mark" aria-hidden="true">M</span><span>Medveris<small>Public provider directory</small></span></Link>
+        <Link to="/" className="mv-brand" aria-label="Medveris home"><BrandMark /><span>Medveris<small>Public provider directory</small></span></Link>
         <nav className="mv-row" aria-label="Public navigation">
           <Link to="/directory">Find care</Link>
           <Link to="/login">Sign in</Link>

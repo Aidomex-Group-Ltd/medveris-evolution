@@ -32,7 +32,9 @@ function base64ToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
-const PBKDF2_ITERATIONS = 210_000;
+// Cloudflare Workers rejects PBKDF2 above 100,000 iterations (WebCrypto and node:crypto alike), and
+// hashes must verify on both Node and Workers. Stored hashes record their own iteration count.
+export const PBKDF2_ITERATIONS = 100_000;
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));

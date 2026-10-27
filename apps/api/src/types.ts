@@ -65,4 +65,12 @@ export interface AppVariables {
   correlationId: string;
 }
 
-export type AppEnv = { Variables: AppVariables };
+/** Dependencies shared by every request; `sql` is omitted when each request binds its own client. */
+export type AppBaseDeps = Omit<AppDeps, "sql"> & { sql?: Sql };
+
+export interface AppBindings {
+  /** Per-request dependencies. Workers must not share database sockets between requests. */
+  requestDeps?: AppDeps;
+}
+
+export type AppEnv = { Bindings: AppBindings; Variables: AppVariables };

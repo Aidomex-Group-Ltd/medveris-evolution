@@ -64,18 +64,52 @@ function integer(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+const TEST_SESSION_SECRET = "test-session-secret-test-session-secret";
+const TEST_AUDIT_SIGNING_KEY = "test-audit-signing-key-test-audit-signing-key";
+const TEST_MFA_ENCRYPTION_KEY = "test-mfa-encryption-key-test-mfa-encryption-key";
+const LOCAL_ONLY_ENVIRONMENTS = new Set(["development", "test"]);
+
+function requireSecret(name: string, value: string): void {
+  if (value.length < 24) throw new Error(`${name} must be at least 24 characters`);
+  if (/replace-with|changeme|placeholder/i.test(value) || value.startsWith("test-")) {
+    throw new Error(`${name} is a placeholder or test value; generate it with npm run secrets:local`);
+  }
+}
+
+function validatedOrigin(raw: string, appEnv: string): string {
+  if (/REPLACE_WITH/i.test(raw)) throw new Error("APP_ORIGIN still contains a placeholder");
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("APP_ORIGIN must be an absolute URL");
+  }
+  if (url.origin !== raw.replace(/\/$/, "")) throw new Error("APP_ORIGIN must be an origin without a path, query or fragment");
+  if (!LOCAL_ONLY_ENVIRONMENTS.has(appEnv) && url.protocol !== "https:") {
+    throw new Error("APP_ORIGIN must use HTTPS outside local development and tests");
+  }
+  return url.origin;
+}
+
 export function loadConfig(env: EnvLike = process.env): AppConfig {
   const appEnv = env.APP_ENV ?? env.NODE_ENV ?? "development";
   const sessionSecret = env.SESSION_SECRET ?? "";
   const auditSigningKey = env.AUDIT_SIGNING_KEY ?? "";
   const mfaEncryptionKey = env.MFA_ENCRYPTION_KEY ?? "";
   if (appEnv !== "test") {
-    if (sessionSecret.length < 24) throw new Error("SESSION_SECRET must be at least 24 characters");
-    if (auditSigningKey.length < 24) throw new Error("AUDIT_SIGNING_KEY must be at least 24 characters");
-    if (mfaEncryptionKey.length < 24) throw new Error("MFA_ENCRYPTION_KEY must be at least 24 characters");
+    requireSecret("SESSION_SECRET", sessionSecret);
+    requireSecret("AUDIT_SIGNING_KEY", auditSigningKey);
+    requireSecret("MFA_ENCRYPTION_KEY", mfaEncryptionKey);
+    if (new Set([sessionSecret, auditSigningKey, mfaEncryptionKey]).size !== 3) {
+      throw new Error("SESSION_SECRET, AUDIT_SIGNING_KEY and MFA_ENCRYPTION_KEY must be different values");
+    }
   }
-  const origin = env.APP_ORIGIN ?? (appEnv === "development" ? "http://localhost:5173" : "");
-  if (!origin) throw new Error("APP_ORIGIN is required outside local development");
+  if (bool(env.DEV_SHOW_TOTP_SECRETS, false) && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) {
+    throw new Error("DEV_SHOW_TOTP_SECRETS must be false outside local development and tests");
+  }
+  const rawOrigin = env.APP_ORIGIN ?? (appEnv === "development" ? "http://localhost:5173" : "");
+  if (!rawOrigin) throw new Error("APP_ORIGIN is required outside local development");
+  const origin = validatedOrigin(rawOrigin, appEnv);
   const terminologyMode = (env.TERMINOLOGY_MODE ?? "synthetic") === "production" ? "production" : "synthetic";
   const terminologyProviderUrl = env.TERMINOLOGY_PROVIDER_URL || null;
   if (terminologyMode === "production" && !terminologyProviderUrl) {
@@ -100,11 +134,11 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
   return {
     appEnv,
     origin,
-    sessionSecret: sessionSecret || "test-session-secret-test-session-secret",
+    sessionSecret: sessionSecret || TEST_SESSION_SECRET,
     sessionTtlMinutes: integer(env.SESSION_TTL_MINUTES, 480),
-    auditSigningKey: auditSigningKey || "test-audit-signing-key-test-audit-signing-key",
+    auditSigningKey: auditSigningKey || TEST_AUDIT_SIGNING_KEY,
     auditSigningKeyId: env.AUDIT_SIGNING_KEY_ID ?? "local-dev-key-1",
-    mfaEncryptionKey: mfaEncryptionKey || "test-mfa-encryption-key-test-mfa-encryption-key",
+    mfaEncryptionKey: mfaEncryptionKey || TEST_MFA_ENCRYPTION_KEY,
     csrfHeader: (env.CSRF_HEADER ?? "x-medveris-csrf").toLowerCase(),
     emailAdapter: (env.EMAIL_ADAPTER ?? "local") === "resend" ? "resend" : "local",
     emailFrom: env.EMAIL_FROM ?? "Medveris <no-reply@medveris.local>",
