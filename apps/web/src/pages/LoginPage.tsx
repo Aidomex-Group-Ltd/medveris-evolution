@@ -109,6 +109,7 @@ export function LoginPage() {
                   <Input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </Field>
                 <Button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</Button>
+                <p className="mv-small"><Link to="/forgot-password">Forgot password?</Link></p>
                 <p className="mv-small mv-muted">Patient account? <Link to="/register?type=patient">Create a free patient account</Link>. Facility? <Link to="/register?type=facility">Register a facility</Link>.</p>
               </form>
             )}

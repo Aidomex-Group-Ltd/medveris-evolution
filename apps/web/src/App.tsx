@@ -24,6 +24,8 @@ function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>
 }
 
 const RegisterPage = lazyPage(() => import("./pages/RegisterPage"), "RegisterPage");
+const ForgotPasswordPage = lazyPage(() => import("./pages/ForgotPasswordPage"), "ForgotPasswordPage");
+const ResetPasswordPage = lazyPage(() => import("./pages/ResetPasswordPage"), "ResetPasswordPage");
 const DashboardPage = lazyPage(() => import("./pages/DashboardPage"), "DashboardPage");
 const PatientsPage = lazyPage(() => import("./pages/PatientsPage"), "PatientsPage");
 const QueuesPage = lazyPage(() => import("./pages/QueuesPage"), "QueuesPage");
@@ -85,6 +87,8 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/directory" element={<DirectoryPage />} />
       <Route path="/directory/:publicId" element={<DirectoryDetailPage />} />
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>

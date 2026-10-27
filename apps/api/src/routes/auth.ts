@@ -328,17 +328,17 @@ authRoutes.post("/forgot-password", async (c) => {
   if (rows[0]) {
     const userId = String(rows[0].id);
     const token = await withContext(deps.sql, { actorKind: "registration" }, async (tx) => createEmailToken(tx, userId, "reset-password"));
-    const delivery = await deliver(
+    // Delivery failures are recorded on the token only; the response must not reveal whether the account exists.
+    await deliver(
       c,
       body.email,
       "Reset your Medveris password",
       `Reset your password: ${deps.config.origin}/reset-password?token=${token.token}`,
       token.id,
-      String(rows[0].id),
+      userId,
     );
-    return c.json({ ok: true, message: "If the account exists, a recovery message has been requested.", delivery: delivery.delivered ? "requested" : "provider-failed" });
   }
-  return c.json({ ok: true, message: "If the account exists, a recovery message has been requested.", delivery: "requested" });
+  return c.json({ ok: true, message: "If an account exists for this email, a password reset link has been sent." });
 });
 
 authRoutes.post("/reset-password", async (c) => {
@@ -355,7 +355,12 @@ authRoutes.post("/reset-password", async (c) => {
   const passwordHash = await hashPassword(body.password);
   await deps.sql.begin(async (tx) => {
     await tx`update users set password_hash = ${passwordHash}, updated_at = now() where id = ${token.userId}`;
-    await tx`update email_tokens set consumed_at = now() where id = ${token.id}`;
+    const consumed = await tx`update email_tokens set consumed_at = now() where id = ${token.id} and consumed_at is null returning id`;
+    if (!consumed.length) throw new ValidationError("Recovery link is invalid or expired");
+    await tx`
+      update email_tokens set consumed_at = now()
+       where user_id = ${token.userId} and purpose = 'reset-password' and consumed_at is null
+    `;
     await tx`update sessions set revoked_at = now(), revoked_reason = 'password-reset' where user_id = ${token.userId} and revoked_at is null`;
     await writeAudit(tx, deps.config, {
       actorKind: "registration",
