@@ -26,6 +26,15 @@ export const REQUIRED_VARS = Object.freeze({
 });
 
 const HYPERDRIVE_ROLES = Object.freeze({ HYPERDRIVE: EXPECTED.runtimeRole, HYPERDRIVE_JOBS: EXPECTED.jobsRole });
+
+/**
+ * Secrets the staging Worker needs: the core keys, plus RESEND_API_KEY when email goes through Resend.
+ * @param {any} staging env.staging from wrangler.jsonc
+ * @returns {string[]}
+ */
+export function requiredSecrets(staging) {
+  return staging?.vars?.EMAIL_ADAPTER === "resend" ? [...REQUIRED_SECRETS, "RESEND_API_KEY"] : [...REQUIRED_SECRETS];
+}
 const SECRET_LIKE_VAR = /(SECRET|PASSWORD|TOKEN|_KEY|CONNECTION_STRING|DATABASE_URL)$/;
 const PRODUCTION_REFERENCE = /(^|[^a-z])prod(uction)?([^a-z]|$)/i;
 const LOCAL_HOST = /^(localhost|127\.|0\.0\.0\.0|::1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i;
@@ -130,8 +139,13 @@ export function checkStagingConfig(config) {
   for (const name of Object.keys(vars)) {
     check(!REQUIRED_SECRETS.includes(name) && !SECRET_LIKE_VAR.test(name), `${name} looks like a secret and must not be a plaintext var`);
   }
+  check(["local", "resend"].includes(vars.EMAIL_ADAPTER), "EMAIL_ADAPTER must be local (no delivery) or resend");
+  if (vars.EMAIL_ADAPTER === "resend") {
+    const sender = /<?([^<>\s]+@([^<>\s]+))>?\s*$/.exec(String(vars.EMAIL_FROM ?? ""));
+    check(sender && !sender[2].endsWith(".local"), "EMAIL_FROM must use a verified Resend sending domain when EMAIL_ADAPTER is resend");
+  }
   const required = staging.secrets?.required ?? [];
-  for (const name of REQUIRED_SECRETS) check(required.includes(name), `${name} must be listed in env.staging.secrets.required`);
+  for (const name of requiredSecrets(staging)) check(required.includes(name), `${name} must be listed in env.staging.secrets.required`);
 
   check((staging.triggers?.crons ?? []).length > 0, "staging cron trigger is missing");
   const serialized = JSON.stringify(staging);
@@ -212,28 +226,31 @@ export function checkSecretValues(values, localValues) {
 }
 
 /**
- * Decides whether `--secrets-file` may be passed. Secrets are uploaded only to fill names the Worker
- * lacks, and never over existing values: AUDIT_SIGNING_KEY and MFA_ENCRYPTION_KEY protect stored data.
- * @param {{ remoteNames: string[] | null, fileNames: string[] | null, explicitFile: boolean }} input
- *   remoteNames is null when the Worker does not exist yet.
- * @returns {{ upload: boolean, problems: string[], notes: string[] }}
+ * @param {string | undefined} value
+ * @returns {string[]}
  */
-export function planSecretUpload({ remoteNames, fileNames, explicitFile }) {
+export function checkResendKey(value) {
+  if (!value) return ["the Resend secrets file is missing RESEND_API_KEY"];
+  return /^re_[A-Za-z0-9_]{16,}$/.test(value) ? [] : ["RESEND_API_KEY does not look like a Resend API key"];
+}
+
+/**
+ * Chooses which secrets to upload. Only names the Worker lacks are ever uploaded, so existing values,
+ * including the data-bound AUDIT_SIGNING_KEY and MFA_ENCRYPTION_KEY, are never overwritten.
+ * @param {{ remoteNames: string[] | null, availableNames: string[], required: string[] }} input
+ *   remoteNames is null when the Worker does not exist yet.
+ * @returns {{ upload: string[], problems: string[], notes: string[] }}
+ */
+export function planSecretUpload({ remoteNames, availableNames, required }) {
   const existing = new Set(remoteNames ?? []);
-  const missing = REQUIRED_SECRETS.filter((name) => !existing.has(name));
+  const missing = required.filter((name) => !existing.has(name));
   if (!missing.length) {
-    return explicitFile
-      ? { upload: false, problems: ["the Worker already has all required secrets; unset STAGING_SECRETS_FILE (uploading would overwrite data-bound keys)"], notes: [] }
-      : { upload: false, problems: [], notes: ["all required secrets are already configured on the Worker; no secrets will be uploaded"] };
+    return { upload: [], problems: [], notes: ["all required secrets are already configured on the Worker; no secrets will be uploaded"] };
   }
-  if (!fileNames) {
-    return { upload: false, problems: [`required secrets are not configured on the Worker: ${missing.join(", ")}; provide STAGING_SECRETS_FILE`], notes: [] };
+  const absent = missing.filter((name) => !availableNames.includes(name));
+  if (absent.length) {
+    return { upload: [], problems: [`required secrets are not configured on the Worker and no local file provides them: ${absent.join(", ")}`], notes: [] };
   }
-  const problems = [];
-  const overwrite = fileNames.filter((name) => existing.has(name));
-  if (overwrite.length) problems.push(`secrets file would overwrite existing Worker secrets: ${overwrite.join(", ")}; follow the key rotation procedure instead`);
-  const absent = missing.filter((name) => !fileNames.includes(name));
-  if (absent.length) problems.push(`secrets file does not provide: ${absent.join(", ")}`);
-  const notes = remoteNames === null ? ["new Worker: secrets will be uploaded with the first deployment"] : [`uploading missing secrets: ${missing.join(", ")}`];
-  return { upload: !problems.length, problems, notes };
+  const notes = remoteNames === null ? ["new Worker: secrets will be uploaded with the first deployment"] : [`uploading missing secrets only: ${missing.join(", ")}`];
+  return { upload: missing, problems: [], notes };
 }

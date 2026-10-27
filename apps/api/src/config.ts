@@ -107,6 +107,11 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
   if (bool(env.DEV_SHOW_TOTP_SECRETS, false) && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) {
     throw new Error("DEV_SHOW_TOTP_SECRETS must be false outside local development and tests");
   }
+  if (env.EMAIL_ADAPTER === "resend" && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) {
+    if (!env.RESEND_API_KEY?.startsWith("re_")) throw new Error("EMAIL_ADAPTER=resend requires RESEND_API_KEY");
+    const sender = /<?([^<>\s]+@([^<>\s]+))>?\s*$/.exec(env.EMAIL_FROM ?? "");
+    if (!sender || sender[2]!.endsWith(".local")) throw new Error("EMAIL_ADAPTER=resend requires EMAIL_FROM on a verified sending domain");
+  }
   const rawOrigin = env.APP_ORIGIN ?? (appEnv === "development" ? "http://localhost:5173" : "");
   if (!rawOrigin) throw new Error("APP_ORIGIN is required outside local development");
   const origin = validatedOrigin(rawOrigin, appEnv);

@@ -26,6 +26,10 @@ export function clearCsrfToken(): void {
   csrfToken = "";
 }
 
+export function hasCsrfToken(): boolean {
+  return csrfToken !== "";
+}
+
 export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<T> {
   const method = options.method ?? "GET";
   const headers: Record<string, string> = { accept: "application/json", ...(options.headers ?? {}) };

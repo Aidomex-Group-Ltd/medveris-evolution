@@ -35,15 +35,17 @@ afterAll(async () => {
   await sql.end({ timeout: 5 });
 });
 
-async function resetTokens(email: string): Promise<string[]> {
+async function linkTokens(email: string, path: "/reset-password" | "/verify-email"): Promise<string[]> {
   const files = (await readdir(mailDir)).filter((name) => name.includes(email)).sort();
   const tokens: string[] = [];
   for (const name of files) {
-    const match = /\/reset-password\?token=([A-Za-z0-9_-]+)/.exec(await readFile(join(mailDir, name), "utf8"));
+    const match = new RegExp(`${path}\\?token=([A-Za-z0-9_-]+)`).exec(await readFile(join(mailDir, name), "utf8"));
     if (match) tokens.push(match[1]!);
   }
   return tokens;
 }
+
+const resetTokens = (email: string) => linkTokens(email, "/reset-password");
 
 async function registerFacilityAdmin(): Promise<string> {
   const email = `recovery.${crypto.randomUUID()}@example.test`;
@@ -100,6 +102,20 @@ describe("self-service registration", () => {
     const body = await response.json() as any;
     expect(response.status, JSON.stringify(body)).toBe(201);
     expect(body.patient.publicId).toMatch(/^MV-/);
+  });
+});
+
+describe("email verification", () => {
+  it("verifies the registration email once", async () => {
+    const email = await registerFacilityAdmin();
+    const [token] = await linkTokens(email, "/verify-email");
+    expect(token).toBeTruthy();
+    expect((await post("/api/v1/auth/verify-email", { token })).status).toBe(200);
+    expect((await post("/api/v1/auth/verify-email", { token })).status).toBe(422);
+    const login = await post("/api/v1/auth/login", { email, password });
+    const cookie = (login.headers.getSetCookie?.() ?? []).find((value) => value.startsWith("mv_session="))!.split(";")[0]!;
+    const session = await (await app.fetch(new Request("http://localhost/api/v1/auth/session", { headers: { cookie } }))).json() as any;
+    expect(session.user.emailVerified).toBe(true);
   });
 });
 

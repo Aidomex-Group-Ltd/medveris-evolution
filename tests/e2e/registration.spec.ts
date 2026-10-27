@@ -2,18 +2,33 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
-async function latestResetLink(email: string): Promise<string> {
+async function latestLink(email: string, path: "/reset-password" | "/verify-email"): Promise<string> {
   const dir = join(process.cwd(), process.env.MAIL_SINK_DIR ?? ".mail-sink");
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const files = (await readdir(dir).catch(() => [])).filter((name) => name.includes(email)).sort().reverse();
     for (const name of files) {
-      const match = /(\/reset-password\?token=[A-Za-z0-9_-]+)/.exec(await readFile(join(dir, name), "utf8"));
+      const match = new RegExp(`(${path}\\?token=[A-Za-z0-9_-]+)`).exec(await readFile(join(dir, name), "utf8"));
       if (match) return match[1]!;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`no reset email for ${email}`);
+  throw new Error(`no ${path} email for ${email}`);
 }
+
+const latestResetLink = (email: string) => latestLink(email, "/reset-password");
+
+test("a new registrant verifies their email from the emailed link", async ({ page }) => {
+  const email = `verify.${Date.now()}@example.test`;
+  const registered = await page.request.post("/api/v1/auth/register/patient", {
+    data: { email, password: "Synthetic-Verify-2026!", givenName: "Synthetic", familyName: "Verifier", dateOfBirth: "1990-01-01" },
+  });
+  expect(registered.status()).toBe(201);
+  await page.goto(await latestLink(email, "/verify-email"));
+  await expect(page.getByRole("heading", { name: "Confirm your email address." })).toBeVisible();
+  await expect(page).toHaveURL(/\/verify-email$/);
+  await page.getByRole("button", { name: "Verify email" }).click();
+  await expect(page.getByText("Email verified")).toBeVisible();
+});
 
 test("a user recovers a forgotten password from the sign-in page", async ({ page }) => {
   const email = `recovery.${Date.now()}@example.test`;

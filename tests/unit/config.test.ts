@@ -40,6 +40,16 @@ describe("loadConfig startup validation", () => {
       .toThrow("must be different values");
   });
 
+  it("requires a Resend key and a real sender when Resend is selected outside local development", () => {
+    const staging = { ...strong, APP_ENV: "staging", APP_ORIGIN: "https://medveris-staging.example.workers.dev", EMAIL_ADAPTER: "resend" };
+    expect(() => loadConfig({ ...staging, EMAIL_FROM: "MedVeris <no-reply@mail.example.org>" })).toThrow("RESEND_API_KEY");
+    expect(() => loadConfig({ ...staging, RESEND_API_KEY: "re_synthetic_key_value" })).toThrow("EMAIL_FROM");
+    expect(() => loadConfig({ ...staging, RESEND_API_KEY: "re_synthetic_key_value", EMAIL_FROM: "MedVeris <no-reply@medveris.local>" })).toThrow("EMAIL_FROM");
+    const config = loadConfig({ ...staging, RESEND_API_KEY: "re_synthetic_key_value", EMAIL_FROM: "MedVeris <no-reply@mail.example.org>" });
+    expect(config.emailAdapter).toBe("resend");
+    expect(loadConfig({ ...strong, APP_ENV: "development", EMAIL_ADAPTER: "resend" }).emailAdapter).toBe("resend");
+  });
+
   it("requires an HTTPS origin without placeholders outside local development", () => {
     expect(() => loadConfig({ ...strong, APP_ENV: "staging", APP_ORIGIN: "http://medveris.example" })).toThrow("HTTPS");
     expect(() => loadConfig({ ...strong, APP_ENV: "staging", APP_ORIGIN: "https://medveris-staging.REPLACE_WITH_X.workers.dev" }))

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api, clearCsrfToken, errorMessage, setCsrfToken } from "./api";
+import { api, clearCsrfToken, errorMessage, hasCsrfToken, setCsrfToken } from "./api";
 import type { MeResponse } from "./types";
 
 interface AuthState {
@@ -26,7 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     const current = ++generation.current;
     try {
-      const session = await api<{ authenticated: boolean }>("/auth/session");
+      // A CSRF token means sign-in just succeeded; otherwise probe the session so signed-out loads avoid a 401 from /me.
+      const session = hasCsrfToken() ? { authenticated: true } : await api<{ authenticated: boolean }>("/auth/session");
       if (current !== generation.current) return null;
       if (!session.authenticated) {
         clearCsrfToken();

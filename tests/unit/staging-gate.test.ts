@@ -4,12 +4,14 @@ import {
   EXPECTED,
   checkHyperdrivePair,
   checkHyperdriveRemote,
+  checkResendKey,
   checkSecretValues,
   checkStagingConfig,
   parseEnvFile,
   parseJsonOutput,
   parseWranglerConfig,
   planSecretUpload,
+  requiredSecrets,
 } from "../../scripts/staging-gate.mjs";
 
 const RUNTIME_ID = "0123456789abcdef0123456789abcdef";
@@ -169,19 +171,50 @@ describe("staging gate secrets rules", () => {
     expect(parseEnvFile("# comment\nSESSION_SECRET=\"abc\"\nlower=ignored\n").get("SESSION_SECRET")).toBe("abc");
   });
 
-  it("uploads secrets to a new Worker only when the file covers every required name", () => {
+  it("uploads every required secret to a new Worker only when local files provide them all", () => {
     const names = [...strongSecrets.keys()];
-    expect(planSecretUpload({ remoteNames: null, fileNames: names, explicitFile: false })).toMatchObject({ upload: true, problems: [] });
-    expect(planSecretUpload({ remoteNames: null, fileNames: null, explicitFile: false }).problems[0]).toMatch(/not configured on the Worker/);
-    expect(planSecretUpload({ remoteNames: null, fileNames: ["SESSION_SECRET"], explicitFile: true }).problems)
-      .toEqual(["secrets file does not provide: AUDIT_SIGNING_KEY, MFA_ENCRYPTION_KEY"]);
+    expect(planSecretUpload({ remoteNames: null, availableNames: names, required: names })).toEqual({
+      upload: names, problems: [], notes: ["new Worker: secrets will be uploaded with the first deployment"],
+    });
+    expect(planSecretUpload({ remoteNames: null, availableNames: ["SESSION_SECRET"], required: names }).problems)
+      .toEqual(["required secrets are not configured on the Worker and no local file provides them: AUDIT_SIGNING_KEY, MFA_ENCRYPTION_KEY"]);
   });
 
-  it("never overwrites secrets that already exist on the Worker", () => {
+  it("never re-uploads secrets that already exist on the Worker", () => {
     const names = [...strongSecrets.keys()];
-    expect(planSecretUpload({ remoteNames: names, fileNames: names, explicitFile: false })).toMatchObject({ upload: false, problems: [] });
-    expect(planSecretUpload({ remoteNames: names, fileNames: names, explicitFile: true }).problems[0]).toMatch(/overwrite data-bound keys/);
-    expect(planSecretUpload({ remoteNames: ["AUDIT_SIGNING_KEY"], fileNames: names, explicitFile: false }))
-      .toMatchObject({ upload: false, problems: [expect.stringContaining("would overwrite existing Worker secrets: AUDIT_SIGNING_KEY")] });
+    expect(planSecretUpload({ remoteNames: names, availableNames: names, required: names })).toMatchObject({ upload: [], problems: [] });
+    const withResend = [...names, "RESEND_API_KEY"];
+    expect(planSecretUpload({ remoteNames: names, availableNames: withResend, required: withResend }))
+      .toMatchObject({ upload: ["RESEND_API_KEY"], problems: [] });
+    expect(planSecretUpload({ remoteNames: ["AUDIT_SIGNING_KEY"], availableNames: names, required: names }).upload)
+      .toEqual(["SESSION_SECRET", "MFA_ENCRYPTION_KEY"]);
+  });
+
+  it("validates the Resend API key shape without echoing it", () => {
+    expect(checkResendKey("re_" + "a".repeat(30))).toEqual([]);
+    expect(checkResendKey(undefined)).toEqual(["the Resend secrets file is missing RESEND_API_KEY"]);
+    expect(checkResendKey("sk_live_not_resend")).toEqual(["RESEND_API_KEY does not look like a Resend API key"]);
+  });
+});
+
+describe("staging gate email rules", () => {
+  it("requires a real sender and the Resend secret once Resend is selected", () => {
+    const config = readyConfig();
+    config.env.staging.vars.EMAIL_ADAPTER = "resend";
+    config.env.staging.vars.EMAIL_FROM = "MedVeris <no-reply@medveris.local>";
+    expect(requiredSecrets(config.env.staging)).toContain("RESEND_API_KEY");
+    expect(checkStagingConfig(config)).toEqual([
+      "EMAIL_FROM must use a verified Resend sending domain when EMAIL_ADAPTER is resend",
+      "RESEND_API_KEY must be listed in env.staging.secrets.required",
+    ]);
+    config.env.staging.vars.EMAIL_FROM = "MedVeris <no-reply@mail.example.org>";
+    config.env.staging.secrets.required.push("RESEND_API_KEY");
+    expect(checkStagingConfig(config)).toEqual([]);
+  });
+
+  it("rejects an unknown email adapter", () => {
+    const config = readyConfig();
+    config.env.staging.vars.EMAIL_ADAPTER = "smtp";
+    expect(checkStagingConfig(config)).toContain("EMAIL_ADAPTER must be local (no delivery) or resend");
   });
 });
