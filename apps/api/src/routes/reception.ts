@@ -20,6 +20,7 @@ import { auditMeta, ensureMatch, parseJson, parseQuery, requestMeta } from "../l
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import { rateLimit, clientKey } from "../lib/rate-limit.js";
+import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
 import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
 import type { AppEnv } from "../types.js";
 
@@ -448,43 +449,87 @@ receptionRoutes.post("/encounters", async (c) => {
   const auth = c.get("auth")!;
   const deps = c.get("deps");
   const body = await parseJson(c, createEncounterSchema);
+  const key = idempotencyKey(c);
+  const tenantId = auth.activeTenant!.id;
   const id = crypto.randomUUID();
-  await withStaffActor(c, async (tx) => {
-    const link = await tx`select 1 from tenant_patient_links where tenant_id = ${auth.activeTenant!.id} and patient_id = ${body.patientId}`;
-    if (!link.length) throw new NotFoundError("Patient is not linked to this facility");
-    if (!actor(c).roles.some((r) => ["receptionist", "nurse", "clinician", "facility_admin"].includes(r))) {
-      throw new ForbiddenError("Front-desk access is required");
+
+  const replay = async () => {
+    if (!key) return null;
+    const [existing] = await withStaffActor(c, async (tx) => tx`
+      select id, patient_id, type, reason from encounters where tenant_id = ${tenantId} and idempotency_key = ${key}
+    `);
+    if (!existing) return null;
+    if (String(existing.patientId) !== body.patientId || existing.type !== body.type || existing.reason !== body.reason) {
+      throw new ConflictError("This Idempotency-Key was already used for a different encounter request");
     }
-    await tx`
-      insert into encounters (id, tenant_id, patient_id, appointment_id, queue_entry_id, type, state, reason, created_by, clinician_user_id)
-      values (${id}, ${auth.activeTenant!.id}, ${body.patientId}, ${body.appointmentId ?? null}, ${body.queueEntryId ?? null},
-        ${body.type}, 'arrived', ${body.reason}, ${auth.user.id}, ${null})
+    return c.json({ ok: true, encounterId: String(existing.id), replayed: true }, 200);
+  };
+  const openEncounter = async (tx: Tx): Promise<string | null> => {
+    if (!body.appointmentId && !body.queueEntryId) return null;
+    const [open] = await tx`
+      select id from encounters
+       where tenant_id = ${tenantId} and state not in ('cancelled', 'entered-in-error')
+         and (appointment_id = ${body.appointmentId ?? null}::uuid or queue_entry_id = ${body.queueEntryId ?? null}::uuid)
+       limit 1
     `;
-    if (body.queueEntryId) {
-      await tx`update queue_entries set encounter_id = ${id}, status = 'waiting', updated_at = now() where id = ${body.queueEntryId} and tenant_id = ${auth.activeTenant!.id}`;
-    }
-    if (body.appointmentId) {
-      await tx`update appointments set status = 'arrived', updated_at = now() where id = ${body.appointmentId} and tenant_id = ${auth.activeTenant!.id}`;
-    }
-    await writeAudit(tx, deps.config, {
-      tenantId: auth.activeTenant!.id,
-      actorKind: "staff",
-      actorUserId: auth.user.id,
-      actorRoles: auth.activeTenant!.roles,
-      action: "encounter.create",
-      subjectPatientId: body.patientId,
-      resourceType: "Encounter",
-      resourceId: id,
-      ...auditMeta(c),
+    return open ? String(open.id) : null;
+  };
+  const openConflict = (encounterId: string | null) =>
+    new ConflictError("This appointment or queue entry already has an open encounter", { encounterId });
+
+  const replayed = await replay();
+  if (replayed) return replayed;
+  try {
+    await withStaffActor(c, async (tx) => {
+      const link = await tx`select 1 from tenant_patient_links where tenant_id = ${tenantId} and patient_id = ${body.patientId}`;
+      if (!link.length) throw new NotFoundError("Patient is not linked to this facility");
+      if (!actor(c).roles.some((r) => ["receptionist", "nurse", "clinician", "facility_admin"].includes(r))) {
+        throw new ForbiddenError("Front-desk access is required");
+      }
+      const existing = await openEncounter(tx);
+      if (existing) throw openConflict(existing);
+      await tx`
+        insert into encounters (id, tenant_id, patient_id, appointment_id, queue_entry_id, type, state, reason, created_by, clinician_user_id, idempotency_key)
+        values (${id}, ${tenantId}, ${body.patientId}, ${body.appointmentId ?? null}, ${body.queueEntryId ?? null},
+          ${body.type}, 'arrived', ${body.reason}, ${auth.user.id}, ${null}, ${key})
+      `;
+      if (body.queueEntryId) {
+        await tx`update queue_entries set encounter_id = ${id}, status = 'waiting', updated_at = now() where id = ${body.queueEntryId} and tenant_id = ${tenantId}`;
+      }
+      if (body.appointmentId) {
+        await tx`update appointments set status = 'arrived', updated_at = now() where id = ${body.appointmentId} and tenant_id = ${tenantId}`;
+      }
+      await writeAudit(tx, deps.config, {
+        tenantId,
+        actorKind: "staff",
+        actorUserId: auth.user.id,
+        actorRoles: auth.activeTenant!.roles,
+        action: "encounter.create",
+        subjectPatientId: body.patientId,
+        resourceType: "Encounter",
+        resourceId: id,
+        ...auditMeta(c),
+      });
+      await writeOutbox(tx, {
+        tenantId,
+        eventType: "encounter.created",
+        aggregateId: id,
+        aggregateVersion: 1,
+        payload: { encounterId: id, patientId: body.patientId },
+      });
     });
-    await writeOutbox(tx, {
-      tenantId: auth.activeTenant!.id,
-      eventType: "encounter.created",
-      aggregateId: id,
-      aggregateVersion: 1,
-      payload: { encounterId: id, patientId: body.patientId },
-    });
-  });
+  } catch (error) {
+    // Concurrent duplicates pass the checks above together; the unique indexes decide which one wins.
+    const constraint = uniqueViolation(error);
+    if (constraint === "encounters_idempotency") {
+      const raced = await replay();
+      if (raced) return raced;
+    }
+    if (constraint === "encounters_open_appointment" || constraint === "encounters_open_queue_entry") {
+      throw openConflict(await withStaffActor(c, openEncounter));
+    }
+    throw error;
+  }
   return c.json({ ok: true, encounterId: id }, 201);
 });
 

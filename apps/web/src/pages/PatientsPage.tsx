@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table } from "@medveris/ui";
 import { api, errorMessage } from "../lib/api";
@@ -21,6 +21,11 @@ export function PatientsPage() {
   const [resolved, setResolved] = useState<PatientSummary | null>(null);
   const [reason, setReason] = useState("Outpatient consultation");
   const [noMatch, setNoMatch] = useState<string | null>(null);
+  // Stable per selected patient and reason, so a double click or retry cannot open two encounters.
+  const encounterKey = useRef(crypto.randomUUID());
+  useEffect(() => {
+    encounterKey.current = crypto.randomUUID();
+  }, [resolved?.id, reason]);
   const [search, setSearch] = useState<{ q: string; dateOfBirth: string; offset: number } | null>(null);
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
 
@@ -103,7 +108,11 @@ export function PatientsPage() {
     setBusy("encounter");
     setError(null);
     try {
-      const response = await api<{ encounterId: string }>("/encounters", { method: "POST", body: { patientId: resolved.id, type: "walk-in", reason } });
+      const response = await api<{ encounterId: string }>("/encounters", {
+        method: "POST",
+        body: { patientId: resolved.id, type: "walk-in", reason },
+        headers: { "idempotency-key": `walk-in-${resolved.id}-${encounterKey.current}` },
+      });
       navigate(`/encounters/${response.encounterId}`);
     } catch (cause) {
       setError(errorMessage(cause));

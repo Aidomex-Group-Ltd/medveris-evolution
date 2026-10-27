@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Tabs, Textarea } from "@medveris/ui";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -129,11 +129,18 @@ function DispenseForm({ order, onDone }: { order: Order; onDone: () => void }) {
   const [quantity, setQuantity] = useState("1");
   const [notes, setNotes] = useState("");
   const action = useAction();
+  // One key per intended dispense: a retried or double-submitted request replays instead of dispensing twice.
+  const submissionKey = useRef(crypto.randomUUID());
   const available = (lots.data?.lots ?? []).filter((lot) => lot.medicineId === order.medicineId && Number(lot.quantity) > 0 && !lot.expired);
   async function submit(event: FormEvent) {
     event.preventDefault();
     await action.run("dispense", async () => {
-      await api("/dispenses", { method: "POST", body: { orderId: order.id, lotId, quantity: Number(quantity), notes } });
+      await api("/dispenses", {
+        method: "POST",
+        body: { orderId: order.id, lotId, quantity: Number(quantity), notes },
+        headers: { "idempotency-key": `dispense-${order.id}-${lotId}-${quantity}-${submissionKey.current}` },
+      });
+      submissionKey.current = crypto.randomUUID();
       onDone();
       return "Medication dispensed from the selected lot.";
     });

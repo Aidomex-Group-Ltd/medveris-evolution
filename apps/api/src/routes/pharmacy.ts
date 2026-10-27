@@ -13,6 +13,7 @@ import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
+import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
 import { ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
 import type { AppEnv } from "../types.js";
 
@@ -196,37 +197,60 @@ pharmacyRoutes.post("/dispenses", async (c) => {
   if (!hasRole(c, "pharmacist")) throw new ForbiddenError("Dispensing requires the pharmacist role");
   const auth = c.get("auth")!;
   const body = await parseJson(c, dispenseSchema);
+  const key = idempotencyKey(c);
   const dispenseId = crypto.randomUUID();
-  await withStaffActor(c, async (tx) => {
-    const order = await requireRows(await tx`
-      select id, patient_id, medicine_id, status from medication_orders
-       where id = ${body.orderId} and tenant_id = ${auth.activeTenant!.id} for update
-    `, "Medication order not found");
-    if (!["approved", "active"].includes(String(order.status))) throw new ConflictError("Only approved medication orders can be dispensed");
-    const lot = await requireRows(await tx`
-      select id, medicine_id, quantity, expires_on from stock_lots
-       where id = ${body.lotId} and tenant_id = ${auth.activeTenant!.id} for update
-    `, "Stock lot not found");
-    if (String(lot.medicineId) !== String(order.medicineId)) throw new ValidationError("The stock lot does not match the ordered medicine");
-    if (new Date(`${String(lot.expiresOn).slice(0, 10)}T23:59:59Z`) < new Date()) throw new ValidationError("Expired stock cannot be dispensed");
-    const remaining = Number(lot.quantity) - body.quantity;
-    if (remaining < 0) throw new ConflictError("Insufficient stock in the selected lot");
-    await tx`update stock_lots set quantity = ${remaining}, version = version + 1, updated_at = now() where id = ${body.lotId}`;
-    await tx`
-      insert into stock_movements (id, tenant_id, lot_id, delta, reason, actor_id)
-      values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${body.lotId}, ${-body.quantity}, ${`Dispensed for order ${body.orderId}`}, ${auth.user.id})
-    `;
-    await tx`
-      insert into dispenses (id, tenant_id, order_id, lot_id, quantity, notes, dispensed_by)
-      values (${dispenseId}, ${auth.activeTenant!.id}, ${body.orderId}, ${body.lotId}, ${body.quantity}, ${body.notes || null}, ${auth.user.id})
-    `;
-    await tx`update medication_orders set status = 'active', version = version + 1, updated_at = now() where id = ${body.orderId}`;
-    await writeAudit(tx, c.get("deps").config, requestAudit(c, "medication.dispense", {
-      subjectPatientId: String(order.patientId), resourceType: "Dispense", resourceId: dispenseId,
-      metadata: { orderId: body.orderId, lotId: body.lotId, quantity: body.quantity },
-    }));
-    await writeOutbox(tx, { tenantId: auth.activeTenant!.id, eventType: "medication.dispensed", aggregateId: dispenseId, payload: { orderId: body.orderId } });
-  });
+  const replay = async () => {
+    if (!key) return null;
+    const [existing] = await withStaffActor(c, async (tx) => tx`
+      select id, order_id, lot_id, quantity from dispenses where tenant_id = ${auth.activeTenant!.id} and idempotency_key = ${key}
+    `);
+    if (!existing) return null;
+    if (String(existing.orderId) !== body.orderId || String(existing.lotId) !== body.lotId || Number(existing.quantity) !== body.quantity) {
+      throw new ConflictError("This Idempotency-Key was already used for a different dispense");
+    }
+    return c.json({ ok: true, dispense: { id: String(existing.id) }, replayed: true }, 200);
+  };
+  const replayed = await replay();
+  if (replayed) return replayed;
+  try {
+    await withStaffActor(c, async (tx) => {
+      const order = await requireRows(await tx`
+        select id, patient_id, medicine_id, status from medication_orders
+         where id = ${body.orderId} and tenant_id = ${auth.activeTenant!.id} for update
+      `, "Medication order not found");
+      if (!["approved", "active"].includes(String(order.status))) throw new ConflictError("Only approved medication orders can be dispensed");
+      const lot = await requireRows(await tx`
+        select id, medicine_id, quantity, expires_on from stock_lots
+         where id = ${body.lotId} and tenant_id = ${auth.activeTenant!.id} for update
+      `, "Stock lot not found");
+      if (String(lot.medicineId) !== String(order.medicineId)) throw new ValidationError("The stock lot does not match the ordered medicine");
+      if (new Date(`${String(lot.expiresOn).slice(0, 10)}T23:59:59Z`) < new Date()) throw new ValidationError("Expired stock cannot be dispensed");
+      const remaining = Number(lot.quantity) - body.quantity;
+      if (remaining < 0) throw new ConflictError("Insufficient stock in the selected lot");
+      await tx`update stock_lots set quantity = ${remaining}, version = version + 1, updated_at = now() where id = ${body.lotId}`;
+      await tx`
+        insert into stock_movements (id, tenant_id, lot_id, delta, reason, actor_id)
+        values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${body.lotId}, ${-body.quantity}, ${`Dispensed for order ${body.orderId}`}, ${auth.user.id})
+      `;
+      await tx`
+        insert into dispenses (id, tenant_id, order_id, lot_id, quantity, notes, dispensed_by, idempotency_key)
+        values (${dispenseId}, ${auth.activeTenant!.id}, ${body.orderId}, ${body.lotId}, ${body.quantity}, ${body.notes || null}, ${auth.user.id}, ${key})
+      `;
+      await tx`update medication_orders set status = 'active', version = version + 1, updated_at = now() where id = ${body.orderId}`;
+      await writeAudit(tx, c.get("deps").config, requestAudit(c, "medication.dispense", {
+        subjectPatientId: String(order.patientId), resourceType: "Dispense", resourceId: dispenseId,
+        metadata: { orderId: body.orderId, lotId: body.lotId, quantity: body.quantity },
+      }));
+      await writeOutbox(tx, { tenantId: auth.activeTenant!.id, eventType: "medication.dispensed", aggregateId: dispenseId, payload: { orderId: body.orderId } });
+    });
+  } catch (error) {
+    // The losing concurrent retry rolls back entirely, including its stock decrement.
+    if (uniqueViolation(error) === "dispenses_idempotency") {
+      const raced = await replay();
+      if (raced) return raced;
+    }
+    throw error;
+  }
   return c.json({ ok: true, dispense: { id: dispenseId } }, 201);
 });
 
