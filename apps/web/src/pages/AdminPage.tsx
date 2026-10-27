@@ -16,10 +16,31 @@ interface MembershipRow {
 }
 
 interface IntegrationResponse {
-  features: Record<string, boolean>;
-  integrations: Array<{ name: string; enabled: boolean; state: string; reason: string }>;
+  integrations: Array<{
+    id: string;
+    name: string;
+    enabled: boolean;
+    state: string;
+    reason: string;
+    requested: boolean;
+    missingPrerequisites: string[];
+    lastSuccessfulVerificationAt: string | null;
+    lastVerificationOutcome: string;
+    effectWhileUnavailable: string;
+    remediation: string;
+  }>;
   terminology: { mode: string; label: string };
 }
+
+const INTEGRATION_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+  available: "success",
+  degraded: "warning",
+  unavailable: "warning",
+  disabled: "neutral",
+  not_requested: "neutral",
+  misconfigured: "danger",
+  verification_failed: "danger",
+};
 
 interface DuplicateCandidate {
   id: string;
@@ -133,9 +154,16 @@ function Integrations() {
     <div className="mv-stack">
       <Notice tone="warning" title="No simulated successes">{integrations.data?.terminology.label}. Unavailable integrations are explicitly disabled.</Notice>
       <Card title="External adapters">
-        <Table head={["Integration", "State", "Reason"]}>
+        <Table head={["Integration", "State", "Reason and effect", "Missing prerequisites", "Last verification", "Operator action"]} caption="Server-reported integration availability">
           {integrations.data?.integrations.map((integration) => (
-            <tr key={integration.name}><td><strong>{integration.name}</strong></td><td><Badge tone={integration.enabled ? "success" : "warning"}>{integration.state}</Badge></td><td className="mv-small">{integration.reason}</td></tr>
+            <tr key={integration.id}>
+              <td><strong>{integration.name}</strong>{integration.requested ? <div className="mv-small mv-muted">requested by environment flag</div> : null}</td>
+              <td><Badge tone={INTEGRATION_TONE[integration.state] ?? "warning"}>{integration.state.replace("_", " ")}</Badge></td>
+              <td className="mv-small">{integration.reason}<div className="mv-muted" style={{ marginTop: 4 }}>{integration.effectWhileUnavailable}</div></td>
+              <td className="mv-small"><ul style={{ margin: 0, paddingLeft: 16 }}>{integration.missingPrerequisites.map((item) => <li key={item}>{item}</li>)}</ul></td>
+              <td className="mv-small">{integration.lastSuccessfulVerificationAt ? new Date(integration.lastSuccessfulVerificationAt).toLocaleString() : "Never verified"}</td>
+              <td className="mv-small">{integration.remediation}</td>
+            </tr>
           ))}
         </Table>
       </Card>

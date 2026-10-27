@@ -12,7 +12,8 @@ import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
 import { clientKey, rateLimit } from "../lib/rate-limit.js";
-import { ConflictError, DependencyError, ForbiddenError, ValidationError } from "../lib/errors.js";
+import { ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
+import { assertIntegrationAvailable } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
 
 export const deviceRoutes = new Hono<AppEnv>();
@@ -90,9 +91,7 @@ deviceRoutes.post("/devices/:id/assign", async (c) => {
 deviceRoutes.post("/devices/:id/ingest", async (c) => {
   requireStaff(c);
   assertWardAccess(requestActor(c));
-  if (!c.get("deps").config.features.devices) {
-    throw new DependencyError("Device ingestion is not enabled; no vital-sign data was stored");
-  }
+  assertIntegrationAvailable(c.get("deps").config, "devices", "devices.ingest", "no observation was stored");
   rateLimit(clientKey(c.req.raw.headers, `device-ingest:${c.get("auth")!.user.id}`), 120, 60_000);
   const auth = c.get("auth")!;
   const id = uuidSchema.parse(c.req.param("id"));

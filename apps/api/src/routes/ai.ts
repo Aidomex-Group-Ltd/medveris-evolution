@@ -6,7 +6,8 @@ import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
-import { DependencyError, NotFoundError } from "../lib/errors.js";
+import { NotFoundError } from "../lib/errors.js";
+import { assertIntegrationAvailable, isIntegrationAvailable } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
 
 export const aiRoutes = new Hono<AppEnv>();
@@ -19,15 +20,14 @@ aiRoutes.get("/ai/jobs", async (c) => {
       from ai_jobs j join patients p on p.id = j.patient_id join users u on u.id = j.created_by
      where j.tenant_id = ${auth.activeTenant!.id} order by j.created_at desc limit 100
   `);
-  return c.json({ jobs: rows, configured: c.get("deps").config.features.ai });
+  return c.json({ jobs: rows, configured: isIntegrationAvailable(c.get("deps").config, "ai") });
 });
 
 aiRoutes.post("/ai/jobs", async (c) => {
   requireStaff(c);
   assertClinicalWrite(requestActor(c));
-  if (!c.get("deps").config.features.ai) {
-    throw new DependencyError("No reviewed AI provider is configured. No request was sent and no clinical inference was produced.");
-  }
+  assertIntegrationAvailable(c.get("deps").config, "ai", "ai.job.create",
+    "no request was sent and no clinical inference was produced");
   const auth = c.get("auth")!;
   const body = await parseJson(c, aiJobSchema);
   const id = crypto.randomUUID();

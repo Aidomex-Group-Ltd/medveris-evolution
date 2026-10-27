@@ -24,6 +24,7 @@ import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { ensureMatch, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
+import { assertIntegrationAvailable } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
 
 export const diagnosticsRoutes = new Hono<AppEnv>();
@@ -395,6 +396,10 @@ diagnosticsRoutes.post("/imaging-studies", async (c) => {
   if (!hasRole(c, "radiology")) throw new ForbiddenError("Imaging study registration requires the radiology role");
   const auth = c.get("auth")!;
   const body = await parseJson(c, imagingStudySchema);
+  if (body.pacsState !== "not-configured") {
+    assertIntegrationAvailable(c.get("deps").config, "dicomweb", "imaging-study.pacs-state",
+      `the study was not recorded; PACS state '${body.pacsState}' requires a verified PACS connection`);
+  }
   const studyId = crypto.randomUUID();
   await withStaffActor(c, async (tx) => {
     const item = await loadOrderItem(c, tx, body.orderItemId);

@@ -7,6 +7,7 @@ import { auditMeta, parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
 import { NotFoundError, ValidationError } from "../lib/errors.js";
 import { sendInvitation } from "./auth.js";
+import { listIntegrations } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -199,18 +200,7 @@ adminRoutes.get("/integrations", async (c) => {
   assertMembershipAdmin(actor(c));
   const config = c.get("deps").config;
   return c.json({
-    features: config.features,
-    integrations: [
-      { name: "DICOMweb / PACS", enabled: false, state: "unavailable", reason: "No PACS endpoint or conformance testing is configured" },
-      { name: "Laboratory", enabled: false, state: "unavailable", reason: "No laboratory adapter is configured" },
-      { name: "Pharmacy", enabled: false, state: "unavailable", reason: "Prescribing and dispensing are disabled until safety workflows are verified" },
-      { name: "Telemedicine", enabled: false, state: "unavailable", reason: "No media provider or consent configuration" },
-      { name: "Devices", enabled: false, state: "unavailable", reason: "No device gateway is configured" },
-      { name: "AI assistance", enabled: false, state: "unavailable", reason: "No validated model or intended-use approval" },
-      { name: "Payments", enabled: false, state: "unavailable", reason: "No payment provider is configured" },
-      { name: "Public health", enabled: false, state: "unavailable", reason: "No approved reporting interface is configured" },
-      { name: "Ledger anchoring", enabled: false, state: "not-requested", reason: "Checkpoints are local and unanchored" },
-    ],
+    integrations: listIntegrations(config).map((integration) => ({ ...integration, enabled: integration.state === "available" })),
     terminology: {
       mode: config.terminologyMode,
       label: config.terminologyMode === "synthetic" ? "Synthetic development terminology (not for production coding)" : "Production terminology adapter",

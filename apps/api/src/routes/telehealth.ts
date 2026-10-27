@@ -10,7 +10,8 @@ import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
-import { ConflictError, DependencyError, NotFoundError, ValidationError } from "../lib/errors.js";
+import { ConflictError, NotFoundError, ValidationError } from "../lib/errors.js";
+import { assertIntegrationAvailable, isIntegrationAvailable } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
 
 export const telehealthRoutes = new Hono<AppEnv>();
@@ -55,7 +56,7 @@ telehealthRoutes.post("/telehealth/sessions", async (c) => {
     `;
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "telehealth.session.create", {
       subjectPatientId: body.patientId, resourceType: "TelehealthSession", resourceId: id,
-      metadata: { clinicianUserId: body.clinicianUserId, adapterConfigured: c.get("deps").config.features.telemedicine },
+      metadata: { clinicianUserId: body.clinicianUserId, adapterAvailable: isIntegrationAvailable(c.get("deps").config, "telemedicine") },
     }));
   });
   return c.json({ ok: true, session: { id } }, 201);
@@ -73,7 +74,7 @@ telehealthRoutes.get("/telehealth/sessions/:id", async (c) => {
        where s.id = ${id} and s.tenant_id = ${auth.activeTenant!.id}
     `, "Telehealth session not found");
     const consents = await tx`select * from telehealth_consents where session_id = ${id} order by created_at desc`;
-    return { session, consents, adapter: { configured: c.get("deps").config.features.telemedicine, provider: null } };
+    return { session, consents, adapter: { configured: isIntegrationAvailable(c.get("deps").config, "telemedicine"), provider: null } };
   });
   await withStaffActor(c, async (tx) => writeAudit(tx, c.get("deps").config, requestAudit(c, "telehealth.session.read", {
     subjectPatientId: String(data.session.patientId), resourceType: "TelehealthSession", resourceId: id,
@@ -108,9 +109,8 @@ telehealthRoutes.post("/telehealth/sessions/:id/consent", async (c) => {
 telehealthRoutes.post("/telehealth/sessions/:id/join", async (c) => {
   requireStaff(c);
   assertWardAccess(requestActor(c));
-  if (!c.get("deps").config.features.telemedicine) {
-    throw new DependencyError("The telemedicine media adapter is not configured; session records remain available without a media link");
-  }
+  assertIntegrationAvailable(c.get("deps").config, "telemedicine", "telehealth.session.join",
+    "no media session was started; session records remain available without a media link");
   const auth = c.get("auth")!;
   const id = uuidSchema.parse(c.req.param("id"));
   await withStaffActor(c, async (tx) => {

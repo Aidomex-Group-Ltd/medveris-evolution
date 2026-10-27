@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createSql } from "@medveris/db";
+import { createSql, withContext } from "@medveris/db";
 import { createApp } from "../../apps/api/src/app.js";
 import { loadConfig } from "../../apps/api/src/config.js";
 import { LocalMailSink } from "../../apps/api/src/lib/local-email.js";
@@ -289,6 +289,11 @@ describe("M2/M3 department workflows", () => {
     }), 201);
     const imagingDetail = await expectOk(await call(radiology, `/api/v1/diagnostic-orders/${imaging.order.id}`));
     const imagingItemId = imagingDetail.items[0].id;
+    const claimedPacs = await call(radiology, "/api/v1/imaging-studies", {
+      method: "POST", body: JSON.stringify({ orderItemId: imagingItemId, modality: "US", bodySite: "Abdomen", pacsState: "reconciled" }),
+    });
+    expect(claimedPacs.status).toBe(503);
+    expect((await json(claimedPacs)).error.details).toMatchObject({ integration: "dicomweb", state: "unavailable" });
     const study = await expectOk(await call(radiology, "/api/v1/imaging-studies", {
       method: "POST", body: JSON.stringify({ orderItemId: imagingItemId, modality: "US", bodySite: "Abdomen" }),
     }), 201);
@@ -440,13 +445,14 @@ describe("M2/M3 department workflows", () => {
     const join = await call(clinician, `/api/v1/telehealth/sessions/${session.session.id}/join`, { method: "POST", body: "{}" });
     expect(join.status).toBe(503);
     const body = await json(join);
-    expect(body.error.code).toBe("dependency_unavailable");
+    expect(body.error.code).toBe("integration_unavailable");
+    expect(body.error.details).toMatchObject({ integration: "telemedicine", state: "unavailable" });
     await expectOk(await call(clinician, `/api/v1/telehealth/sessions/${session.session.id}/complete`, {
       method: "POST", body: JSON.stringify({ connectionStatus: "failed", notes: "Media adapter unavailable" }),
     }));
   });
 
-  it("ingests device observations through reviewed mappings and raises quality alerts", async () => {
+  it("keeps the device registry but refuses ingestion while no verified device gateway exists", async () => {
     const created = await expectOk(await call(admin, "/api/v1/devices", {
       method: "POST", body: JSON.stringify({
         serial: `SYNTH-${Date.now()}`, manufacturer: "Synthetic Devices", model: "Monitor-1", firmware: "1.0",
@@ -460,24 +466,20 @@ describe("M2/M3 department workflows", () => {
     await expectOk(await call(clinician, `/api/v1/devices/${deviceId}/assign`, {
       method: "POST", body: JSON.stringify({ patientId, encounterId }),
     }));
-    const first = await expectOk(await call(nurse, `/api/v1/devices/${deviceId}/ingest`, {
+    // FEATURE_DEVICES=true in this suite: a flag without a verified gateway adapter must not enable ingestion.
+    const ingest = await call(nurse, `/api/v1/devices/${deviceId}/ingest`, {
       method: "POST", body: JSON.stringify({
         eventId: `event-${crypto.randomUUID()}`, sequence: 1, nativeCode: "HR", value: 76, unit: "/min",
         measuredAt: new Date().toISOString(), quality: "valid",
       }),
-    }), 201);
-    expect(first.observation.id).toBeTruthy();
-    await expectOk(await call(nurse, `/api/v1/devices/${deviceId}/ingest`, {
-      method: "POST", body: JSON.stringify({
-        eventId: `event-${crypto.randomUUID()}`, sequence: 2, nativeCode: "HR", value: 210, unit: "/min",
-        measuredAt: new Date().toISOString(), quality: "questionable",
-      }),
-    }), 201);
-    const alerts = await expectOk(await call(nurse, "/api/v1/device-alerts"));
-    expect(alerts.alerts.length).toBeGreaterThan(0);
-    await expectOk(await call(nurse, `/api/v1/device-alerts/${alerts.alerts[0].id}/acknowledge`, {
-      method: "POST", body: JSON.stringify({ note: "Sensor repositioned and reading verified" }),
-    }));
+    });
+    expect(ingest.status).toBe(503);
+    const refusal = await json(ingest);
+    expect(refusal.error.code).toBe("integration_unavailable");
+    expect(refusal.error.details).toMatchObject({ integration: "devices", state: "misconfigured", retryable: false });
+    const stored = await withContext(sql, { tenantId: "11111111-1111-4111-8111-111111111111", actorKind: "staff", userId: CLINICIAN_ID, roles: ["clinician"] },
+      async (tx) => tx`select count(*)::int as count from device_observations where device_id = ${deviceId}`);
+    expect(stored[0]!.count).toBe(0);
   });
 
   it("returns an explicit dependency error when no AI provider is configured", async () => {
@@ -485,7 +487,7 @@ describe("M2/M3 department workflows", () => {
       method: "POST", body: JSON.stringify({ taskType: "record-summary", patientId, evidenceEntryIds: [] }),
     });
     expect(response.status).toBe(503);
-    expect((await json(response)).error.code).toBe("dependency_unavailable");
+    expect((await json(response)).error).toMatchObject({ code: "integration_unavailable", details: { integration: "ai", state: "unavailable" } });
   });
 
   it("enforces department role boundaries and tenant isolation", async () => {

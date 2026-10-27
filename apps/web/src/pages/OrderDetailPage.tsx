@@ -285,7 +285,7 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
               <Field label="Modality" htmlFor={`mod-${item.id}`} hint="Synthetic metadata only; no DICOMweb connection is implied."><Input id={`mod-${item.id}`} value={modality} onChange={(event) => setModality(event.target.value)} required /></Field>
               <Field label="Body site"><Input value={bodySite} onChange={(event) => setBodySite(event.target.value)} required /></Field>
               <Field label="Accession"><Input value={accession} onChange={(event) => setAccession(event.target.value)} /></Field>
-              <Field label="PACS state"><Select value={pacsState} onChange={(event) => setPacsState(event.target.value)}><option value="not-configured">Not configured</option><option value="pending">Pending</option><option value="reconciled">Reconciled</option><option value="quarantined">Quarantined</option></Select></Field>
+              <Field label="PACS state" hint="DICOMweb/PACS is unavailable, so no PACS state can be claimed."><Select value={pacsState} onChange={(event) => setPacsState(event.target.value)}><option value="not-configured">Not configured</option><option value="pending" disabled>Pending (requires PACS)</option><option value="reconciled" disabled>Reconciled (requires PACS)</option><option value="quarantined" disabled>Quarantined (requires PACS)</option></Select></Field>
             </div>
             <Button type="submit" size="sm" disabled={action.busy !== null || !bodySite.trim()}>{action.busy === "study" ? "Registering…" : "Register imaging study"}</Button>
           </form>
