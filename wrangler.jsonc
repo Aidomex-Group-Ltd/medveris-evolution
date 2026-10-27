@@ -50,7 +50,9 @@
         "APP_ORIGIN": "https://medveris-staging.aidomexgroupltd.workers.dev",
         "EXPECTED_DATABASE_NAME": "medveris_staging",
         "AUDIT_SIGNING_KEY_ID": "staging-key-1",
-        "EMAIL_ADAPTER": "local",
+        // medveris.online is the Resend-verified sending domain; RESEND_API_KEY is a Worker secret.
+        "EMAIL_ADAPTER": "resend",
+        "EMAIL_FROM": "Medveris <no-reply@medveris.online>",
         "STORAGE_ADAPTER": "r2",
         "TERMINOLOGY_MODE": "synthetic",
         "DEV_SHOW_TOTP_SECRETS": "false",
@@ -58,7 +60,7 @@
         "FHIR_BULK_EXPORT_ENABLED": "false"
       },
       "secrets": {
-        "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY"]
+        "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]
       }
     }
   }

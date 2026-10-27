@@ -202,6 +202,7 @@ describe("staging gate email rules", () => {
     const config = readyConfig();
     config.env.staging.vars.EMAIL_ADAPTER = "resend";
     config.env.staging.vars.EMAIL_FROM = "MedVeris <no-reply@medveris.local>";
+    config.env.staging.secrets.required = ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY"];
     expect(requiredSecrets(config.env.staging)).toContain("RESEND_API_KEY");
     expect(checkStagingConfig(config)).toEqual([
       "EMAIL_FROM must use a verified Resend sending domain when EMAIL_ADAPTER is resend",

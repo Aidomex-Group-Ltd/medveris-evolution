@@ -22,13 +22,21 @@ export class ResendEmailAdapter implements EmailAdapter {
 
   async send(message: EmailMessage): Promise<EmailResult> {
     if (!this.apiKey) return { delivered: false, adapter: "resend", detail: "RESEND_API_KEY is not configured" };
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: this.from, to: [message.to], subject: message.subject, text: message.text }),
-    });
+    let response: Response;
+    try {
+      response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ from: this.from, to: [message.to], subject: message.subject, text: message.text }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (error) {
+      return { delivered: false, adapter: "resend", detail: `Provider unreachable (${error instanceof Error ? error.name : "unknown error"})` };
+    }
     if (!response.ok) {
-      return { delivered: false, adapter: "resend", detail: `Provider returned HTTP ${response.status}` };
+      const error = (await response.json().catch(() => null)) as { message?: unknown } | null;
+      const reason = typeof error?.message === "string" ? `: ${error.message.slice(0, 200)}` : "";
+      return { delivered: false, adapter: "resend", detail: `Provider returned HTTP ${response.status}${reason}` };
     }
     const data = (await response.json()) as { id?: string };
     return { delivered: true, adapter: "resend", detail: data.id ?? "accepted-by-provider" };
