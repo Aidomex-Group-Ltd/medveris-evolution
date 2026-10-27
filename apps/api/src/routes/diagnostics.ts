@@ -17,7 +17,7 @@ import {
   specimenTransitionSchema,
   uuidSchema,
 } from "@medveris/contracts";
-import { assertDiagnostics } from "@medveris/authz";
+import { assertDiagnostics, permissionsForRoles, type Permission } from "@medveris/authz";
 import { contentDigest } from "@medveris/domain";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
@@ -39,6 +39,10 @@ const ORDER_FLOW: Record<string, string[]> = {
 
 function hasRole(c: Parameters<typeof requireStaff>[0], ...roles: string[]): boolean {
   return requestActor(c).roles.some((role) => roles.includes(role));
+}
+
+function can(c: Parameters<typeof requireStaff>[0], permission: Permission): boolean {
+  return permissionsForRoles(requestActor(c).roles).has(permission);
 }
 
 async function loadOrderItem(c: Parameters<typeof requireStaff>[0], tx: Parameters<Parameters<typeof withStaffActor>[1]>[0], itemId: string) {
@@ -297,16 +301,21 @@ diagnosticsRoutes.post("/lab-results", async (c) => {
 diagnosticsRoutes.post("/lab-results/:id/finalize", async (c) => {
   requireStaff(c);
   assertDiagnostics(requestActor(c));
-  if (!hasRole(c, "clinician")) throw new ForbiddenError("Final laboratory result verification requires a clinician");
+  if (!can(c, "diagnostic.result.validate")) {
+    throw new ForbiddenError("Final laboratory result verification requires a clinician or laboratory validator");
+  }
   const auth = c.get("auth")!;
   const id = uuidSchema.parse(c.req.param("id"));
   const body = await parseJson(c, labResultFinalizeSchema);
   await withStaffActor(c, async (tx) => {
     const result = await requireRows(await tx`
-      select id, patient_id, version, status from lab_results
+      select id, patient_id, version, status, authored_by from lab_results
        where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update
     `, "Laboratory result not found");
     ensureMatch(body.expectedVersion, Number(result.version));
+    if (String(result.authoredBy) === auth.user.id) {
+      throw new ForbiddenError("A result must be validated by someone other than the person who entered it");
+    }
     if (result.status !== "preliminary") throw new ConflictError("Only preliminary results can be finalized");
     await tx`
       update lab_results set status = 'final', verified_by = ${auth.user.id}, verified_at = now(), updated_at = now()
@@ -393,7 +402,7 @@ diagnosticsRoutes.post("/lab-results/:id/critical-communications", async (c) => 
 diagnosticsRoutes.post("/imaging-studies", async (c) => {
   requireStaff(c);
   assertDiagnostics(requestActor(c));
-  if (!hasRole(c, "radiology")) throw new ForbiddenError("Imaging study registration requires the radiology role");
+  if (!can(c, "radiology.study.register")) throw new ForbiddenError("Imaging study registration requires a radiographer or radiologist");
   const auth = c.get("auth")!;
   const body = await parseJson(c, imagingStudySchema);
   if (body.pacsState !== "not-configured") {
@@ -421,9 +430,10 @@ diagnosticsRoutes.post("/imaging-studies", async (c) => {
 diagnosticsRoutes.post("/diagnostic-reports", async (c) => {
   requireStaff(c);
   assertDiagnostics(requestActor(c));
-  if (!hasRole(c, "radiology")) throw new ForbiddenError("Diagnostic reports require the radiology role");
+  if (!can(c, "radiology.report.draft")) throw new ForbiddenError("Diagnostic reports require radiology staff");
   const auth = c.get("auth")!;
   const body = await parseJson(c, diagnosticReportSchema);
+  if (body.status === "final" && !can(c, "radiology.report.sign")) throw new ForbiddenError("Only a radiologist can issue a final report");
   const reportId = crypto.randomUUID();
   await withStaffActor(c, async (tx) => {
     const item = await loadOrderItem(c, tx, body.orderItemId);
@@ -458,7 +468,7 @@ diagnosticsRoutes.post("/diagnostic-reports", async (c) => {
 diagnosticsRoutes.post("/diagnostic-reports/:id/correct", async (c) => {
   requireStaff(c);
   assertDiagnostics(requestActor(c));
-  if (!hasRole(c, "radiology")) throw new ForbiddenError("Diagnostic report corrections require the radiology role");
+  if (!can(c, "radiology.report.sign")) throw new ForbiddenError("Diagnostic report corrections require a radiologist");
   const auth = c.get("auth")!;
   const id = uuidSchema.parse(c.req.param("id"));
   const body = await parseJson(c, diagnosticReportCorrectionSchema);

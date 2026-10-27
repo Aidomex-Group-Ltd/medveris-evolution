@@ -58,6 +58,10 @@ const users = {
   cssd: "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4b4",
   biomedical: "b5b5b5b5-b5b5-4b5b-8b5b-b5b5b5b5b5b5",
   quality: "b6b6b6b6-b6b6-4b6b-8b6b-b6b6b6b6b6b6",
+  radiographer: "b7b7b7b7-b7b7-4b7b-8b7b-b7b7b7b7b7b7",
+  labValidator: "b8b8b8b8-b8b8-4b8b-8b8b-b8b8b8b8b8b8",
+  wardManager: "b9b9b9b9-b9b9-4b9b-8b9b-b9b9b9b9b9b9",
+  privacy: "bababab0-baba-4bab-8bab-bababababab0",
 } as const;
 const organizationA = "0a000000-0000-4000-8000-000000000001";
 const staffClinician = "0b000000-0000-4000-8000-000000000001";
@@ -164,6 +168,10 @@ try {
     await person(tx, users.pharmacist, "pharmacist@medveris.local", "Paul Pharmacist", "Paul", "Wasswa", true);
     await person(tx, users.laboratory, "lab@medveris.local", "Lydia Laboratory", "Lydia", "Nakimuli", true);
     await person(tx, users.radiology, "radiology@medveris.local", "Dr Ruth Radiologist", "Ruth", "Auma", true);
+    await person(tx, users.radiographer, "radiographer@medveris.local", "Robert Radiographer", "Robert", "Kato", true);
+    await person(tx, users.labValidator, "labvalidator@medveris.local", "Valerie Validator", "Valerie", "Achieng", true);
+    await person(tx, users.wardManager, "wardmanager@medveris.local", "Winnie Ward Manager", "Winnie", "Nansubuga", true);
+    await person(tx, users.privacy, "privacy@medveris.local", "Priscilla Privacy Officer", "Priscilla", "Akello", true);
     await person(tx, users.publicHealth, "publichealth@medveris.local", "Patrick Public Health", "Patrick", "Opio", true);
     await person(tx, users.hr, "hr@medveris.local", "Harriet HR", "Harriet", "Nabatanzi", true);
     await person(tx, users.records, "records@medveris.local", "Rose Records", "Rose", "Kirabo", true);
@@ -182,7 +190,11 @@ try {
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-finance-a")}, ${tenantA}, ${users.finance}, ${["finance"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-pharmacist-a")}, ${tenantA}, ${users.pharmacist}, ${["pharmacist"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-lab-a")}, ${tenantA}, ${users.laboratory}, ${["laboratory"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
-    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-radiology-a")}, ${tenantA}, ${users.radiology}, ${["radiology"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-radiology-a")}, ${tenantA}, ${users.radiology}, ${["radiologist"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-radiographer-a")}, ${tenantA}, ${users.radiographer}, ${["radiographer"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-lab-validator-a")}, ${tenantA}, ${users.labValidator}, ${["lab_validator"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-ward-manager-a")}, ${tenantA}, ${users.wardManager}, ${["ward_manager"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-privacy-a")}, ${tenantA}, ${users.privacy}, ${["privacy_officer"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-public-health-a")}, ${tenantA}, ${users.publicHealth}, ${["public_health"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-hr-a")}, ${tenantA}, ${users.hr}, ${["hr"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-records-a")}, ${tenantA}, ${users.records}, ${["records"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;

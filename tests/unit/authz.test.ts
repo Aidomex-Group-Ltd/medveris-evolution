@@ -6,6 +6,9 @@ import {
   assertSign,
   canReadClinical,
   canUseEmergencyOverride,
+  ROLES,
+  permissionsForRoles,
+  withImpliedRoles,
   type ActorContext,
   type Role,
 } from "@medveris/authz";
@@ -50,5 +53,32 @@ describe("role boundaries", () => {
       expect(canReadClinical(actor)).toBe(false);
       expect(() => assertSign(actor)).toThrow();
     }
+  });
+});
+
+describe("specialised department roles", () => {
+  it("implies department access without implying sign-off", () => {
+    expect(withImpliedRoles(["radiographer"]).sort()).toEqual(["radiographer", "radiology"]);
+    expect(withImpliedRoles(["lab_validator"]).sort()).toEqual(["lab_validator", "laboratory"]);
+    expect(withImpliedRoles(["ward_manager"]).sort()).toEqual(["nurse", "ward_manager"]);
+    expect(withImpliedRoles(["privacy_officer"])).toEqual(["privacy_officer"]);
+  });
+
+  it("lets only radiologists sign radiology reports", () => {
+    const signers = ROLES.filter((role) => permissionsForRoles(withImpliedRoles([role])).has("radiology.report.sign"));
+    expect(signers).toEqual(["radiologist"]);
+    expect(permissionsForRoles(withImpliedRoles(["radiographer"])).has("radiology.report.draft")).toBe(true);
+  });
+
+  it("separates laboratory validation from result entry", () => {
+    expect(permissionsForRoles(["laboratory"]).has("diagnostic.result.validate")).toBe(false);
+    expect(permissionsForRoles(["lab_validator"]).has("diagnostic.result.validate")).toBe(true);
+  });
+
+  it("gives the privacy officer audit access and no clinical record access", () => {
+    const permissions = permissionsForRoles(withImpliedRoles(["privacy_officer"]));
+    expect(permissions.has("audit.read")).toBe(true);
+    expect(permissions.has("privacy.access.review")).toBe(true);
+    expect([...permissions].some((permission) => permission.startsWith("clinical.") || permission.startsWith("medication."))).toBe(false);
   });
 });

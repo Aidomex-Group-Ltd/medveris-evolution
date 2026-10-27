@@ -2,7 +2,7 @@ import { randomToken, sha256Hex } from "@medveris/auth";
 import { withContext, type Sql } from "@medveris/db";
 import type { AppConfig } from "../config.js";
 import type { AuthContext, MembershipRecord, SessionRecord, UserRecord } from "../types.js";
-import type { Role } from "@medveris/authz";
+import { withImpliedRoles, type Role } from "@medveris/authz";
 
 export const SESSION_COOKIE = "mv_session";
 
@@ -100,6 +100,7 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
     const role = grant.role as Role;
     if (!membership.roles.includes(role)) membership.roles = [...membership.roles, role];
   }
+  for (const membership of memberships) membership.roles = withImpliedRoles(membership.roles);
   const active = memberships.find((m) => m.tenantId === session.activeTenantId) ?? null;
   if (session.activeTenantId && !active) {
     await sql`update sessions set active_tenant_id = null where id = ${session.id}`;

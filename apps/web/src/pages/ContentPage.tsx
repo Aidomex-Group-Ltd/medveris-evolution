@@ -77,7 +77,8 @@ const REPORT_REASONS = ["inaccurate", "outdated", "unsafe", "spam", "copyright",
 
 const ASSIGNABLE_ROLES: Role[] = [
   "receptionist", "nurse", "midwife", "clinician", "specialist_clinician", "diagnostic_practitioner", "department_lead",
-  "facility_admin", "finance", "auditor", "pharmacist", "laboratory", "radiology", "public_health", "hr", "records",
+  "facility_admin", "finance", "auditor", "pharmacist", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist",
+  "ward_manager", "privacy_officer", "public_health", "hr", "records",
   "theatre", "housekeeping", "porter", "mortuary", "cssd", "biomedical", "quality", "it_admin", "research",
   "content_editor", "content_reviewer", "opportunity_moderator",
 ];

@@ -15,6 +15,11 @@ export const ROLES = [
   "pharmacist",
   "laboratory",
   "radiology",
+  "radiographer",
+  "radiologist",
+  "lab_validator",
+  "ward_manager",
+  "privacy_officer",
   "public_health",
   "hr",
   "records",
@@ -34,6 +39,24 @@ export const ROLES = [
 
 export type Role = (typeof ROLES)[number];
 
+/**
+ * Specialised roles inherit the working access of the department role they belong to, so existing
+ * route checks and database policies apply to them. Implication never confers signing: radiology
+ * sign-off is the `radiology.report.sign` permission, which only `radiologist` holds.
+ */
+export const IMPLIED_ROLES: Readonly<Partial<Record<Role, readonly Role[]>>> = Object.freeze({
+  radiographer: ["radiology"],
+  radiologist: ["radiology"],
+  lab_validator: ["laboratory"],
+  ward_manager: ["nurse"],
+});
+
+export function withImpliedRoles(roles: readonly Role[]): Role[] {
+  const out = new Set<Role>(roles);
+  for (const role of roles) for (const implied of IMPLIED_ROLES[role] ?? []) out.add(implied);
+  return [...out];
+}
+
 export interface ActorContext {
   userId: string;
   roles: Role[];
@@ -47,8 +70,8 @@ export interface ActorContext {
 const clinicalRoles: Role[] = ["clinician", "nurse"];
 const signRoles: Role[] = ["clinician"];
 const adminRoles: Role[] = ["facility_admin"];
-const wardRoles: Role[] = ["clinician", "nurse"];
-const diagnosticsRoles: Role[] = ["clinician", "nurse", "laboratory", "radiology"];
+const wardRoles: Role[] = ["clinician", "nurse", "ward_manager"];
+const diagnosticsRoles: Role[] = ["clinician", "nurse", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"];
 const financeRoles: Role[] = ["finance", "facility_admin"];
 const programmeRoles: Role[] = ["clinician", "nurse"];
 const workforceRoles: Role[] = ["hr", "facility_admin"];

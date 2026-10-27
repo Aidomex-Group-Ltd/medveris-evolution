@@ -55,7 +55,7 @@ interface DuplicateCandidate {
   candidateFamilyName: string;
 }
 
-const ROLEOPTIONS = ["receptionist", "nurse", "clinician", "facility_admin", "finance", "auditor"];
+const ROLEOPTIONS = ["receptionist", "nurse", "midwife", "ward_manager", "clinician", "pharmacist", "laboratory", "lab_validator", "radiographer", "radiologist", "records", "hr", "finance", "auditor", "privacy_officer", "facility_admin"];
 
 export function AdminPage() {
   const [tab, setTab] = useState<"members" | "integrations" | "duplicates">("members");
@@ -123,6 +123,8 @@ function Memberships() {
             <li>Facility administrators manage membership but cannot read clinical notes.</li>
             <li>Receptionists manage identity and queues; they cannot retrieve clinical narratives.</li>
             <li>Only clinicians sign notes; nurses may document observations and triage.</li>
+            <li>Only radiologists sign imaging reports; radiographers register studies and draft. Laboratory validators release results they did not enter.</li>
+            <li>Privacy officers review audit and access history; they cannot open clinical records.</li>
             <li>Credential reviewer is a platform role and cannot be assigned here.</li>
           </ul>
         </Card>
