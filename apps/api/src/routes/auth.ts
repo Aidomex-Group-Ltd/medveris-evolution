@@ -23,7 +23,7 @@ import {
   verifyEmailSchema,
 } from "@medveris/contracts";
 import { randomPatientPublicId } from "@medveris/domain";
-import { withAnonymous, withContext, withRegistration } from "@medveris/db";
+import { setLocalContext, withAnonymous, withContext, withRegistration } from "@medveris/db";
 import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "../lib/errors.js";
 import { auditMeta, parseJson, requestMeta } from "../lib/http.js";
 import { rateLimit, clientKey } from "../lib/rate-limit.js";
@@ -143,6 +143,8 @@ authRoutes.post("/register/facility", async (c) => {
       values (${tenantId}, ${body.facilityName}, ${slugify(body.facilityName)}, ${body.facilityType},
         ${body.city || null}, ${body.country}, ${body.email})
     `;
+    // memberships RLS only accepts rows for the current tenant; scope the rest of this transaction to the new one.
+    await setLocalContext(tx, { actorKind: "registration", tenantId, userId });
     await tx`
       insert into memberships (id, tenant_id, user_id, roles) values (${membershipId}, ${tenantId}, ${userId}, ${["facility_admin"]})
     `;

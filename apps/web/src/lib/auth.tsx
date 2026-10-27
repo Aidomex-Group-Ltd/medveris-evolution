@@ -26,6 +26,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     const current = ++generation.current;
     try {
+      const session = await api<{ authenticated: boolean }>("/auth/session");
+      if (current !== generation.current) return null;
+      if (!session.authenticated) {
+        clearCsrfToken();
+        setState({ me: null, loading: false, error: null });
+        return null;
+      }
       const me = await api<MeResponse>("/me");
       if (current !== generation.current) return null;
       setCsrfToken(me.csrfToken);
