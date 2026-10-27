@@ -2,6 +2,7 @@ import { DomainError } from "./errors.js";
 export { DomainError } from "./errors.js";
 export * from "./catalog.js";
 export * from "./onboarding-catalogue.js";
+export * from "./radiology.js";
 export type EncounterState =
   | "planned"
   | "arrived"

@@ -38,6 +38,7 @@ import { inventoryRoutes } from "./routes/inventory.js";
 import { directoryRoutes } from "./routes/directory.js";
 import { promotionRoutes } from "./routes/promotions.js";
 import { integrationRoutes } from "./routes/integrations.js";
+import { radiologyRoutes } from "./routes/radiology.js";
 
 function isFhirPath(path: string): boolean {
   return path.startsWith("/fhir/") || path.startsWith("/terminology/fhir/");
@@ -121,6 +122,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", directoryRoutes);
   app.route("/api/v1", promotionRoutes);
   app.route("/api/v1", integrationRoutes);
+  app.route("/api/v1", radiologyRoutes);
 
   app.notFound((c) => {
     if (isFhirPath(c.req.path)) {

@@ -91,13 +91,8 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
   const [recipient, setRecipient] = useState("");
   const [commMethod, setCommMethod] = useState("phone");
   const [commNotes, setCommNotes] = useState("");
-  const [modality, setModality] = useState("CR");
-  const [bodySite, setBodySite] = useState("");
-  const [accession, setAccession] = useState("");
-  const [pacsState, setPacsState] = useState("not-configured");
   const [findings, setFindings] = useState("");
   const [impression, setImpression] = useState("");
-  const [reportStatus, setReportStatus] = useState<"preliminary" | "final">("preliminary");
   const [reportCritical, setReportCritical] = useState(false);
 
   const lab = order.orderType === "laboratory";
@@ -191,19 +186,6 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
     await run("comm", () => api(`/lab-results/${result.id}/critical-communications`, { method: "POST", body: { recipientUserId: recipient, method: commMethod, notes: commNotes } }), "Critical result communication recorded.");
   }
 
-  async function registerStudy(event: FormEvent) {
-    event.preventDefault();
-    await run("study", () => api("/imaging-studies", { method: "POST", body: { orderItemId: item.id, modality, bodySite, accession, pacsState } }), "Imaging study registered.");
-  }
-
-  async function createReport(event: FormEvent) {
-    event.preventDefault();
-    await run("report", () => api("/diagnostic-reports", {
-      method: "POST",
-      body: { orderItemId: item.id, studyId: item.imagingStudy?.id ?? null, findings, impression, critical: reportCritical, status: reportStatus },
-    }), "Diagnostic report recorded.");
-  }
-
   async function correctReport(event: FormEvent) {
     event.preventDefault();
     if (!item.latestReport) return;
@@ -279,17 +261,7 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
           </details>
         ) : null}
 
-        {imaging && (radiology || clinician || roles.includes("nurse")) && !item.imagingStudy ? (
-          <form className="mv-stack" onSubmit={registerStudy}>
-            <div className="mv-form-grid">
-              <Field label="Modality" htmlFor={`mod-${item.id}`} hint="Synthetic metadata only; no DICOMweb connection is implied."><Input id={`mod-${item.id}`} value={modality} onChange={(event) => setModality(event.target.value)} required /></Field>
-              <Field label="Body site"><Input value={bodySite} onChange={(event) => setBodySite(event.target.value)} required /></Field>
-              <Field label="Accession"><Input value={accession} onChange={(event) => setAccession(event.target.value)} /></Field>
-              <Field label="PACS state" hint="DICOMweb/PACS is unavailable, so no PACS state can be claimed."><Select value={pacsState} onChange={(event) => setPacsState(event.target.value)}><option value="not-configured">Not configured</option><option value="pending" disabled>Pending (requires PACS)</option><option value="reconciled" disabled>Reconciled (requires PACS)</option><option value="quarantined" disabled>Quarantined (requires PACS)</option></Select></Field>
-            </div>
-            <Button type="submit" size="sm" disabled={action.busy !== null || !bodySite.trim()}>{action.busy === "study" ? "Registering…" : "Register imaging study"}</Button>
-          </form>
-        ) : null}
+        {imaging ? <StructuredImagingReport orderItemId={item.id} hasStudy={Boolean(item.imagingStudy)} /> : null}
         {item.imagingStudy ? <div className="mv-note"><strong>{item.imagingStudy.modality} · {item.imagingStudy.body_site}</strong><div className="mv-small mv-muted">PACS {item.imagingStudy.pacs_state}{item.imagingStudy.accession ? ` · accession ${item.imagingStudy.accession}` : ""}</div></div> : null}
         {item.latestReport ? (
           <div className="mv-note">
@@ -310,19 +282,47 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
             ) : null}
           </div>
         ) : null}
-        {imaging && radiology && !item.latestReport ? (
-          <form className="mv-stack" onSubmit={createReport}>
-            <Field label="Findings" htmlFor={`findings-${item.id}`}><Textarea id={`findings-${item.id}`} value={findings} onChange={(event) => setFindings(event.target.value)} required minLength={2} /></Field>
-            <Field label="Impression" htmlFor={`impression-${item.id}`}><Textarea id={`impression-${item.id}`} value={impression} onChange={(event) => setImpression(event.target.value)} required minLength={2} /></Field>
-            <div className="mv-form-grid">
-              <Field label="Report status"><Select value={reportStatus} onChange={(event) => setReportStatus(event.target.value as "preliminary" | "final")}><option value="preliminary">Preliminary</option><option value="final">Final</option></Select></Field>
-            </div>
-            <label className="mv-check"><input type="checkbox" checked={reportCritical} onChange={(event) => setReportCritical(event.target.checked)} /> Critical report</label>
-            <Button type="submit" size="sm" disabled={action.busy !== null || findings.trim().length < 2 || impression.trim().length < 2}>{action.busy === "report" ? "Saving…" : "Save report"}</Button>
-          </form>
-        ) : null}
         {!lab && !imaging ? <EmptyState title="Other order" description="No diagnostic-specific workflow is available for this order type." /> : null}
       </div>
     </Card>
+  );
+}
+
+interface StructuredReportResponse {
+  signedReport: null | {
+    report: { id: string; status: string; urgency: string; signedAt: string; releasedAt: string | null; templateName: string; accession: string; radiologistName: string | null;
+      definition: { fields: Array<{ key: string; label: string }> } };
+    latest: { version: number; kind: string; content: { fields: Record<string, string>; measurements: Array<{ label: string; value: number; unit: string }> }; signedAt: string };
+    addenda: Array<{ text: string; reason: string; signedAt: string }>;
+  };
+  images: { state: string; reason: string };
+}
+
+function StructuredImagingReport({ orderItemId, hasStudy }: { orderItemId: string; hasStudy: boolean }) {
+  const query = useQuery<StructuredReportResponse>(`/radiology/orders/${orderItemId}/report`);
+  if (query.loading) return <LoadingState label="Loading imaging report" />;
+  if (query.error) return <ErrorState message={query.error} onRetry={query.reload} />;
+  const signed = query.data?.signedReport;
+  if (!signed) {
+    return (
+      <Notice tone="info" title={hasStudy ? "Awaiting signed structured report" : "Awaiting study registration"}>
+        Imaging studies and structured reports are handled in <Link to="/radiology">Radiology reporting</Link>. A report appears here once a radiologist signs it.
+      </Notice>
+    );
+  }
+  const { report, latest, addenda } = signed;
+  const fields = report.definition.fields.filter((field) => (latest.content.fields[field.key] ?? "").trim());
+  return (
+    <div className="mv-note">
+      <div className="mv-spread">
+        <strong>{report.templateName} · {report.accession} · v{latest.version} ({latest.kind})</strong>
+        <span>{report.urgency !== "routine" ? <Badge tone="danger">{report.urgency}</Badge> : null} <Badge tone="success">{report.status}</Badge></span>
+      </div>
+      <p className="mv-small mv-muted">Signed by {report.radiologistName ?? "radiologist"} at {formatDateTime(latest.signedAt)}{report.releasedAt ? ` · released ${formatDateTime(report.releasedAt)}` : " · not yet released"}. Images: {query.data?.images.state.replace("_", " ")}.</p>
+      {fields.map((field) => <p key={field.key}><strong>{field.label}:</strong> <span style={{ whiteSpace: "pre-wrap" }}>{latest.content.fields[field.key]}</span></p>)}
+      {latest.content.measurements.map((measurement, index) => <p key={index} className="mv-small">{measurement.label}: {measurement.value} {measurement.unit}</p>)}
+      {addenda.map((addendum, index) => <Notice key={index} tone="info" title={`Addendum ${formatDateTime(addendum.signedAt)}`}>{addendum.text}</Notice>)}
+      <Link to={`/radiology/reports/${report.id}`}>Open full report</Link>
+    </div>
   );
 }

@@ -23,6 +23,8 @@ export interface AppConfig {
   fhirExternalWritesEnabled: boolean;
   fhirBulkExportEnabled: boolean;
   emergencyOverrideMinutes: number;
+  /** Facility policy for acknowledging critical imaging findings; requires clinical governance approval. */
+  radiologyCriticalAckMinutes: number;
   emergencyReviewDueHours: number;
   devShowTotpSecrets: boolean;
   map: {
@@ -161,6 +163,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     fhirExternalWritesEnabled: bool(env.FHIR_EXTERNAL_WRITES_ENABLED, false),
     fhirBulkExportEnabled: bool(env.FHIR_BULK_EXPORT_ENABLED, false),
     emergencyOverrideMinutes: integer(env.EMERGENCY_OVERRIDE_MINUTES, 60),
+    radiologyCriticalAckMinutes: Math.max(5, Math.min(integer(env.RADIOLOGY_CRITICAL_ACK_MINUTES, 60), 1440)),
     emergencyReviewDueHours: integer(env.EMERGENCY_REVIEW_DUE_HOURS, 24),
     devShowTotpSecrets: bool(env.DEV_SHOW_TOTP_SECRETS, false),
     map: {

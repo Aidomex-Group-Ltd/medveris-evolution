@@ -46,6 +46,8 @@ const TheatrePage = lazyPage(() => import("./pages/TheatrePage"), "TheatrePage")
 const TheatreCasePage = lazyPage(() => import("./pages/TheatreCasePage"), "TheatreCasePage");
 const AdmissionDetailPage = lazyPage(() => import("./pages/AdmissionDetailPage"), "AdmissionDetailPage");
 const DiagnosticsPage = lazyPage(() => import("./pages/DiagnosticsPage"), "DiagnosticsPage");
+const RadiologyPage = lazyPage(() => import("./pages/RadiologyPage"), "RadiologyPage");
+const RadiologyReportPage = lazyPage(() => import("./pages/RadiologyReportPage"), "RadiologyReportPage");
 const OrderDetailPage = lazyPage(() => import("./pages/OrderDetailPage"), "OrderDetailPage");
 const PharmacyPage = lazyPage(() => import("./pages/PharmacyPage"), "PharmacyPage");
 const FinancePage = lazyPage(() => import("./pages/FinancePage"), "FinancePage");
@@ -114,6 +116,8 @@ export function App() {
         <Route path="theatre" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin"]}><TheatrePage /></ProtectedRoute>} />
         <Route path="theatre/:id" element={<ProtectedRoute roles={["nurse", "clinician"]}><TheatreCasePage /></ProtectedRoute>} />
         <Route path="diagnostics" element={<ProtectedRoute roles={["nurse", "clinician", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"]}><DiagnosticsPage /></ProtectedRoute>} />
+        <Route path="radiology" element={<ProtectedRoute roles={["nurse", "clinician", "radiology", "radiographer", "radiologist"]}><RadiologyPage /></ProtectedRoute>} />
+        <Route path="radiology/reports/:id" element={<ProtectedRoute roles={["nurse", "clinician", "radiology", "radiographer", "radiologist"]}><RadiologyReportPage /></ProtectedRoute>} />
         <Route path="diagnostics/orders/:id" element={<ProtectedRoute roles={["nurse", "clinician", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"]}><OrderDetailPage /></ProtectedRoute>} />
         <Route path="pharmacy" element={<ProtectedRoute roles={["nurse", "clinician", "pharmacist", "facility_admin"]}><PharmacyPage /></ProtectedRoute>} />
         <Route path="finance" element={<ProtectedRoute roles={["finance", "facility_admin"]}><FinancePage /></ProtectedRoute>} />

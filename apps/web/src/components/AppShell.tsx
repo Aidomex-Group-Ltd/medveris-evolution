@@ -32,6 +32,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/inventory", label: "Inventory and assets", roles: ["nurse", "midwife", "clinician", "specialist_clinician", "diagnostic_practitioner", "department_lead", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist", "ward_manager", "pharmacist", "theatre", "facility_admin", "hr", "records", "quality", "finance", "auditor", "housekeeping", "porter", "mortuary", "cssd", "biomedical"] },
       { to: "/theatre", label: "Theatre", roles: ["nurse", "clinician", "facility_admin"] },
       { to: "/diagnostics", label: "Diagnostics", roles: ["nurse", "clinician", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"] },
+      { to: "/radiology", label: "Radiology reporting", roles: ["nurse", "clinician", "radiology", "radiographer", "radiologist"] },
       { to: "/pharmacy", label: "Pharmacy", roles: ["nurse", "clinician", "pharmacist", "facility_admin"] },
       { to: "/programmes", label: "Care programmes", roles: ["nurse", "clinician"] },
       { to: "/telehealth", label: "Telehealth", roles: ["nurse", "clinician"] },

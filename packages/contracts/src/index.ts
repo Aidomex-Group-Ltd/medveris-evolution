@@ -1979,3 +1979,95 @@ export const partnerPatientLinkSchema = z.object({
 export const partnerPatientUnlinkSchema = z.object({
   reason: z.string().trim().min(5).max(2000),
 });
+
+const radiologyUrgency = z.enum(["routine", "urgent", "critical"]);
+const attestation = z.literal(true, { message: "Sign-off requires an explicit attestation" });
+
+export const radiologyContentSchema = z.object({
+  fields: z.record(z.string().max(60), z.string().max(20000)).default({}),
+  measurements: z.array(z.object({
+    label: z.string().trim().min(1).max(200),
+    value: z.number().finite().nonnegative(),
+    unit: z.string().trim().min(1).max(20),
+  })).max(100).default([]),
+});
+
+export const radiologyTemplateApprovalSchema = z.object({
+  code: z.string().trim().min(1).max(60),
+  approvalNote: z.string().trim().min(10).max(2000),
+  requiredFields: z.array(z.string().max(60)).max(60).optional(),
+});
+
+export const radiologyStudySchema = z.object({
+  orderItemId: uuidSchema,
+  modality: z.string().trim().min(1).max(20),
+  bodySite: z.string().trim().min(1).max(200),
+  scheduledAt: z.string().datetime().optional(),
+  protocol: z.string().trim().max(2000).optional().or(z.literal("")),
+  preparationNotes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const radiologyAcquisitionSchema = z.object({
+  status: z.enum(["registered", "acquired", "incomplete", "cancelled"]),
+  expectedVersion: z.number().int().min(1),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const radiologyReportCreateSchema = z.object({
+  studyId: uuidSchema,
+  templateId: uuidSchema,
+});
+
+export const radiologyDraftSchema = z.object({
+  content: radiologyContentSchema,
+  urgency: radiologyUrgency,
+  expectedVersion: z.number().int().min(1),
+});
+
+export const radiologySignSchema = z.object({
+  kind: z.enum(["preliminary", "final"]),
+  expectedVersion: z.number().int().min(1),
+  attest: attestation,
+});
+
+export const radiologyCorrectionSchema = z.object({
+  content: radiologyContentSchema,
+  urgency: radiologyUrgency,
+  reason: z.string().trim().min(10).max(2000),
+  expectedSignedVersion: z.number().int().min(1),
+  attest: attestation,
+});
+
+export const radiologyAddendumSchema = z.object({
+  text: z.string().trim().min(2).max(10000),
+  reason: z.string().trim().min(5).max(2000),
+  attest: attestation,
+});
+
+export const radiologyReleaseSchema = z.object({
+  releaseNote: z.string().trim().min(2).max(2000),
+});
+
+export const radiologyCriticalSchema = z.object({
+  recipientUserId: uuidSchema,
+  method: z.enum(["phone", "in-person", "secure-message"]),
+  findingSummary: z.string().trim().min(5).max(2000),
+});
+
+export const radiologyAcknowledgeSchema = z.object({
+  note: z.string().trim().min(2).max(2000),
+});
+
+export const radiologyEscalateSchema = z.object({
+  toUserId: uuidSchema,
+  note: z.string().trim().min(5).max(2000),
+});
+
+export const radiologyWorklistSchema = z.object({
+  status: z.enum(["all", "awaiting-study", "awaiting-acquisition", "awaiting-report", "draft", "preliminary", "signed", "released"]).default("all"),
+  modality: z.string().trim().max(20).optional(),
+  priority: z.enum(["routine", "urgent", "emergency"]).optional(),
+  radiologistId: uuidSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).max(10_000).default(0),
+});
