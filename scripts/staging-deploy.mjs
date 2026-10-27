@@ -5,6 +5,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   EXPECTED,
   REQUIRED_SECRETS,
+  blueVersion,
   checkHyperdrivePair,
   checkHyperdriveRemote,
   checkResendKey,
@@ -15,14 +16,24 @@ import {
   parseWranglerConfig,
   planSecretUpload,
   requiredSecrets,
+  uploadedVersionId,
 } from "./staging-gate.mjs";
+import { probeHealth, verifyVersion, versionsDeploy } from "./staging-release.mjs";
 
 /**
  * Staging deployment gate. Both modes fail closed (exit 1) when any prerequisite is unmet.
  *
  *   node scripts/staging-deploy.mjs --dry-run   # config + read-only remote checks + lint/typecheck/test/build
  *                                               # + wrangler packaging dry run; creates, uploads and migrates nothing
- *   node scripts/staging-deploy.mjs             # the same checks, then deploy and post-deploy health checks
+ *   node scripts/staging-deploy.mjs             # the same checks, then a blue-green release:
+ *       1. blue = the version serving 100% of traffic; green = a new version uploaded with `wrangler versions upload`
+ *       2. green is staged at 0% next to blue and verified through the Cloudflare-Workers-Version-Overrides header
+ *       3. green is promoted to 100% in one step, then re-verified on live traffic; any failure restores blue
+ *   The first deployment of a new Worker has no blue and uses `wrangler deploy` instead.
+ *   `npm run deploy:staging:rollback` switches traffic back to the previous version.
+ *
+ * Blue and green share the staging database, so migrations must stay backward compatible with blue
+ * (expand first, contract in a later release).
  *
  * STAGING_SECRETS_FILE defaults to ~/.config/medveris/staging/secrets.env and STAGING_RESEND_FILE to
  * ~/.config/medveris/staging/resend.env. Only secrets the Worker lacks are uploaded, so existing values are
@@ -100,6 +111,10 @@ if (secretList.status === 0 && Array.isArray(parseJsonOutput(secretList.stdout))
   problems.push("could not list the staging Worker secrets");
 }
 
+const live = remoteSecretNames ? blueVersion(parseJsonOutput(wrangler("deployments", "status", "--env", "staging", "--json").stdout)) : { blue: null, problems: [] };
+problems.push(...live.problems);
+if (live.blue) notes.push(`blue (live) version is ${live.blue}`);
+
 function readProtectedFile(path, label) {
   if (!existsSync(path)) return null;
   if (insideRepo(path)) problems.push(`the ${label} must be stored outside the repository`);
@@ -152,43 +167,82 @@ if (dryRun) {
   process.exit(0);
 }
 
-const deployArgs = ["wrangler", "deploy", "--env", "staging", "--strict"];
-let uploadDir = null;
-if (secretPlan.upload.length) {
-  uploadDir = mkdtempSync(join(tmpdir(), "medveris-secrets-"));
+/** Runs `fn` with a temporary 0600 secrets file holding only the secrets the Worker lacks. */
+function withSecretsFile(fn) {
+  if (!secretPlan.upload.length) return fn(null);
+  const uploadDir = mkdtempSync(join(tmpdir(), "medveris-secrets-"));
   const uploadFile = join(uploadDir, "secrets.json");
-  writeFileSync(uploadFile, JSON.stringify(Object.fromEntries(secretPlan.upload.map((name) => [name, available.get(name)]))), { mode: 0o600 });
-  deployArgs.push("--secrets-file", uploadFile);
-}
-let deploy;
-try {
-  deploy = spawnSync("npx", deployArgs, { stdio: "inherit" });
-} finally {
-  if (uploadDir) rmSync(uploadDir, { recursive: true, force: true });
-}
-if (deploy.status !== 0) {
-  console.error(`staging gate: wrangler deploy failed (exit ${deploy.status}); check \`npx wrangler deployments list --env staging\``);
-  process.exit(deploy.status ?? 1);
-}
-
-async function probe(path) {
-  for (let attempt = 1; attempt <= 6; attempt += 1) {
-    try {
-      const response = await fetch(`${EXPECTED.origin}${path}`, { headers: { "cache-control": "no-cache" } });
-      if (response.ok) return `${response.status}`;
-      if (attempt === 6) return `HTTP ${response.status}`;
-    } catch (error) {
-      if (attempt === 6) return `unreachable (${error.cause?.code ?? error.name})`;
-    }
-    await new Promise((done) => setTimeout(done, 10_000));
+  try {
+    writeFileSync(uploadFile, JSON.stringify(Object.fromEntries(secretPlan.upload.map((name) => [name, available.get(name)]))), { mode: 0o600 });
+    return fn(uploadFile);
+  } finally {
+    rmSync(uploadDir, { recursive: true, force: true });
   }
-  return "unreachable";
 }
 
-const live = await probe("/api/v1/health/live");
-const ready = await probe("/api/v1/health/ready");
-console.log(`staging gate: deployed ${EXPECTED.worker}; live=${live} ready=${ready}`);
-if (live !== "200" || ready !== "200") {
-  console.error("staging gate: the deployment occurred but post-deploy health verification failed; inspect `npx wrangler tail --env staging`");
+// 5a. First deployment: there is no blue version yet.
+if (remoteSecretNames === null) {
+  const deploy = withSecretsFile((file) => spawnSync("npx", ["wrangler", "deploy", "--env", "staging", "--strict", ...(file ? ["--secrets-file", file] : [])], { stdio: "inherit" }));
+  if (deploy.status !== 0) {
+    console.error(`staging gate: wrangler deploy failed (exit ${deploy.status}); check \`npx wrangler deployments list --env staging\``);
+    process.exit(deploy.status ?? 1);
+  }
+  const health = await probeHealth();
+  console.log(`staging gate: first deployment of ${EXPECTED.worker}; live=${health.live} ready=${health.ready}`);
+  process.exit(health.ok ? 0 : 1);
+}
+
+// 5b. Blue-green release. Blue keeps 100% of traffic until green passes its probes.
+const blue = live.blue;
+if (!blue) {
+  console.error("staging gate: BLOCKED: could not determine the blue version");
   process.exit(1);
 }
+const commit = capture("git", ["rev-parse", "--short", "HEAD"]).stdout.trim() || "unknown";
+const subject = capture("git", ["log", "-1", "--format=%s"]).stdout.trim().slice(0, 100);
+const dirty = capture("git", ["status", "--porcelain"]).stdout.trim() !== "";
+console.log(`\nstaging release: blue=${blue}; uploading green from ${commit}${dirty ? " (uncommitted changes)" : ""}`);
+
+const upload = withSecretsFile((file) => capture("npx", [
+  "wrangler", "versions", "upload", "--env", "staging",
+  "--tag", `${commit}${dirty ? "-dirty" : ""}`, "--message", subject || "staging release",
+  ...(file ? ["--secrets-file", file] : []),
+]));
+process.stdout.write(upload.stdout);
+process.stderr.write(upload.stderr);
+const green = uploadedVersionId(upload.stdout);
+if (upload.status !== 0 || !green) {
+  console.error("staging release: green upload failed; blue still serves all traffic");
+  process.exit(1);
+}
+
+if (!versionsDeploy([`${blue}@100%`, `${green}@0%`], `stage green ${green} at 0%`)) {
+  console.error("staging release: could not stage green; blue still serves all traffic");
+  process.exit(1);
+}
+
+const expectedEntry = /src="(\/assets\/index-[^"]+\.js)"/.exec(readFileSync("apps/web/dist/index.html", "utf8"))?.[1];
+const greenCheck = await verifyVersion(green, { override: true, expectedEntry });
+if (!greenCheck.ok) {
+  console.error(`staging release: green failed verification (${greenCheck.detail}); removing it`);
+  versionsDeploy([`${blue}@100%`], `discard green ${green}`);
+  process.exit(1);
+}
+console.log(`staging release: green verified through version override (${greenCheck.detail})`);
+
+if (!versionsDeploy([`${green}@100%`], `promote green ${green} (${commit})`)) {
+  console.error("staging release: promotion failed; restoring blue");
+  versionsDeploy([`${blue}@100%`], `restore blue ${blue}`);
+  process.exit(1);
+}
+const triggers = spawnSync("npx", ["wrangler", "triggers", "deploy", "--env", "staging"], { stdio: "inherit" });
+if (triggers.status !== 0) console.error("staging release: warning: cron triggers were not updated; run `npx wrangler triggers deploy --env staging`");
+
+const liveCheck = await verifyVersion(green, { override: false, expectedEntry });
+if (!liveCheck.ok) {
+  console.error(`staging release: green failed after promotion (${liveCheck.detail}); rolling back to blue ${blue}`);
+  versionsDeploy([`${blue}@100%`], `automatic rollback to ${blue}`);
+  process.exit(1);
+}
+console.log(`staging release: green ${green} now serves 100% of traffic (${liveCheck.detail})`);
+console.log(`staging release: blue ${blue} remains available for instant rollback: npm run deploy:staging:rollback`);

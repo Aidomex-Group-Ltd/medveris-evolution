@@ -36,6 +36,7 @@
     "cf:dev": "npm run build:web && wrangler dev",
     "deploy:staging:check": "node scripts/staging-deploy.mjs --dry-run",
     "deploy:staging": "node scripts/staging-deploy.mjs",
+    "deploy:staging:rollback": "node scripts/staging-rollback.mjs",
     "start": "node apps/api/dist/server.mjs"
   },
   "dependencies": {

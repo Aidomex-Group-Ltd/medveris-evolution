@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import worker from "../../apps/api/src/worker.js";
+import worker, { VERSION_HEADER, withVersionHeader } from "../../apps/api/src/worker.js";
 
 const stagingEnv = {
   APP_ENV: "staging",
@@ -40,5 +40,24 @@ describe("Worker entry point fails closed", () => {
     } finally {
       errors.mockRestore();
     }
+  });
+});
+
+describe("Worker version header", () => {
+  it("tags responses with the running version so blue-green probes can tell versions apart", async () => {
+    const env = { ...stagingEnv, CF_VERSION_METADATA: { id: "0e3daf50-7a54-4107-9e7b-44794cf475b7" } };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const response = await worker.fetch(new Request("https://medveris-staging.example.workers.dev/api/v1/health/live"), env, ctx);
+      expect(response.headers.get(VERSION_HEADER)).toBe("0e3daf50-7a54-4107-9e7b-44794cf475b7");
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("leaves responses untouched without version metadata", () => {
+    const response = withVersionHeader(new Response("ok", { status: 201, headers: { "cache-control": "no-store" } }), { ...stagingEnv });
+    expect(response.status).toBe(201);
+    expect(response.headers.get(VERSION_HEADER)).toBeNull();
   });
 });

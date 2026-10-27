@@ -234,6 +234,66 @@ export function checkResendKey(value) {
   return /^re_[A-Za-z0-9_]{16,}$/.test(value) ? [] : ["RESEND_API_KEY does not look like a Resend API key"];
 }
 
+export const VERSION_HEADER = "x-medveris-version";
+const VERSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Blue is the version serving all traffic. A split deployment means an earlier release did not finish,
+ * so a new release must not start until it is promoted or rolled back.
+ * @param {any} status output of `wrangler deployments status --json`
+ * @returns {{ blue: string | null, problems: string[] }}
+ */
+export function blueVersion(status) {
+  const versions = Array.isArray(status?.versions) ? status.versions : [];
+  if (versions.length === 1 && versions[0].percentage === 100 && VERSION_ID.test(versions[0].version_id ?? "")) {
+    return { blue: versions[0].version_id, problems: [] };
+  }
+  if (versions.length > 1) {
+    return { blue: null, problems: ["the live deployment is split between versions; finish it or run `npm run deploy:staging:rollback` first"] };
+  }
+  return { blue: null, problems: ["could not determine the version serving 100% of staging traffic"] };
+}
+
+/**
+ * @param {string} stdout output of `wrangler versions upload`
+ * @returns {string | null}
+ */
+export function uploadedVersionId(stdout) {
+  return /Worker Version ID:\s*([0-9a-f-]{36})/i.exec(stdout)?.[1] ?? null;
+}
+
+/**
+ * @param {string} worker
+ * @param {string} versionId
+ */
+export function versionOverrideHeader(worker, versionId) {
+  return `${worker}="${versionId}"`;
+}
+
+/**
+ * Rollback target: during an unfinished release, the version still taking traffic (blue); otherwise the
+ * most recent version that served 100% before the live one.
+ * @param {any} status `wrangler deployments status --json`
+ * @param {any[]} deployments `wrangler deployments list --json`, oldest first
+ * @returns {{ target: string | null, current: string | null, problems: string[] }}
+ */
+export function rollbackTarget(status, deployments) {
+  const live = Array.isArray(status?.versions) ? status.versions : [];
+  if (live.length > 1) {
+    const serving = [...live].sort((a, b) => b.percentage - a.percentage)[0];
+    return { target: serving.version_id, current: null, problems: [] };
+  }
+  const current = live[0]?.version_id ?? null;
+  if (!current) return { target: null, current: null, problems: ["could not read the live staging deployment"] };
+  for (const deployment of [...(deployments ?? [])].reverse()) {
+    const versions = deployment?.versions ?? [];
+    if (versions.length === 1 && versions[0].percentage === 100 && versions[0].version_id !== current) {
+      return { target: versions[0].version_id, current, problems: [] };
+    }
+  }
+  return { target: null, current, problems: ["no earlier fully deployed version exists to roll back to"] };
+}
+
 /**
  * Chooses which secrets to upload. Only names the Worker lacks are ever uploaded, so existing values,
  * including the data-bound AUDIT_SIGNING_KEY and MFA_ENCRYPTION_KEY, are never overwritten.

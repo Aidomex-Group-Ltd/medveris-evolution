@@ -8,7 +8,17 @@ Provision API/static assets, Hyperdrive binding, PostgreSQL roles and migrations
 
 ### Cloudflare staging (`medveris-staging`)
 
-`wrangler.jsonc` top level is local `wrangler dev` only; `env.staging` is the deployable Worker. `npm run deploy:staging:check` runs every gate without creating, uploading, migrating or deploying anything and exits non-zero while any prerequisite is missing; `npm run deploy:staging` runs the same gate, deploys, then probes `/api/v1/health/live` and `/api/v1/health/ready`. Neither script runs migrations.
+`wrangler.jsonc` top level is local `wrangler dev` only; `env.staging` is the deployable Worker. `npm run deploy:staging:check` runs every gate without creating, uploading, migrating or deploying anything and exits non-zero while any prerequisite is missing; `npm run deploy:staging` runs the same gate, then releases blue-green. Neither script runs migrations.
+
+Blue-green release (`npm run deploy:staging`):
+
+1. Blue is the version serving 100% of traffic. The release refuses to start while a deployment is split between versions.
+2. Green is uploaded with `wrangler versions upload` (tagged with the commit) and staged at 0% next to blue, so it receives no user traffic or cron runs.
+3. Green is probed through the `Cloudflare-Workers-Version-Overrides` header: `/api/v1/health/live`, `/api/v1/health/ready` and the app shell must return 200, every API response must carry `x-medveris-version` equal to green's ID (from the `CF_VERSION_METADATA` binding), and the shell must reference the freshly built asset bundle. A failure removes green; blue never stopped serving.
+4. Green is promoted to 100% in a single step, cron triggers are refreshed, and the same probes run on live traffic. A failure switches traffic back to blue automatically.
+5. Blue stays deployable: `npm run deploy:staging:rollback` switches all traffic to the previous fully deployed version (or to blue if a release stopped part-way), and `npm run deploy:staging:rollback -- <version-id>` targets a specific version.
+
+Blue and green share the staging database and rollback does not undo migrations, so every migration must remain compatible with the previous release: add columns and tables first, remove them in a later release. The first deployment of a new Worker has no blue and uses `wrangler deploy` directly.
 
 1. Staging database: a hosted PostgreSQL 14+ server that is separate from production, contains no real patient data and is reachable by Hyperdrive over TLS. The provider must allow creating `medveris_exchange` (`NOLOGIN BYPASSRLS`) and SECURITY DEFINER ownership by `medveris_migrator`. Migrations are tested on PostgreSQL 14; run the integration suite against the chosen major version first.
 2. Roles: put `PGADMIN_URL`, `MIGRATION_DATABASE_URL`, `DATABASE_URL`, `JOBS_DATABASE_URL`, `MIGRATOR_PASSWORD`, `RUNTIME_PASSWORD`, `JOBS_PASSWORD` and `APP_ENV=staging` in a mode-0600 file outside the repository (`~/.config/medveris/staging/db.env`), then run `node --env-file=<file> node_modules/.bin/tsx scripts/db-setup.ts` and the same for `scripts/db-migrate.ts`. Do not `source` the file in a shell: `&` in the connection URLs splits the assignments and the scripts silently fall back to the local `.env`. `db:setup` refuses development passwords and an admin URL on a different server for any database other than `medveris_dev`/`medveris_test`.

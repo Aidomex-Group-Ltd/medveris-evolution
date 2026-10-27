@@ -19,7 +19,19 @@ export interface WorkerEnv {
   /** Jobs role (medveris_jobs) used only by the scheduled outbox/checkpoint cycle. */
   HYPERDRIVE_JOBS?: HyperdriveBinding;
   UPLOADS?: unknown;
+  /** Workers version metadata; the blue-green deploy uses it to confirm which version answered. */
+  CF_VERSION_METADATA?: { id: string; tag?: string };
   [key: string]: unknown;
+}
+
+export const VERSION_HEADER = "x-medveris-version";
+
+export function withVersionHeader(response: Response, env: WorkerEnv): Response {
+  const versionId = env.CF_VERSION_METADATA?.id;
+  if (!versionId) return response;
+  const tagged = new Response(response.body, response);
+  tagged.headers.set(VERSION_HEADER, versionId);
+  return tagged;
 }
 
 interface WorkerContext {
@@ -89,31 +101,35 @@ function misconfigured(): Response {
   );
 }
 
+async function handleFetch(request: Request, env: WorkerEnv, ctx: WorkerContext): Promise<Response> {
+  let current: Runtime;
+  try {
+    current = getRuntime(env);
+  } catch (error) {
+    console.error(JSON.stringify({ event: "worker_error", message: (error as Error).message }));
+    return misconfigured();
+  }
+  const sql = createSql(runtimeConnectionString(env), { max: 5 });
+  try {
+    if (!databaseVerified) {
+      try {
+        await assertExpectedDatabase(env, sql);
+        databaseVerified = true;
+      } catch (error) {
+        console.error(JSON.stringify({ event: "database_target_rejected", message: (error as Error).message }));
+        return misconfigured();
+      }
+    }
+    const requestDeps: AppDeps = { sql, config: current.config, email: current.email, storage: current.storage };
+    return await current.app.fetch(request, { requestDeps });
+  } finally {
+    ctx.waitUntil(sql.end({ timeout: 5 }));
+  }
+}
+
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: WorkerContext): Promise<Response> {
-    let current: Runtime;
-    try {
-      current = getRuntime(env);
-    } catch (error) {
-      console.error(JSON.stringify({ event: "worker_error", message: (error as Error).message }));
-      return misconfigured();
-    }
-    const sql = createSql(runtimeConnectionString(env), { max: 5 });
-    try {
-      if (!databaseVerified) {
-        try {
-          await assertExpectedDatabase(env, sql);
-          databaseVerified = true;
-        } catch (error) {
-          console.error(JSON.stringify({ event: "database_target_rejected", message: (error as Error).message }));
-          return misconfigured();
-        }
-      }
-      const requestDeps: AppDeps = { sql, config: current.config, email: current.email, storage: current.storage };
-      return await current.app.fetch(request, { requestDeps });
-    } finally {
-      ctx.waitUntil(sql.end({ timeout: 5 }));
-    }
+    return withVersionHeader(await handleFetch(request, env, ctx), env);
   },
 
   async scheduled(_controller: unknown, env: WorkerEnv, ctx: WorkerContext): Promise<void> {

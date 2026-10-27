@@ -12,6 +12,10 @@ import {
   parseWranglerConfig,
   planSecretUpload,
   requiredSecrets,
+  blueVersion,
+  rollbackTarget,
+  uploadedVersionId,
+  versionOverrideHeader,
 } from "../../scripts/staging-gate.mjs";
 
 const RUNTIME_ID = "0123456789abcdef0123456789abcdef";
@@ -217,5 +221,47 @@ describe("staging gate email rules", () => {
     const config = readyConfig();
     config.env.staging.vars.EMAIL_ADAPTER = "smtp";
     expect(checkStagingConfig(config)).toContain("EMAIL_ADAPTER must be local (no delivery) or resend");
+  });
+});
+
+describe("blue-green release rules", () => {
+  const BLUE = "0e3daf50-7a54-4107-9e7b-44794cf475b7";
+  const GREEN = "5c80fb1e-7895-49f6-8987-2655ee1cb0bc";
+  const OLDER = "19470c2b-bdc4-4572-a517-1765e96410c8";
+  const single = (id: string) => ({ versions: [{ version_id: id, percentage: 100 }] });
+
+  it("declares the version metadata binding the probes rely on", () => {
+    expect(repoConfig().env.staging.version_metadata).toEqual({ binding: "CF_VERSION_METADATA" });
+  });
+
+  it("uses the version serving all traffic as blue", () => {
+    expect(blueVersion(single(BLUE))).toEqual({ blue: BLUE, problems: [] });
+  });
+
+  it("refuses to start a release while an earlier one is split", () => {
+    const split = { versions: [{ version_id: BLUE, percentage: 100 }, { version_id: GREEN, percentage: 0 }] };
+    expect(blueVersion(split).blue).toBeNull();
+    expect(blueVersion(split).problems[0]).toContain("split between versions");
+    expect(blueVersion(null).blue).toBeNull();
+  });
+
+  it("reads the uploaded version id and builds the override header", () => {
+    expect(uploadedVersionId(`Uploaded medveris-staging (4.2 sec)\nWorker Version ID: ${GREEN}\nVersion Preview URL: none`)).toBe(GREEN);
+    expect(uploadedVersionId("Upload failed")).toBeNull();
+    expect(versionOverrideHeader("medveris-staging", GREEN)).toBe(`medveris-staging="${GREEN}"`);
+  });
+
+  it("rolls back to the previous fully deployed version", () => {
+    const history = [single(OLDER), single(BLUE), { versions: [{ version_id: BLUE, percentage: 100 }, { version_id: GREEN, percentage: 0 }] }, single(GREEN)];
+    expect(rollbackTarget(single(GREEN), history)).toEqual({ target: BLUE, current: GREEN, problems: [] });
+  });
+
+  it("restores blue when a release stopped while split", () => {
+    const split = { versions: [{ version_id: GREEN, percentage: 0 }, { version_id: BLUE, percentage: 100 }] };
+    expect(rollbackTarget(split, []).target).toBe(BLUE);
+  });
+
+  it("reports when there is nothing to roll back to", () => {
+    expect(rollbackTarget(single(BLUE), [single(BLUE)]).target).toBeNull();
   });
 });
