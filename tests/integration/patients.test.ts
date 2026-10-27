@@ -150,3 +150,53 @@ describe("patient registration and duplicate review", () => {
     expect(audit).toHaveLength(1);
   });
 });
+
+describe("reception patient lookup", () => {
+  it("confirms an exact public ID with identity details", async () => {
+    const familyName = `Lookup${Date.now()}`;
+    const registered = await register(reception, familyName);
+    const body = await expectOk(await call(reception, "/api/v1/patients/resolve", {
+      method: "POST",
+      body: JSON.stringify({ publicId: registered.publicId, familyName: familyName.toUpperCase(), dateOfBirth: "1992-06-15" }),
+    }));
+    expect(body.matched).toBe(true);
+    expect(body.patient.publicId).toBe(registered.publicId);
+    expect(body.patient.dateOfBirth).toBe("1992-06-15");
+    expect(body.patient.linked).toBe(true);
+  });
+
+  it("accepts a public ID typed in lowercase, with spaces or with look-alike characters", async () => {
+    const familyName = `Typed${Date.now()}`;
+    const registered = await register(reception, familyName);
+    const typed = registered.publicId.toLowerCase().replace(/-/g, " ").replace(/0/g, "o").replace(/1/g, "l");
+    const body = await expectOk(await call(reception, "/api/v1/patients/resolve", {
+      method: "POST",
+      body: JSON.stringify({ publicId: typed, familyName, dateOfBirth: "1992-06-15" }),
+    }));
+    expect(body.matched).toBe(true);
+    expect(body.patient.publicId).toBe(registered.publicId);
+  });
+
+  it("reports a failed identity confirmation as an unmatched lookup, not a missing endpoint", async () => {
+    const familyName = `Mismatch${Date.now()}`;
+    const registered = await register(reception, familyName);
+    const body = await expectOk(await call(reception, "/api/v1/patients/resolve", {
+      method: "POST",
+      body: JSON.stringify({ publicId: registered.publicId, familyName, dateOfBirth: "1992-06-16" }),
+    }));
+    expect(body).toEqual({ matched: false, patient: null, message: expect.stringContaining("No patient matched") });
+  });
+
+  it("finds patients linked to the active facility by name without exposing other facilities", async () => {
+    const familyName = `Searchable${Date.now()}`;
+    const here = await register(reception, familyName);
+    await register(clinicianB, familyName);
+    const body = await expectOk(await call(reception, `/api/v1/patients/search?q=${encodeURIComponent(familyName.slice(0, 12).toLowerCase())}`));
+    const matches = body.patients.filter((patient: { familyName: string }) => patient.familyName === familyName);
+    expect(matches.map((patient: { publicId: string }) => patient.publicId)).toEqual([here.publicId]);
+    expect(matches[0].dateOfBirth).toBe("1992-06-15");
+
+    const tooShort = await call(reception, "/api/v1/patients/search?q=a");
+    expect(tooShort.status).toBe(422);
+  });
+});

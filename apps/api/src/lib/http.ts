@@ -22,6 +22,17 @@ export async function parseJson<S extends z.ZodType>(c: Context<AppEnv>, schema:
   return result.data;
 }
 
+export function parseQuery<S extends z.ZodType>(c: Context<AppEnv>, schema: S): z.infer<S> {
+  const result = schema.safeParse(c.req.query());
+  if (!result.success) {
+    throw new ValidationError("Query validation failed", result.error.issues.map((i) => ({
+      path: i.path.join("."),
+      message: i.message,
+    })));
+  }
+  return result.data;
+}
+
 export function requestMeta(c: Context<AppEnv>) {
   return {
     ip: c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? null,

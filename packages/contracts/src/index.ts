@@ -3,10 +3,23 @@ import { z } from "zod";
 export const uuidSchema = z.string().uuid();
 export const emailSchema = z.string().trim().toLowerCase().email().max(254);
 export const passwordSchema = z.string().min(10).max(200);
-export const publicPatientIdSchema = z
-  .string()
-  .trim()
-  .regex(/^MV-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
+/**
+ * Canonicalises a typed public patient ID: case, spaces and dashes are ignored, and the Crockford
+ * look-alikes O→0 and I/L→1 are corrected. Input that is not 16 ID characters after "MV" is returned
+ * unchanged so validation still rejects it.
+ */
+export function normalizePatientPublicId(input: string): string {
+  const compact = input.toUpperCase().replace(/[\s\-_.]/g, "");
+  if (!compact.startsWith("MV")) return input.trim();
+  const body = compact.slice(2).replace(/O/g, "0").replace(/[IL]/g, "1");
+  if (body.length !== 16) return input.trim();
+  return `MV-${body.slice(0, 4)}-${body.slice(4, 8)}-${body.slice(8, 12)}-${body.slice(12)}`;
+}
+
+export const publicPatientIdSchema = z.preprocess(
+  (value) => (typeof value === "string" ? normalizePatientPublicId(value) : value),
+  z.string().regex(/^MV-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/),
+);
 
 export const roleSchema = z.enum([
   "patient",
@@ -113,6 +126,13 @@ export const resolvePatientSchema = z.object({
   publicId: publicPatientIdSchema,
   familyName: z.string().trim().min(1).max(120),
   dateOfBirth: z.string().date(),
+});
+
+export const patientSearchSchema = z.object({
+  q: z.string().trim().min(2).max(120),
+  dateOfBirth: z.string().date().optional().or(z.literal("").transform(() => undefined)),
+  limit: z.coerce.number().int().min(1).max(50).default(25),
+  offset: z.coerce.number().int().min(0).max(10_000).default(0),
 });
 
 export const appointmentSchema = z.object({

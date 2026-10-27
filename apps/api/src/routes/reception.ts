@@ -5,6 +5,7 @@ import {
   appointmentStatusSchema,
   createEncounterSchema,
   createPatientByStaffSchema,
+  patientSearchSchema,
   queueEntrySchema,
   resolvePatientSchema,
   triageSchema,
@@ -15,7 +16,7 @@ import type { ActorContext } from "@medveris/authz";
 import type { Tx } from "@medveris/db";
 import { canTransitionAppointment, canTransitionEncounter, randomPatientPublicId, type AppointmentStatus, type EncounterState } from "@medveris/domain";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
-import { auditMeta, ensureMatch, parseJson, requestMeta } from "../lib/http.js";
+import { auditMeta, ensureMatch, parseJson, parseQuery, requestMeta } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import { rateLimit, clientKey } from "../lib/rate-limit.js";
@@ -113,7 +114,7 @@ receptionRoutes.post("/patients/resolve", async (c) => {
   const body = await parseJson(c, resolvePatientSchema);
   const data = await withStaffActor(c, async (tx) => {
     const rows = await tx`
-      select p.id, p.public_id, p.given_name, p.family_name, p.date_of_birth, p.sex, p.identity_confidence,
+      select p.id, p.public_id, p.given_name, p.family_name, to_char(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth, p.sex, p.identity_confidence,
              EXISTS (SELECT 1 FROM tenant_patient_links l WHERE l.tenant_id = ${auth.activeTenant!.id} AND l.patient_id = p.id) as linked
         from patients p where p.public_id = ${body.publicId} and lower(p.family_name) = lower(${body.familyName})
           and p.date_of_birth = ${body.dateOfBirth} and p.merged_into is null
@@ -136,8 +137,48 @@ receptionRoutes.post("/patients/resolve", async (c) => {
     });
     return patient ?? null;
   });
-  if (!data) throw new NotFoundError("No patient matched the supplied ID and identity confirmation");
-  return c.json({ patient: data });
+  // A failed confirmation is an expected outcome of this check, so it is a 200 with matched=false.
+  if (!data) {
+    return c.json({ matched: false, patient: null, message: "No patient matched the supplied ID, family name and date of birth" });
+  }
+  return c.json({ matched: true, patient: data });
+});
+
+receptionRoutes.get("/patients/search", async (c) => {
+  requireStaff(c);
+  requireFrontDesk(c);
+  rateLimit(clientKey(c.req.raw.headers, `search:${c.get("auth")!.user.id}`), 60, 60_000);
+  const auth = c.get("auth")!;
+  const query = parseQuery(c, patientSearchSchema);
+  const term = `${query.q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+  const result = await withStaffActor(c, async (tx) => {
+    const rows = await tx`
+      select p.id, p.public_id, p.given_name, p.family_name, to_char(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth,
+             p.sex, p.identity_confidence, l.local_mrn, true as linked
+        from tenant_patient_links l join patients p on p.id = l.patient_id
+       where l.tenant_id = ${auth.activeTenant!.id} and p.merged_into is null
+         and (p.family_name ilike ${term} or p.given_name ilike ${term} or p.public_id ilike ${term} or l.local_mrn ilike ${term})
+         and (${query.dateOfBirth ?? null}::date is null or p.date_of_birth = ${query.dateOfBirth ?? null}::date)
+       order by lower(p.family_name), lower(p.given_name), p.public_id
+       limit ${query.limit + 1} offset ${query.offset}
+    `;
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "patient.search",
+      ...auditMeta(c),
+      metadata: { scope: "facility-linked", results: Math.min(rows.length, query.limit), withDateOfBirth: Boolean(query.dateOfBirth) },
+    });
+    return rows;
+  });
+  return c.json({
+    patients: result.slice(0, query.limit),
+    hasMore: result.length > query.limit,
+    limit: query.limit,
+    offset: query.offset,
+  });
 });
 
 receptionRoutes.get("/patients/recent", async (c) => {
@@ -145,7 +186,7 @@ receptionRoutes.get("/patients/recent", async (c) => {
   requireFrontDesk(c);
   const auth = c.get("auth")!;
   const rows = await withStaffActor(c, async (tx) => tx`
-    select p.id, p.public_id, p.given_name, p.family_name, p.date_of_birth, p.sex, l.created_at, l.release_signed_records
+    select p.id, p.public_id, p.given_name, p.family_name, to_char(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth, p.sex, l.created_at, l.release_signed_records
       from tenant_patient_links l join patients p on p.id = l.patient_id
      where l.tenant_id = ${auth.activeTenant!.id}
      order by l.created_at desc limit 25

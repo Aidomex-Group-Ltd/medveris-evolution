@@ -7,7 +7,10 @@ import type { PatientSummary } from "../lib/types";
 
 interface RecentResponse { patients: PatientSummary[] }
 interface RegisterResponse { patient: { patientId: string; publicId: string; duplicateReviewQueued: number } }
-interface ResolveResponse { patient: PatientSummary }
+interface ResolveResponse { matched: boolean; patient: PatientSummary | null; message?: string }
+interface SearchResponse { patients: Array<PatientSummary & { localMrn: string | null }>; hasMore: boolean; offset: number; limit: number }
+
+const SEARCH_PAGE_SIZE = 25;
 
 export function PatientsPage() {
   const navigate = useNavigate();
@@ -17,6 +20,30 @@ export function PatientsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [resolved, setResolved] = useState<PatientSummary | null>(null);
   const [reason, setReason] = useState("Outpatient consultation");
+  const [noMatch, setNoMatch] = useState<string | null>(null);
+  const [search, setSearch] = useState<{ q: string; dateOfBirth: string; offset: number } | null>(null);
+  const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
+
+  async function runSearch(next: { q: string; dateOfBirth: string; offset: number }) {
+    setBusy("search");
+    setError(null);
+    try {
+      const params = new URLSearchParams({ q: next.q, limit: String(SEARCH_PAGE_SIZE), offset: String(next.offset) });
+      if (next.dateOfBirth) params.set("dateOfBirth", next.dateOfBirth);
+      setSearchResult(await api<SearchResponse>(`/patients/search?${params.toString()}`));
+      setSearch(next);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    void runSearch({ q: String(data.get("q") ?? "").trim(), dateOfBirth: String(data.get("searchDob") ?? ""), offset: 0 });
+  }
 
   async function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,13 +82,15 @@ export function PatientsPage() {
     setError(null);
     setMessage(null);
     setResolved(null);
+    setNoMatch(null);
     const data = new FormData(event.currentTarget);
     try {
       const response = await api<ResolveResponse>("/patients/resolve", {
         method: "POST",
-        body: { publicId: String(data.get("publicId") ?? "").trim().toUpperCase(), familyName: String(data.get("familyName") ?? ""), dateOfBirth: String(data.get("dateOfBirth") ?? "") },
+        body: { publicId: String(data.get("publicId") ?? "").trim(), familyName: String(data.get("familyName") ?? ""), dateOfBirth: String(data.get("dateOfBirth") ?? "") },
       });
-      setResolved(response.patient);
+      if (response.matched && response.patient) setResolved(response.patient);
+      else setNoMatch(response.message ?? "No patient matched the supplied details");
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -88,6 +117,11 @@ export function PatientsPage() {
       <PageHeader eyebrow="Reception" title="Patients" description="Exact lookup requires the public ID plus identity confirmation. Lists show minimum reception data only." />
       {error ? <ErrorState message={error} /> : null}
       {message ? <Notice tone="success" title="Patient registered">{message}</Notice> : null}
+      {noMatch ? (
+        <Notice tone="warning" title="No matching patient">
+          {noMatch}. Check the ID on the patient's card, the spelling of the family name and the date of birth, or search this facility's patients below. Register a new patient only if they have never been registered.
+        </Notice>
+      ) : null}
       {resolved ? (
         <Card title="Patient confirmed" description="A patient ID locates identity; it does not authorize clinical record access.">
           <div className="mv-spread">
@@ -134,6 +168,37 @@ export function PatientsPage() {
           </form>
         </Card>
       </div>
+
+      <Card title="Search this facility's patients" description="Name, public ID or local MRN prefix. Only patients already linked to this facility are searched; searches are audited.">
+        <form className="mv-form-grid" onSubmit={submitSearch}>
+          <Field label="Name, ID or MRN" htmlFor="search-q" hint="At least 2 characters."><Input id="search-q" name="q" minLength={2} maxLength={120} required autoComplete="off" /></Field>
+          <Field label="Date of birth (optional)" htmlFor="search-dob"><Input id="search-dob" name="searchDob" type="date" /></Field>
+          <div className="mv-row" style={{ alignItems: "flex-end" }}><Button type="submit" disabled={busy === "search"}>{busy === "search" ? "Searching…" : "Search"}</Button></div>
+        </form>
+        {searchResult && search ? (
+          !searchResult.patients.length ? <EmptyState title="No patients found" description="No patient linked to this facility matches. Use exact lookup for patients registered elsewhere." /> : (
+            <div className="mv-stack" style={{ marginTop: 12 }}>
+              <Table head={["Patient", "Public ID", "MRN", "DOB", "Sex", ""]} caption="Facility patient search results">
+                {searchResult.patients.map((patient) => (
+                  <tr key={patient.id}>
+                    <td><strong>{patient.givenName} {patient.familyName}</strong></td>
+                    <td><span className="mv-id">{patient.publicId}</span></td>
+                    <td>{patient.localMrn ?? "—"}</td>
+                    <td>{patient.dateOfBirth}</td>
+                    <td>{patient.sex}</td>
+                    <td><Button size="sm" variant="secondary" onClick={() => { setResolved(patient); setNoMatch(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Select</Button></td>
+                  </tr>
+                ))}
+              </Table>
+              <div className="mv-row">
+                <Button size="sm" variant="ghost" disabled={busy === "search" || search.offset === 0} onClick={() => void runSearch({ ...search, offset: Math.max(0, search.offset - SEARCH_PAGE_SIZE) })}>Previous</Button>
+                <span className="mv-small mv-muted">Results {search.offset + 1}–{search.offset + searchResult.patients.length}</span>
+                <Button size="sm" variant="ghost" disabled={busy === "search" || !searchResult.hasMore} onClick={() => void runSearch({ ...search, offset: search.offset + SEARCH_PAGE_SIZE })}>Next</Button>
+              </div>
+            </div>
+          )
+        ) : null}
+      </Card>
 
       <Card title="Recently linked patients" description="This facility's local patient links only.">
         {recent.loading ? <LoadingState /> : recent.error ? <ErrorState message={recent.error} onRetry={recent.reload} /> : !recent.data?.patients.length ? <EmptyState title="No linked patients" description="Register a patient or resolve an existing public ID." /> : (
