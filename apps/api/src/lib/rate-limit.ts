@@ -23,7 +23,8 @@ export function rateLimit(key: string, limit: number, windowMs: number): void {
   }
 }
 
+/** On Cloudflare the first X-Forwarded-For entry is whatever the client sent; CF-Connecting-IP is set by Cloudflare. */
 export function clientKey(headers: Headers, suffix: string): string {
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return `${forwarded ?? headers.get("cf-connecting-ip") ?? "local"}:${suffix}`;
+  const address = headers.get("cf-connecting-ip") ?? headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return `${address || "local"}:${suffix}`;
 }
