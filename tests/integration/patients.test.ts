@@ -194,7 +194,7 @@ describe("reception patient lookup", () => {
     const familyName = `Searchable${Date.now()}`;
     const here = await register(reception, familyName);
     await register(clinicianB, familyName);
-    const body = await expectOk(await call(reception, `/api/v1/patients/search?q=${encodeURIComponent(familyName.slice(0, 12).toLowerCase())}`));
+    const body = await expectOk(await call(reception, `/api/v1/patients/search?q=${encodeURIComponent(familyName.slice(0, -1).toLowerCase())}`));
     const matches = body.patients.filter((patient: { familyName: string }) => patient.familyName === familyName);
     expect(matches.map((patient: { publicId: string }) => patient.publicId)).toEqual([here.publicId]);
     expect(matches[0].dateOfBirth).toBe("1992-06-15");
