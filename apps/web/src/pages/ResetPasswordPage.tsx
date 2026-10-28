@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Button, Card, ErrorState, Field, Input, Notice } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
+import { SyntheticDataNote } from "../components/SyntheticDataNote";
 import { api, errorMessage } from "../lib/api";
 
 function readTokenFromUrl(): string {
@@ -50,7 +51,7 @@ export function ResetPasswordPage() {
           <h1>Choose a new password.</h1>
           <p style={{ marginTop: 16 }}>Reset links work once. Setting a new password signs out every existing session for this account.</p>
         </div>
-        <p className="mv-small">Synthetic data only in this environment.</p>
+        <SyntheticDataNote />
       </section>
       <section className="mv-auth__panel">
         <div className="mv-auth__card mv-stack">

@@ -4,6 +4,7 @@ import { Button, Card, ErrorState, Field, Input, Notice, Tabs } from "@medveris/
 import { BrandMark } from "../components/BrandMark";
 import { api, errorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useAppEnvironment } from "../lib/environment";
 import { safeReturnPath } from "../lib/navigation";
 import type { MeResponse } from "../lib/types";
 
@@ -27,6 +28,7 @@ function destination(me: MeResponse, mode: SignInMode, returnTo: string | null):
 
 export function LoginPage() {
   const { login, loginMfa, me } = useAuth();
+  const environment = useAppEnvironment();
   const navigate = useNavigate();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
@@ -126,13 +128,13 @@ export function LoginPage() {
       <section className="mv-auth__intro">
         <Link to="/" className="mv-brand" style={{ color: "inherit" }}>
           <BrandMark />
-          <span>Medveris<small style={{ color: "#bcd7ce" }}>Synthetic outpatient foundation</small></span>
+          <span>Medveris<small style={{ color: "#bcd7ce" }}>{environment.synthetic ? "Synthetic outpatient foundation" : "Connected outpatient care"}</small></span>
         </Link>
         <div>
           <h1>Care that follows the patient, safely.</h1>
           <p style={{ marginTop: 16 }}>
             One longitudinal identity across participating facilities, source-owned signed records, and consent-scoped exchange.
-            This local environment uses synthetic patients only.
+            {environment.synthetic ? " This environment uses synthetic patients only." : null}
           </p>
           <ul className="mv-auth__features" style={{ marginTop: 22 }}>
             <li>Facility-isolated clinical records</li>
@@ -141,7 +143,7 @@ export function LoginPage() {
             <li>Durable audit and transactional outbox</li>
           </ul>
         </div>
-        <p className="mv-small">Not clinically validated. Development terminology is synthetic.</p>
+        <p className="mv-small">{environment.synthetic ? "Not clinically validated. Development terminology is synthetic." : "Facility access always requires a verified staff assignment and two-step verification."}</p>
       </section>
       <section className="mv-auth__panel">
         <div className="mv-auth__card mv-stack">
@@ -176,7 +178,7 @@ export function LoginPage() {
                 {method !== "app" ? <Button variant="ghost" size="sm" type="button" onClick={() => chooseMethod("app")}>Use my authenticator app</Button> : null}
                 {method !== "recovery" ? <Button variant="ghost" size="sm" type="button" onClick={() => chooseMethod("recovery")}>Use a recovery code</Button> : null}
                 <Button variant="ghost" type="button" onClick={resetChallenge}>Use a different account</Button>
-                <Button variant="ghost" size="sm" type="button" onClick={() => void useDevelopmentCode()}>Use local development code</Button>
+                {environment.local ? <Button variant="ghost" size="sm" type="button" onClick={() => void useDevelopmentCode()}>Use local development code</Button> : null}
               </form>
             ) : (
               <form className="mv-stack" onSubmit={submitPassword}>
@@ -196,15 +198,17 @@ export function LoginPage() {
               </form>
             )}
           </Card>
-          <Card title="Synthetic demo accounts">
-            <p className="mv-small mv-muted">Password: <span className="mv-inline-code">Medveris!2026</span>. Staff accounts require MFA; use the local development code button.</p>
-            <ul className="mv-small" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
-              <li>clinician@medveris.local — clinician, Kampala</li>
-              <li>admin@medveris.local — facility administrator</li>
-              <li>reception@medveris.local — receptionist</li>
-              <li>patient@medveris.local — patient portal</li>
-            </ul>
-          </Card>
+          {environment.synthetic ? (
+            <Card title="Synthetic demo accounts">
+              <p className="mv-small mv-muted">Password: <span className="mv-inline-code">Medveris!2026</span>. Staff accounts require MFA; use the local development code button.</p>
+              <ul className="mv-small" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                <li>clinician@medveris.local — clinician, Kampala</li>
+                <li>admin@medveris.local — facility administrator</li>
+                <li>reception@medveris.local — receptionist</li>
+                <li>patient@medveris.local — patient portal</li>
+              </ul>
+            </Card>
+          ) : null}
         </div>
       </section>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Card, ErrorState, Notice } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
+import { SyntheticDataNote } from "../components/SyntheticDataNote";
 import { api, errorMessage } from "../lib/api";
 
 function readTokenFromUrl(): string {
@@ -44,7 +45,7 @@ export function VerifyEmailPage() {
           <h1>Confirm your email address.</h1>
           <p style={{ marginTop: 16 }}>Verification links work once and expire after 24 hours.</p>
         </div>
-        <p className="mv-small">Synthetic data only in this environment.</p>
+        <SyntheticDataNote />
       </section>
       <section className="mv-auth__panel">
         <div className="mv-auth__card mv-stack">

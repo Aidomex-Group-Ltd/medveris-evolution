@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Button, Card, ErrorState, Field, Input, Notice } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
+import { SyntheticDataNote } from "../components/SyntheticDataNote";
 import { api, errorMessage } from "../lib/api";
 
 export function ForgotPasswordPage() {
@@ -38,7 +39,7 @@ export function ForgotPasswordPage() {
             Staff accounts still need their authenticator code after a reset.
           </p>
         </div>
-        <p className="mv-small">Synthetic data only in this environment.</p>
+        <SyntheticDataNote />
       </section>
       <section className="mv-auth__panel">
         <div className="mv-auth__card mv-stack">

@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, Select } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
 import { api } from "../lib/api";
+import { useAppEnvironment } from "../lib/environment";
 import { useQuery } from "../lib/useQuery";
 
 export interface Branch {
@@ -127,6 +128,7 @@ function MapClick({ onPick }: { onPick: (lat: number, lng: number) => void }) {
 }
 
 export function DirectoryPage() {
+  const environment = useAppEnvironment();
   const navigate = useNavigate();
   const [filters, setFilters] = useState<Filters>(EMPTY);
   const [applied, setApplied] = useState<Filters>(EMPTY);
@@ -226,9 +228,11 @@ export function DirectoryPage() {
             <h1>Find a health facility</h1>
             <p className="mv-muted">Search published listings. Paid placements are labelled Sponsored and never change verification, capability evidence or emergency routing.</p>
           </div>
-          <Notice tone="info" title="Synthetic demonstration">
-            All facilities, phone numbers and coordinates in this release are synthetic test data. In an emergency, contact local emergency services directly.
-          </Notice>
+          {environment.synthetic ? (
+            <Notice tone="info" title="Synthetic demonstration">
+              All facilities, phone numbers and coordinates in this release are synthetic test data. In an emergency, contact local emergency services directly.
+            </Notice>
+          ) : null}
           <Card title="Search and filters">
             <form className="mv-form-grid" onSubmit={apply}>
               <Field label="Search by name or service">
@@ -357,9 +361,10 @@ function FacilityCard({ facility, onOpen }: { facility: PublicFacility; onOpen: 
 }
 
 export function DirectoryFooter() {
+  const { synthetic } = useAppEnvironment();
   return (
     <footer className="mv-public__footer">
-      <p>Medveris public directory · Listings are synthetic. Sponsored placements are paid and labelled; payment never changes verification or emergency criteria.</p>
+      <p>Medveris public directory ·{synthetic ? " Listings are synthetic." : ""} Sponsored placements are paid and labelled; payment never changes verification or emergency criteria.</p>
     </footer>
   );
 }

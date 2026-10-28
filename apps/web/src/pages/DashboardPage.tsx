@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Badge, Card, DataList, EmptyState, ErrorState, LoadingState, PageHeader } from "@medveris/ui";
 import { useAuth } from "../lib/auth";
+import { useAppEnvironment } from "../lib/environment";
 import { useQuery } from "../lib/useQuery";
 import type { Queue, WorklistEncounter } from "../lib/types";
 
@@ -97,6 +98,7 @@ export function DashboardPage() {
 
 function StaffOverview() {
   const { me } = useAuth();
+  const environment = useAppEnvironment();
   const roles = me?.activeTenant?.roles ?? [];
   const frontDesk = roles.some((role) => ["receptionist", "nurse", "clinician", "facility_admin"].includes(role));
   const clinical = roles.some((role) => ["nurse", "clinician"].includes(role));
@@ -215,7 +217,9 @@ function StaffOverview() {
 
       <Card title="Environment limits" description="Genuine unavailable states are shown rather than simulated success.">
         <ul className="mv-small mv-muted" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
-          <li>Terminology mode is synthetic and must be replaced by a licensed production adapter before standardized coding.</li>
+          <li>{environment.synthetic
+            ? "Terminology mode is synthetic and must be replaced by a licensed production adapter before standardized coding."
+            : "No licensed terminology service is configured; coded entries cannot be validated until one is contracted."}</li>
           <li>PACS, laboratory, pharmacy, devices, telehealth, AI, payments and ledger anchoring are disabled.</li>
           <li>Local upload checks verify signatures only; no production malware scanner is configured.</li>
         </ul>

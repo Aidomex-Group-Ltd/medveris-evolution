@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button, Card, ErrorState, Field, Input, Notice, Select } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
+import { SyntheticDataNote } from "../components/SyntheticDataNote";
 import { api, errorMessage } from "../lib/api";
 
 export function RegisterPage() {
@@ -69,7 +70,7 @@ export function RegisterPage() {
               : "Your public patient ID locates your identity but never authorizes record access by itself. Only released records and explicit sharing appear in your portal."}
           </p>
         </div>
-        <p className="mv-small">Synthetic data only in this environment.</p>
+        <SyntheticDataNote />
       </section>
       <section className="mv-auth__panel">
         <div className="mv-auth__card mv-stack">

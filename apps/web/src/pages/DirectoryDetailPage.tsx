@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Badge, Button, Card, DataList, ErrorState, Field, Input, LoadingState, Notice, Select, Textarea } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
 import { api, errorMessage } from "../lib/api";
+import { useAppEnvironment } from "../lib/environment";
 import { formatDate } from "../lib/format";
 import { useQuery } from "../lib/useQuery";
 import type { PublicFacility } from "./DirectoryPage";
@@ -23,6 +24,7 @@ function track(facility: PublicFacility, eventType: string) {
 
 export function DirectoryDetailPage() {
   const { publicId = "" } = useParams();
+  const environment = useAppEnvironment();
   const detail = useQuery<DetailResponse>(publicId ? `/public/directory/facilities/${encodeURIComponent(publicId)}` : null);
   const [reportType, setReportType] = useState<string>("location");
   const [detailText, setDetailText] = useState("");
@@ -135,7 +137,7 @@ export function DirectoryDetailPage() {
           </>
         )}
       </main>
-      <footer className="mv-public__footer"><p>Straight-line distances only. In an emergency, contact local emergency services. Synthetic demonstration data.</p></footer>
+      <footer className="mv-public__footer"><p>Straight-line distances only. In an emergency, contact local emergency services.{environment.synthetic ? " Synthetic demonstration data." : ""}</p></footer>
     </div>
   );
 }
