@@ -35,6 +35,8 @@ curl 'http://localhost:8787/api/v1/auth/totp/dev?email=clinician@medveris.local'
 
 `DEV_SHOW_TOTP_SECRETS=true` enables that endpoint. It is refused in production.
 
+The MFA screen also offers **Email me a code instead** (delivered through the configured email provider; locally it lands in the mail sink) and **Use a recovery code**.
+
 ## Services
 
 | Process | Command | Port |

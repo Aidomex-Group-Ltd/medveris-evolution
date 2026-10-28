@@ -60,6 +60,8 @@ Migration 013 adds `content_items`, `content_item_versions`, `content_sources`, 
 
 Migration 027 adds automatic import from official feeds and public APIs (WHO news and Disease Outbreak News, WHO Africa, the Uganda National Institute of Public Health, and Grants.gov health fellowships and funding). `content_sources` gains the ingest adapter, URL, settings, interval and last-run status. Imported `content_items` and `opportunities` carry `source_id`, `external_id` (unique per source) and `imported_at`. They are published without editorial review, are never marked clinically reviewed, and must link back to the original. Only `medveris_jobs` inserts them, as the non-login importer account, and it cannot update or delete content. Platform operators pause sources and withdraw imported items, and both actions are audited.
 
+Migration 028 lets the sign-in verification step use an emailed six-digit code or a saved recovery code instead of the authenticator app. `auth_challenges` stores only a hash of the emailed code, its expiry, send and failed-attempt counts, and the method that completed the sign-in.
+
 `role_grants` records subject, role, department, scope note, requester, independent approver, start and expiry; approval and revocation are separate commands and are audited. `care_team_members` records patient, member, relationship, department, purpose and active window, and authorizes chart participation only for that patient. `inventory_export_audit` and access-review queries provide export and recertification evidence without exposing clinical narratives.
 
 ## Indexes and migrations

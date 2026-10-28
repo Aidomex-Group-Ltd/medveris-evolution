@@ -14,6 +14,7 @@ import {
 import {
   invitationAcceptSchema,
   loginSchema,
+  mfaEmailCodeSchema,
   mfaEnrollVerifySchema,
   mfaLoginSchema,
   passwordForgotSchema,
@@ -24,7 +25,7 @@ import {
 } from "@medveris/contracts";
 import { randomPatientPublicId } from "@medveris/domain";
 import { setLocalContext, withAnonymous, withContext, withRegistration } from "@medveris/db";
-import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "../lib/errors.js";
+import { AppError, ConflictError, DependencyError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "../lib/errors.js";
 import { auditMeta, parseJson, requestMeta } from "../lib/http.js";
 import { rateLimit, clientKey } from "../lib/rate-limit.js";
 import { writeAudit } from "../lib/audit.js";
@@ -217,25 +218,149 @@ authRoutes.post("/login", async (c) => {
   return c.json({ ok: true, csrfToken: session.csrfToken, activeTenantId: session.activeTenantId, mfaEnrollmentRequired: Boolean(activeTenantId) });
 });
 
+const EMAIL_CODE_TTL_MS = 10 * 60_000;
+const EMAIL_CODE_RESEND_MS = 30_000;
+const EMAIL_CODE_MAX_SENDS = 3;
+const MFA_MAX_FAILED_ATTEMPTS = 5;
+const CHALLENGE_EXPIRED = "Sign-in has expired. Enter your email and password again.";
+
+function sixDigitCode(): string {
+  // Largest multiple of 1,000,000 below 2^32, so every code is equally likely.
+  const limit = 4_294_000_000;
+  const value = new Uint32Array(1);
+  do crypto.getRandomValues(value); while (value[0]! >= limit);
+  return String(value[0]! % 1_000_000).padStart(6, "0");
+}
+
+function maskEmail(email: string): string {
+  const [local = "", domain = ""] = email.split("@");
+  return `${local.slice(0, 1)}•••@${domain}`;
+}
+
+function emailCodeHash(challengeId: string, code: string): Promise<string> {
+  return sha256Hex(`login-email-code:${challengeId}:${code}`);
+}
+
+interface RecoveryCode { hash: string; used: boolean }
+
+authRoutes.post("/login/mfa/email", async (c) => {
+  const deps = c.get("deps");
+  rateLimit(clientKey(c.req.raw.headers, "login-mfa-email"), 6, 15 * 60_000);
+  const body = await parseJson(c, mfaEmailCodeSchema);
+  const rows = await deps.sql`
+    select ch.id, ch.user_id, ch.email_code_sends, ch.email_code_sent_at, ch.failed_attempts, u.email, u.status
+      from auth_challenges ch join users u on u.id = ch.user_id
+     where ch.id = ${body.challengeId} and ch.purpose = 'login-mfa' and ch.consumed_at is null and ch.expires_at > now()
+     limit 1
+  `;
+  const challenge = rows[0];
+  if (!challenge || challenge.status !== "active" || Number(challenge.failedAttempts) >= MFA_MAX_FAILED_ATTEMPTS) {
+    throw new UnauthorizedError(CHALLENGE_EXPIRED);
+  }
+  const sends = Number(challenge.emailCodeSends);
+  if (sends >= EMAIL_CODE_MAX_SENDS) throw new AppError(429, "rate_limited", "Too many codes requested. Enter your email and password again to request another.");
+  if (challenge.emailCodeSentAt && Date.now() - new Date(challenge.emailCodeSentAt as Date).getTime() < EMAIL_CODE_RESEND_MS) {
+    throw new AppError(429, "rate_limited", "A code was sent a moment ago. Wait 30 seconds before requesting another.");
+  }
+  const code = sixDigitCode();
+  const sentAt = new Date();
+  const expiresAt = new Date(sentAt.getTime() + EMAIL_CODE_TTL_MS);
+  const updated = await deps.sql`
+    update auth_challenges
+       set email_code_hash = ${await emailCodeHash(String(challenge.id), code)}, email_code_expires_at = ${expiresAt},
+           email_code_sent_at = ${sentAt}, email_code_sends = email_code_sends + 1, expires_at = greatest(expires_at, ${expiresAt})
+     where id = ${challenge.id} and consumed_at is null and email_code_sends = ${sends}
+     returning id
+  `;
+  if (!updated.length) throw new ConflictError("Another code was requested at the same time. Check your email.");
+  const to = String(challenge.email);
+  const result = await deps.email.send({
+    to,
+    subject: `${code} is your Medveris sign-in code`,
+    text: `Your Medveris sign-in code is ${code}. It expires in 10 minutes.\n\nIf you did not try to sign in, someone may know your password. Reset it at ${deps.config.origin}/forgot-password.`,
+  });
+  await withAnonymous(deps.sql, async (tx) => {
+    await writeAudit(tx, deps.config, {
+      actorKind: "anonymous",
+      actorUserId: String(challenge.userId),
+      action: "auth.mfa.email-code.send",
+      decision: result.delivered ? "allow" : "deny",
+      reasonCode: result.delivered ? null : "delivery_failed",
+      ...auditMeta(c),
+      metadata: { adapter: result.adapter, detail: result.detail },
+    });
+  });
+  if (!result.delivered) throw new DependencyError("The sign-in code could not be emailed. Try again shortly or use your authenticator app.");
+  return c.json({ ok: true, sentTo: maskEmail(to), expiresAt: expiresAt.toISOString() });
+});
+
 authRoutes.post("/login/mfa", async (c) => {
   const deps = c.get("deps");
   rateLimit(clientKey(c.req.raw.headers, "login-mfa"), 15, 60_000);
   const body = await parseJson(c, mfaLoginSchema);
   const challenges = await deps.sql`
-    select ch.id, ch.user_id, u.totp_secret_enc, u.status
+    select ch.id, ch.user_id, ch.failed_attempts, ch.email_code_hash, ch.email_code_expires_at,
+           u.totp_secret_enc, u.recovery_codes, u.status
       from auth_challenges ch join users u on u.id = ch.user_id
      where ch.id = ${body.challengeId} and ch.purpose = 'login-mfa' and ch.consumed_at is null and ch.expires_at > now()
      limit 1
   `;
   const challenge = challenges[0];
-  if (!challenge || challenge.status !== "active" || !challenge.totpSecretEnc) throw new UnauthorizedError("MFA challenge is invalid or expired");
-  const secret = await decryptSecret(String(challenge.totpSecretEnc), deps.config.mfaEncryptionKey);
-  const valid = await verifyTotp(secret, body.code);
-  if (!valid) throw new UnauthorizedError("Invalid verification code");
+  if (!challenge || challenge.status !== "active" || Number(challenge.failedAttempts) >= MFA_MAX_FAILED_ATTEMPTS) {
+    throw new UnauthorizedError(CHALLENGE_EXPIRED);
+  }
+  let method: "totp" | "email" | "recovery" | null = null;
+  let recoveryHash: string | null = null;
+  if (/^\d{6}$/.test(body.code)) {
+    if (challenge.totpSecretEnc) {
+      const secret = await decryptSecret(String(challenge.totpSecretEnc), deps.config.mfaEncryptionKey);
+      if (await verifyTotp(secret, body.code)) method = "totp";
+    }
+    if (!method && challenge.emailCodeHash && new Date(challenge.emailCodeExpiresAt as Date).getTime() > Date.now()
+      && (await emailCodeHash(String(challenge.id), body.code)) === challenge.emailCodeHash) {
+      method = "email";
+    }
+  } else {
+    const hash = await sha256Hex(body.code);
+    const codes = (challenge.recoveryCodes ?? []) as RecoveryCode[];
+    if (codes.some((entry) => entry.hash === hash && !entry.used)) {
+      method = "recovery";
+      recoveryHash = hash;
+    }
+  }
+  if (!method) {
+    const failed = await deps.sql`
+      update auth_challenges set failed_attempts = failed_attempts + 1 where id = ${challenge.id} returning failed_attempts
+    `;
+    if (Number(failed[0]?.failedAttempts ?? MFA_MAX_FAILED_ATTEMPTS) >= MFA_MAX_FAILED_ATTEMPTS) throw new UnauthorizedError(`Too many incorrect codes. ${CHALLENGE_EXPIRED}`);
+    throw new UnauthorizedError("Invalid verification code");
+  }
+  const userId = String(challenge.userId);
   await deps.sql.begin(async (tx) => {
-    const consumed = await tx`update auth_challenges set consumed_at = now() where id = ${body.challengeId} and consumed_at is null returning id`;
+    const consumed = await tx`
+      update auth_challenges set consumed_at = now(), verified_method = ${method} where id = ${body.challengeId} and consumed_at is null returning id
+    `;
     if (!consumed.length) throw new UnauthorizedError("MFA challenge has already been used");
+    if (recoveryHash) {
+      const users = await tx`select recovery_codes from users where id = ${userId} for update`;
+      const codes = (users[0]?.recoveryCodes ?? []) as RecoveryCode[];
+      if (!codes.some((entry) => entry.hash === recoveryHash && !entry.used)) throw new UnauthorizedError("Recovery code has already been used");
+      const next = codes.map((entry) => (entry.hash === recoveryHash ? { ...entry, used: true } : entry));
+      await tx`update users set recovery_codes = ${tx.json(next as never)}, updated_at = now() where id = ${userId}`;
+    }
+    // Receiving the code proves the user controls the address.
+    if (method === "email") await tx`update users set email_verified_at = coalesce(email_verified_at, now()) where id = ${userId}`;
   });
+  if (method !== "totp") {
+    await withAnonymous(deps.sql, async (tx) => {
+      await writeAudit(tx, deps.config, {
+        actorKind: "anonymous",
+        actorUserId: userId,
+        action: method === "email" ? "auth.mfa.email-code.verify" : "auth.mfa.recovery-code.use",
+        ...auditMeta(c),
+      });
+    });
+  }
   const activeTenantId = await firstTenantId(deps.sql, String(challenge.userId));
   const meta = requestMeta(c);
   const session = await createSession(deps.sql, deps.config, String(challenge.userId), {

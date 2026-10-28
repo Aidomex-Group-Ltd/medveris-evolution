@@ -97,7 +97,12 @@ export const loginSchema = z.object({
 
 export const mfaLoginSchema = z.object({
   challengeId: uuidSchema,
-  code: z.string().trim().regex(/^\d{6}$/),
+  /** Six digits from the authenticator app or an emailed code, or a 12-character recovery code. */
+  code: z.string().trim().regex(/^(\d{6}|[A-Za-z0-9_-]{12})$/),
+});
+
+export const mfaEmailCodeSchema = z.object({
+  challengeId: uuidSchema,
 });
 
 export const mfaEnrollVerifySchema = z.object({

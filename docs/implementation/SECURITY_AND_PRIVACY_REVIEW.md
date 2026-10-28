@@ -26,11 +26,12 @@ Scope: code and configuration review plus executed tests on 2026-10-28. This is 
 | Medium | No Content-Security-Policy header; HSTS relies on the `.dev` preload list | Open |
 | Medium | In-memory rate limiter is per isolate, not global | Open (`docs/IMPLEMENTATION_GAPS.md`) |
 | Medium | `patients` RLS lets any MFA-verified staff member read minimal global identity; application paths add tenant checks | Accepted for synthetic MVP; review before real data |
+| Medium | Emailed sign-in codes are a weaker second factor than TOTP: whoever controls the mailbox can reset the password and then pass verification | Accepted so staff without their authenticator can sign in; codes are hashed and bound to the sign-in, expire in 10 minutes, at most 3 sends and 5 wrong codes per sign-in, audited. Review before real data |
 | Low | Login page shows the local-development TOTP button and demo-account card in staging | Open |
 
 ## Privacy notes
 
 - Patient search audit events record the scope and result count, not the search term.
-- Logs and audit metadata avoid clinical narrative; email bodies contain links only.
+- Logs and audit metadata avoid clinical narrative; email bodies contain links or a sign-in code only.
 - Retention, archival, data-subject requests and breach response workflows are not implemented and are BLOCKED on policy decisions.
 - Backups: Aiven-managed backups are assumed but no restore drill has been performed (BLOCKED).
