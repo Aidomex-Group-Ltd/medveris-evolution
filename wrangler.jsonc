@@ -111,10 +111,12 @@
     },
     "production": {
       "name": "medveris-production",
-      // workers.dev is the verification origin until `npm run domain:production` attaches medveris.online.
-      // Routes are declared here only after that attachment, so a deploy never attaches the domain early.
+      // Keep workers.dev available as a verification origin alongside the production custom domain.
       "workers_dev": true,
       "preview_urls": false,
+      "routes": [
+        { "pattern": "medveris.online", "custom_domain": true }
+      ],
       // Both configs need --caching-disabled and verify-full TLS on a PostgreSQL server that is separate
       // from staging: HYPERDRIVE as medveris_runtime, HYPERDRIVE_JOBS as medveris_jobs, both on
       // medveris_production (Aiven service medverispro).
