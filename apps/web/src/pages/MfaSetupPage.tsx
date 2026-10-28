@@ -44,7 +44,7 @@ export function MfaSetupPage() {
     };
   }, [enrollment]);
 
-  if (loading) return <LoadingState label="Restoring session" />;
+  if (loading) return <LoadingState label="Restoring session" variant="page" />;
   if (!me) return <Navigate to="/login" replace />;
   if (me.user.mfaEnrolled && me.user.mfaVerified && !recoveryCodes) return <Navigate to="/" replace />;
 

@@ -15,7 +15,7 @@ function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>
     const { pathname } = useLocation();
     return (
       <PageErrorBoundary key={pathname}>
-        <Suspense fallback={<LoadingState label="Loading workspace" />}>
+        <Suspense fallback={<LoadingState label="Loading workspace" variant="page" />}>
           <Page />
         </Suspense>
       </PageErrorBoundary>

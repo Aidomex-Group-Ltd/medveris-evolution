@@ -37,7 +37,7 @@ const SECTIONS: Array<{ key: TemplateField["section"]; title: string }> = [
 export function RadiologyReportPage() {
   const { id = "" } = useParams();
   const query = useQuery<ReportResponse>(`/radiology/reports/${id}`);
-  if (query.loading && !query.data) return <LoadingState label="Loading report" />;
+  if (query.loading && !query.data) return <LoadingState label="Loading report" variant="page" />;
   if (query.error || !query.data) return <ErrorState message={query.error ?? "Report not available"} onRetry={query.reload} />;
   return <ReportWorkspace data={query.data} reload={query.reload} />;
 }

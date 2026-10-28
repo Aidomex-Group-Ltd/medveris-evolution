@@ -7,7 +7,7 @@ import type { Role } from "../lib/types";
 export function ProtectedRoute({ children, roles, platform, patient }: { children: ReactNode; roles?: Role[]; platform?: boolean; patient?: boolean }) {
   const { me, loading, error, refresh } = useAuth();
   const location = useLocation();
-  if (loading) return <LoadingState label="Restoring session" />;
+  if (loading) return <LoadingState label="Restoring session" variant="page" />;
   if (!me) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (error) return <ErrorState message={error} onRetry={() => void refresh()} />;
   const staffContext = Boolean(me.activeTenant) && !patient && (!me.patientId || Boolean(roles));

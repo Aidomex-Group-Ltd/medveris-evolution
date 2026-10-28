@@ -39,7 +39,7 @@ export function InventoryPage() {
   const can = (permission: string) => permissions.has(permission);
   const orgScope = roles.some((role) => ORG_ROLES.includes(role));
 
-  if (access.loading) return <LoadingState label="Loading inventory permissions" />;
+  if (access.loading) return <LoadingState label="Loading inventory permissions" variant="page" />;
   if (access.error) return <ErrorState message={access.error} onRetry={access.reload} />;
 
   return (

@@ -68,7 +68,7 @@ function BedBoard({ clinical, admin }: { clinical: boolean; admin: boolean }) {
     });
   }
 
-  if (wards.loading || beds.loading) return <LoadingState label="Loading bed board" />;
+  if (wards.loading || beds.loading) return <LoadingState label="Loading bed board" variant="page" />;
   if (wards.error) return <ErrorState message={wards.error} onRetry={wards.reload} />;
   if (beds.error) return <ErrorState message={beds.error} onRetry={beds.reload} />;
   if (!wards.data?.wards.length) return <EmptyState title="No wards configured" description={admin ? "Create a ward from the Configure wards tab." : "A facility administrator must configure the first ward."} />;

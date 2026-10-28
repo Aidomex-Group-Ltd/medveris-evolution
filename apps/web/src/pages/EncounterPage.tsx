@@ -49,7 +49,7 @@ export function EncounterPage() {
     }
   }
 
-  if (detail.loading && !detail.data) return <LoadingState label="Opening authorized chart" />;
+  if (detail.loading && !detail.data) return <LoadingState label="Opening authorized chart" variant="page" />;
   if (detail.error) return <ErrorState message={detail.error} onRetry={detail.reload} />;
   if (!data) return <EmptyState title="Encounter not found" description="The encounter is unavailable in this facility context." />;
 

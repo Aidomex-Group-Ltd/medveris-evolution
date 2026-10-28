@@ -208,8 +208,41 @@ export function EmptyState({ title, description, action }: { title: string; desc
   );
 }
 
-export function LoadingState({ label = "Loading" }: { label?: string }) {
-  return <div className="mv-loading" role="status" aria-live="polite"><span className="mv-spinner" aria-hidden="true" />{label}…</div>;
+export function Skeleton({ width, height, className }: { width?: string; height?: string; className?: string }) {
+  return <span className={`mv-skeleton${className ? ` ${className}` : ""}`} style={{ width, height }} aria-hidden="true" />;
+}
+
+const SKELETON_LINE_WIDTHS = ["92%", "78%", "86%", "64%", "88%", "72%"];
+
+export interface LoadingStateProps {
+  label?: string;
+  variant?: "list" | "page";
+  rows?: number;
+}
+
+export function LoadingState({ label = "Loading", variant = "list", rows = 4 }: LoadingStateProps) {
+  const lines = Array.from({ length: Math.max(1, rows) }, (_, index) => SKELETON_LINE_WIDTHS[index % SKELETON_LINE_WIDTHS.length]);
+  return (
+    <div className={`mv-loading mv-loading--${variant}`} role="status" aria-live="polite" aria-busy="true">
+      <span className="mv-sr-only">{label}…</span>
+      {variant === "page" ? (
+        <>
+          <div className="mv-loading__header" aria-hidden="true">
+            <Skeleton width="120px" height="0.75rem" />
+            <Skeleton width="min(320px, 70%)" height="1.75rem" />
+          </div>
+          <div className="mv-loading__card" aria-hidden="true">
+            <Skeleton width="40%" height="1.1rem" />
+            {lines.map((width, index) => <Skeleton key={index} width={width} />)}
+          </div>
+        </>
+      ) : (
+        <div className="mv-loading__rows" aria-hidden="true">
+          {lines.map((width, index) => <Skeleton key={index} width={width} />)}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ErrorState({ title = "Unable to load", message, onRetry }: { title?: string; message: string; onRetry?: () => void }) {

@@ -101,7 +101,7 @@ export function ContentPage() {
   if (can("content.draft") || can("content.review")) tabs.push({ value: "editorial", label: "Editorial" });
   if (can("role_grant.request") || can("audit.read")) tabs.push({ value: "governance", label: "Access governance" });
 
-  if (access.loading) return <LoadingState label="Loading library access" />;
+  if (access.loading) return <LoadingState label="Loading library access" variant="page" />;
   if (access.error) return <ErrorState message={access.error} onRetry={access.reload} />;
 
   return (

@@ -59,7 +59,7 @@ export function TheatreCasePage() {
   const [specimenType, setSpecimenType] = useState("");
   const [destination, setDestination] = useState("");
 
-  if (detail.loading) return <LoadingState label="Loading theatre case" />;
+  if (detail.loading) return <LoadingState label="Loading theatre case" variant="page" />;
   if (detail.error || !detail.data) return <ErrorState message={detail.error ?? "Theatre case not found"} onRetry={detail.reload} />;
   const { case: record, preop, consents, checklists, anesthesia, recovery, counts, specimens } = detail.data;
   const open = ["scheduled", "preop-ready"].includes(record.status);

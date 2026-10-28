@@ -11,7 +11,7 @@ export function PatientPortalPage() {
   const appointments = useQuery<{ appointments: Array<{ id: string; startAt: string; durationMinutes: number; reason: string; status: string; facilityName: string }> }>("/me/appointments");
   const [view, setView] = useState<View>("released");
 
-  if (profile.loading) return <LoadingState label="Loading your record" />;
+  if (profile.loading) return <LoadingState label="Loading your record" variant="page" />;
   if (profile.error) return <ErrorState message={profile.error} onRetry={profile.reload} />;
   if (!profile.data) return <EmptyState title="Patient profile unavailable" description="No verified patient identity is linked to this account." />;
   const patient = profile.data.patient;

@@ -58,7 +58,7 @@ export function EmergencyCasePage() {
   const { id = "" } = useParams();
   const detail = useQuery<Detail>(`/emergency/cases/${id}`);
   const [triageSaved, setTriageSaved] = useState(false);
-  if (detail.loading && !detail.data) return <LoadingState label="Loading emergency case" />;
+  if (detail.loading && !detail.data) return <LoadingState label="Loading emergency case" variant="page" />;
   if (detail.error) return <ErrorState message={detail.error} onRetry={detail.reload} />;
   if (!detail.data) return <EmptyState title="Emergency case not found" description="The case may belong to another facility." />;
   const record = detail.data.case;

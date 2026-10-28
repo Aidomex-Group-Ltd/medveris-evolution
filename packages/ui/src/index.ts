@@ -12,7 +12,9 @@ export {
   PageHeader,
   SearchSelect,
   Select,
+  Skeleton,
   Table,
   Tabs,
   Textarea,
 } from "./primitives";
+export type { LoadingStateProps } from "./primitives";

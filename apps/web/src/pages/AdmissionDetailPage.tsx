@@ -40,7 +40,7 @@ export function AdmissionDetailPage() {
   const [handoffTo, setHandoffTo] = useState("");
   const [handoffSummary, setHandoffSummary] = useState("");
 
-  if (detail.loading) return <LoadingState label="Loading admission" />;
+  if (detail.loading) return <LoadingState label="Loading admission" variant="page" />;
   if (detail.error || !detail.data) return <ErrorState message={detail.error ?? "Admission not found"} onRetry={detail.reload} />;
 
   const { admission, beds: assignments, assessments, tasks, handoffs } = detail.data;

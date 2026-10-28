@@ -29,7 +29,7 @@ export function FinancePage() {
 function Overview() {
   const summary = useQuery<{ summary: Summary }>("/finance/summary");
   const invoices = useQuery<{ invoices: Invoice[] }>("/invoices");
-  if (summary.loading) return <LoadingState label="Loading finance summary" />;
+  if (summary.loading) return <LoadingState label="Loading finance summary" variant="page" />;
   if (summary.error) return <ErrorState message={summary.error} onRetry={summary.reload} />;
   const data = summary.data?.summary;
   const outstanding = Number(data?.billed ?? 0) - Number(data?.collected ?? 0);

@@ -25,7 +25,7 @@ export function InvoiceDetailPage() {
   const [claimNotes, setClaimNotes] = useState("");
   const action = useAction();
 
-  if (detail.loading) return <LoadingState label="Loading invoice" />;
+  if (detail.loading) return <LoadingState label="Loading invoice" variant="page" />;
   if (detail.error || !detail.data) return <ErrorState message={detail.error ?? "Invoice not found"} onRetry={detail.reload} />;
   const { invoice, items, payments, claims } = detail.data;
   const total = items.reduce((sum, item) => sum + Number(item.amount), 0);
