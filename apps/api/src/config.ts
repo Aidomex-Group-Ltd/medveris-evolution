@@ -27,6 +27,8 @@ export interface AppConfig {
   radiologyCriticalAckMinutes: number;
   emergencyReviewDueHours: number;
   devShowTotpSecrets: boolean;
+  /** The scheduled job imports public content from the official sources in content_sources. */
+  contentFeedsEnabled: boolean;
   map: {
     renderer: "leaflet";
     providerState: "disabled" | "osm" | "configured";
@@ -166,6 +168,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     radiologyCriticalAckMinutes: Math.max(5, Math.min(integer(env.RADIOLOGY_CRITICAL_ACK_MINUTES, 60), 1440)),
     emergencyReviewDueHours: integer(env.EMERGENCY_REVIEW_DUE_HOURS, 24),
     devShowTotpSecrets: bool(env.DEV_SHOW_TOTP_SECRETS, false),
+    contentFeedsEnabled: bool(env.CONTENT_FEEDS_ENABLED, false),
     map: {
       renderer: "leaflet",
       providerState: mapProviderState,

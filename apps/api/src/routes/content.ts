@@ -3,10 +3,12 @@ import {
   careTeamAssignmentSchema,
   contentCreateSchema,
   contentDecisionSchema,
+  contentFeedIngestSchema,
   contentPreferencesSchema,
   contentReportSchema,
   contentSourceSchema,
   contentUpdateSchema,
+  importedWithdrawSchema,
   opportunityCreateSchema,
   opportunityDecisionSchema,
   opportunityUpdateSchema,
@@ -15,7 +17,7 @@ import {
   uuidSchema,
 } from "@medveris/contracts";
 import { permissionsForRoles, type Permission } from "@medveris/authz";
-import { requireAuth, requireStaff, withActor } from "../auth/middleware.js";
+import { isPlatformOperator, requireAuth, requireStaff, withActor, withPlatformActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { ensureMatch, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
@@ -89,7 +91,7 @@ async function feedRows(
            ci.publication_date, ci.language, ci.geography, ci.audience, ci.specialty_tags, ci.visibility_scope,
            ci.attribution, ci.sponsorship_disclosure, ci.study_type, ci.peer_review_status, ci.correction_status,
            ci.correction_note, ci.clinical_reviewed, ci.status, ci.version, ci.published_at, ci.review_due_on,
-           cs.name as source_name
+           ci.imported_at, cs.name as source_name
       from content_items ci left join content_sources cs on cs.id = ci.source_id
      where ci.status = 'published'
        and ${tenantAccess}
@@ -122,7 +124,7 @@ async function feedRows(
 async function opportunityRows(
   c: Parameters<typeof requireAuth>[0],
   tx: Tx,
-  options: { limit: number; offset: number; type?: string | null },
+  options: { limit: number; offset: number; type?: string | null; importedOnly?: boolean },
 ) {
   const auth = requireAuth(c);
   const patientAudience = !auth.activeTenant;
@@ -132,14 +134,15 @@ async function opportunityRows(
     select o.id, o.opportunity_type, o.title, o.description, o.organization, o.audience, o.specialty_tags,
            o.eligibility, o.location, o.remote, o.application_url, o.contact_route, o.opens_on, o.closes_on,
            o.compensation, o.cpd_details, o.verification_status, o.verified_checks, o.sponsorship_status,
-           o.moderation_state, o.version, o.published_at
-      from opportunities o
+           o.moderation_state, o.version, o.published_at, o.imported_at, cs.name as source_name
+      from opportunities o left join content_sources cs on cs.id = o.source_id
      where o.moderation_state = 'published'
        and (o.closes_on is null or o.closes_on >= current_date)
        and (o.tenant_id is null or o.tenant_id = ${scope.tenantId})
        and (cardinality(o.specialty_tags) = 0 or o.specialty_tags && ${tagFilter}::text[])
        ${patientAudience ? tx`and o.audience in ('patient','both')` : tx`and o.audience in ('professional','both')`}
        ${options.type ? tx`and o.opportunity_type = ${options.type}` : tx``}
+       ${options.importedOnly ? tx`and o.imported_at is not null` : tx``}
      order by o.published_at desc
      limit ${options.limit} offset ${options.offset}
   `;
@@ -151,6 +154,7 @@ async function opportunityRows(
        and (cardinality(o.specialty_tags) = 0 or o.specialty_tags && ${tagFilter}::text[])
        ${patientAudience ? tx`and o.audience in ('patient','both')` : tx`and o.audience in ('professional','both')`}
        ${options.type ? tx`and o.opportunity_type = ${options.type}` : tx``}
+       ${options.importedOnly ? tx`and o.imported_at is not null` : tx``}
   `;
   return { rows, total: Number(count[0]?.total ?? 0) };
 }
@@ -437,7 +441,8 @@ contentRoutes.post("/content/:id/report", async (c) => {
 contentRoutes.get("/opportunities", async (c) => {
   requireAuth(c);
   const type = c.req.query("type") ?? null;
-  const data = await withActor(c, async (tx) => opportunityRows(c, tx, { limit: limitFrom(c), offset: offsetFrom(c), type }));
+  const importedOnly = c.req.query("imported") === "true";
+  const data = await withActor(c, async (tx) => opportunityRows(c, tx, { limit: limitFrom(c), offset: offsetFrom(c), type, importedOnly }));
   return c.json({ opportunities: data.rows, total: data.total });
 });
 
@@ -670,6 +675,72 @@ contentRoutes.post("/content/sources", async (c) => {
     }));
   });
   return c.json({ ok: true, source: { id } }, 201);
+});
+
+// Automatically imported public content ---------------------------------------
+contentRoutes.get("/content-feeds", async (c) => {
+  requireAuth(c);
+  const operator = isPlatformOperator(c);
+  if (!operator) requirePermission(c, "content.read");
+  const rows = await withActor(c, async (tx) => tx`
+    select id, name, source_kind, base_url, ingest_adapter, ingest_enabled, status, fetch_interval_minutes,
+           last_checked_at, last_success_at, last_item_count, last_error, terms_note
+      from content_sources
+     where tenant_id is null and ingest_adapter is not null
+     order by name
+  `);
+  return c.json({
+    canManage: operator,
+    sources: rows.map((row) => (operator ? row : { ...row, lastError: row.lastError ? "The last fetch failed" : null })),
+  });
+});
+
+contentRoutes.post("/content-feeds/:id/ingest", async (c) => {
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, contentFeedIngestSchema);
+  await withPlatformActor(c, async (tx) => {
+    await requireRows(await tx`
+      update content_sources set ingest_enabled = ${body.enabled}, status = ${body.enabled ? "configured" : "disabled"}, updated_at = now()
+       where id = ${id} and tenant_id is null and ingest_adapter is not null
+      returning id
+    `, "Content source not found");
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, body.enabled ? "content.feed.resume" : "content.feed.pause", {
+      resourceType: "ContentSource", resourceId: id, metadata: { note: body.note },
+    }));
+  });
+  return c.json({ ok: true });
+});
+
+contentRoutes.post("/content-feeds/items/:id/withdraw", async (c) => {
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, importedWithdrawSchema);
+  await withPlatformActor(c, async (tx) => {
+    const item = await requireRows(await tx`
+      select id, status from content_items where id = ${id} and imported_at is not null for update
+    `, "Imported content not found");
+    if (item.status !== "published") throw new ConflictError("Only published imported content can be withdrawn");
+    await tx`update content_items set status = 'withdrawn', archived_at = now(), updated_at = now() where id = ${id}`;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "content.imported.withdraw", {
+      resourceType: "ContentItem", resourceId: id, metadata: { note: body.note },
+    }));
+  });
+  return c.json({ ok: true });
+});
+
+contentRoutes.post("/content-feeds/opportunities/:id/withdraw", async (c) => {
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, importedWithdrawSchema);
+  await withPlatformActor(c, async (tx) => {
+    const item = await requireRows(await tx`
+      select id, moderation_state from opportunities where id = ${id} and imported_at is not null for update
+    `, "Imported opportunity not found");
+    if (item.moderationState !== "published") throw new ConflictError("Only published imported opportunities can be withdrawn");
+    await tx`update opportunities set moderation_state = 'withdrawn', updated_at = now() where id = ${id}`;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "opportunity.imported.withdraw", {
+      resourceType: "Opportunity", resourceId: id, metadata: { note: body.note },
+    }));
+  });
+  return c.json({ ok: true });
 });
 
 // Opportunity moderation ------------------------------------------------------

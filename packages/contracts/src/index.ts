@@ -1361,7 +1361,7 @@ export const contentScopeSchema = z.enum(["public","authenticated","patient","pr
 export const contentStatusSchema = z.enum(["draft","in-review","published","archived","withdrawn"]);
 
 export const contentCreateSchema = z.object({
-  contentType: z.enum(["public-health-advisory","health-education","research-update","guideline","professional-learning","facility-announcement"]),
+  contentType: z.enum(["public-health-advisory","health-education","research-update","guideline","professional-learning","facility-announcement","health-news"]),
   slug: z.string().trim().min(2).max(160).regex(/^[a-z0-9][a-z0-9-]+$/),
   title: z.string().trim().min(2).max(300),
   summary: z.string().trim().min(10).max(4000),
@@ -1414,7 +1414,7 @@ export const contentReportSchema = z.object({
 });
 
 export const opportunityCreateSchema = z.object({
-  opportunityType: z.enum(["employment","locum","cpd","conference","fellowship","training","research-collaboration","community-screening","health-education","patient-support","study-participation"]),
+  opportunityType: z.enum(["employment","locum","cpd","conference","fellowship","training","research-collaboration","community-screening","health-education","patient-support","study-participation","funding"]),
   title: z.string().trim().min(2).max(300),
   description: z.string().trim().min(10).max(20000),
   organization: z.string().trim().min(2).max(300),
@@ -1451,6 +1451,15 @@ export const contentSourceSchema = z.object({
   rssUrl: z.string().url().max(2000).optional().nullable(),
   termsNote: z.string().trim().max(2000).optional().or(z.literal("")),
   tenantScoped: z.boolean().default(true),
+});
+
+export const contentFeedIngestSchema = z.object({
+  enabled: z.boolean(),
+  note: z.string().trim().min(5).max(1000),
+});
+
+export const importedWithdrawSchema = z.object({
+  note: z.string().trim().min(5).max(1000),
 });
 
 export const roleGrantRequestSchema = z.object({

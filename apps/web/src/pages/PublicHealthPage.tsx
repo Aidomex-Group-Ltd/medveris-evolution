@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { formatDate, formatDateTime, todayInput } from "../lib/format";
 import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
+import { ExternalNewsCard } from "../components/ExternalContent";
 
 interface AggregateCell { key: string; count: number | null }
 interface Aggregate { total: number | null; suppressedCells: number; bySex: AggregateCell[]; byAgeBand: AggregateCell[]; caseDefinitionVersion: string; minCell: number; generatedAt: string }
@@ -35,9 +36,13 @@ export function PublicHealthPage() {
 
   return (
     <div className="mv-stack">
-      <PageHeader eyebrow="Public health" title="Aggregate reporting" description="Reports contain aggregate counts only. Small cells below the configured minimum are suppressed; no identifiable data is released here." />
+      <PageHeader eyebrow="Public health" title="Public health news and aggregate reporting" description="Official outbreak alerts and news are imported automatically. Reports contain aggregate counts only; small cells below the configured minimum are suppressed and no identifiable data is released here." />
       {action.error ? <ErrorState message={action.error} /> : null}
       {action.message ? <Notice tone="success">{action.message}</Notice> : null}
+      <div className="mv-grid mv-grid--2">
+        <ExternalNewsCard title="Outbreak alerts" description="WHO Disease Outbreak News, imported automatically. Open the original for the full assessment and advice." contentType="public-health-advisory" />
+        <ExternalNewsCard title="Public health news" description="WHO, WHO Africa and the Uganda National Institute of Public Health, imported automatically and not reviewed by Medveris." contentType="health-news" />
+      </div>
       <Card title="Generate aggregate report" description="Counts are derived from recorded conditions for the selected period. A case-definition version is required.">
         <form className="mv-stack" onSubmit={create}>
           <div className="mv-form-grid">

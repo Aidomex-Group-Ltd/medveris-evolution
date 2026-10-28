@@ -1,5 +1,6 @@
 import { createSql, type Sql } from "@medveris/db";
 import { runJobsCycle } from "../../jobs/src/cycle.js";
+import { syncContentFeeds } from "../../jobs/src/feeds/sync.js";
 import { loadConfig, type AppConfig } from "./config.js";
 import { createApp } from "./app.js";
 import { ResendEmailAdapter, UnconfiguredEmailAdapter } from "./lib/email.js";
@@ -46,6 +47,7 @@ interface Runtime {
 }
 
 const JOBS_MAX_EVENTS_PER_RUN = 200;
+const FEED_SOURCES_PER_RUN = 2;
 
 // Holds configuration and the router only. Database clients own sockets, which Workers
 // cannot reuse across requests, so they are created per request below.
@@ -148,6 +150,14 @@ export default {
         processed: result.processed,
         checkpoints: result.checkpoints.map((checkpoint) => ({ tenant: checkpoint.tenantId, batch: checkpoint.batchNumber, count: checkpoint.eventCount })),
       }));
+      if (config.contentFeedsEnabled) {
+        try {
+          const feeds = await syncContentFeeds(sql, { maxSources: FEED_SOURCES_PER_RUN });
+          if (feeds.length) console.log(JSON.stringify({ event: "content_feeds", sources: feeds }));
+        } catch (error) {
+          console.error(JSON.stringify({ event: "content_feeds_failed", message: (error as Error).message }));
+        }
+      }
       if (result.checkpointError) throw new Error("Integrity checkpoint failed");
     } finally {
       ctx.waitUntil(sql.end({ timeout: 5 }));

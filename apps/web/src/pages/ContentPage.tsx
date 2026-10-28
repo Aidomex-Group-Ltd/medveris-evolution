@@ -5,6 +5,7 @@ import { formatDate, formatDateTime, futureIso, todayInput } from "../lib/format
 import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
 import type { Role } from "../lib/types";
+import { ExternalSourcesCard, promptNote, useContentFeeds } from "../components/ExternalContent";
 
 type Tab = "feed" | "saved" | "opportunities" | "editorial" | "governance";
 
@@ -29,9 +30,11 @@ interface FeedItem {
   publishedAt: string | null;
   reviewDueOn: string | null;
   sourceName: string | null;
+  sourceUrl: string | null;
+  importedAt: string | null;
 }
 
-interface ContentDetail { item: FeedItem & { body: string | null; sourceUrl: string | null; reuseTerms: string | null; findingsSummary: string | null; limitations: string | null; population: string | null; studyType: string | null; correctionNote: string | null }; bookmarked: boolean }
+interface ContentDetail { item: FeedItem & { body: string | null; reuseTerms: string | null; findingsSummary: string | null; limitations: string | null; population: string | null; studyType: string | null; correctionNote: string | null }; bookmarked: boolean }
 
 interface Bookmark { id: string; title: string; summary: string; contentType: string; publicationDate: string | null; sourceOrganization: string | null }
 
@@ -56,7 +59,11 @@ interface Opportunity {
   cpdDetails: string | null;
   verificationStatus: string;
   sponsorshipStatus: string;
+  importedAt: string | null;
+  sourceName: string | null;
 }
+
+const OPPORTUNITY_TYPES = ["employment", "locum", "cpd", "conference", "fellowship", "training", "funding", "research-collaboration", "community-screening", "health-education", "patient-support", "study-participation"];
 
 interface EditorialItem { id: string; contentType: string; slug: string; title: string; status: string; version: number; visibilityScope: string; publicationDate: string | null; reviewDueOn: string | null; updatedAt: string; authorName: string }
 
@@ -66,6 +73,7 @@ interface CareTeamMember { id: string; patientId: string; publicId: string; give
 
 const CONTENT_TYPES = [
   ["public-health-advisory", "Public-health advisory"],
+  ["health-news", "Health news"],
   ["health-education", "Health education"],
   ["research-update", "Research update"],
   ["guideline", "Guideline"],
@@ -131,7 +139,19 @@ function FeedWorkspace() {
   const query = `/content?limit=20${search ? `&q=${encodeURIComponent(search)}` : ""}${contentType ? `&type=${contentType}` : ""}`;
   const feed = useQuery<{ items: FeedItem[]; total: number }>(query);
   const item = useQuery<ContentDetail>(selected ? `/content/${selected}` : null);
+  const feeds = useContentFeeds();
   const action = useAction();
+
+  async function withdraw(row: FeedItem) {
+    const note = promptNote(`Withdraw "${row.title}" for every user? Enter a reason (at least 5 characters).`);
+    if (!note) return;
+    await action.run(`withdraw-${row.id}`, async () => {
+      await api(`/content-feeds/items/${row.id}/withdraw`, { method: "POST", body: { note } });
+      if (selected === row.id) setSelected(null);
+      feed.reload();
+      return "Imported item withdrawn.";
+    });
+  }
 
   async function bookmark(id: string) {
     await action.run(`bookmark-${id}`, async () => {
@@ -191,12 +211,15 @@ function FeedWorkspace() {
                   <div className="mv-row" style={{ marginTop: 6 }}>
                     <Badge tone="neutral">{human(row.audience)}</Badge>
                     {row.clinicalReviewed ? <Badge tone="success">Clinically reviewed</Badge> : <Badge tone="warning">Not clinically reviewed</Badge>}
+                    {row.importedAt ? <Badge tone="info">Imported automatically</Badge> : null}
                     {row.correctionStatus && row.correctionStatus !== "none" ? <Badge tone="danger">{human(row.correctionStatus)}</Badge> : null}
+                    {row.importedAt && row.sourceUrl ? <a className="mv-small" href={row.sourceUrl} target="_blank" rel="noreferrer">Open original</a> : null}
                   </div>
                 </div>
                 <div className="mv-row">
                   <Button variant="secondary" size="sm" onClick={() => setSelected(selected === row.id ? null : row.id)}>{selected === row.id ? "Close" : "Read"}</Button>
                   <Button variant="ghost" size="sm" onClick={() => setReporting(row.id)}>Report</Button>
+                  {row.importedAt && feeds.data?.canManage ? <Button variant="danger" size="sm" onClick={() => void withdraw(row)} disabled={action.busy !== null}>Withdraw</Button> : null}
                 </div>
               </li>
             ))}
@@ -224,6 +247,7 @@ function FeedWorkspace() {
           ) : null}
         </Card>
       ) : null}
+      <ExternalSourcesCard feeds={feeds} />
     </div>
   );
 }
@@ -285,7 +309,18 @@ function SavedWorkspace() {
 function OpportunitiesWorkspace() {
   const [type, setType] = useState("");
   const opportunities = useQuery<{ opportunities: Opportunity[]; total: number }>(`/opportunities?limit=30${type ? `&type=${type}` : ""}`);
+  const feeds = useContentFeeds();
   const action = useAction();
+
+  async function withdraw(row: Opportunity) {
+    const note = promptNote(`Withdraw "${row.title}" for every user? Enter a reason (at least 5 characters).`);
+    if (!note) return;
+    await action.run(`withdraw-${row.id}`, async () => {
+      await api(`/content-feeds/opportunities/${row.id}/withdraw`, { method: "POST", body: { note } });
+      opportunities.reload();
+      return "Imported opportunity withdrawn.";
+    });
+  }
   const [reporting, setReporting] = useState<string | null>(null);
   const [detail, setDetail] = useState("");
 
@@ -315,7 +350,7 @@ function OpportunitiesWorkspace() {
         <Field label="Type">
           <Select value={type} onChange={(event) => setType(event.target.value)}>
             <option value="">All types</option>
-            {["employment", "locum", "cpd", "conference", "fellowship", "training", "research-collaboration", "community-screening", "health-education", "patient-support", "study-participation"].map((value) => <option key={value} value={value}>{human(value)}</option>)}
+            {OPPORTUNITY_TYPES.map((value) => <option key={value} value={value}>{human(value)}</option>)}
           </Select>
         </Field>
       </Card>
@@ -334,9 +369,10 @@ function OpportunitiesWorkspace() {
               <li key={row.id}>
                 <div className="mv-spread">
                   <strong>{row.title}</strong>
-                  <div className="mv-row"><Badge tone={row.verificationStatus === "source-verified" ? "success" : row.verificationStatus === "details-checked" ? "info" : "warning"}>{human(row.verificationStatus)}</Badge><Button variant="ghost" size="sm" onClick={() => void bookmark(row.id)} disabled={action.busy !== null}>Bookmark</Button><Button variant="ghost" size="sm" onClick={() => setReporting(row.id)}>Report</Button></div>
+                  <div className="mv-row"><Badge tone={row.verificationStatus === "source-verified" ? "success" : row.verificationStatus === "details-checked" ? "info" : "warning"}>{human(row.verificationStatus)}</Badge><Button variant="ghost" size="sm" onClick={() => void bookmark(row.id)} disabled={action.busy !== null}>Bookmark</Button><Button variant="ghost" size="sm" onClick={() => setReporting(row.id)}>Report</Button>{row.importedAt && feeds.data?.canManage ? <Button variant="danger" size="sm" onClick={() => void withdraw(row)} disabled={action.busy !== null}>Withdraw</Button> : null}</div>
                 </div>
-                <div className="mv-small mv-muted">{human(row.opportunityType)} · {row.organization} · {row.location ?? (row.remote ? "Remote" : "Location not stated")} · closes {formatDate(row.closesOn)}</div>
+                <div className="mv-small mv-muted">{human(row.opportunityType)} · {row.organization} · {row.location ?? (row.remote ? "Remote" : "Location not stated")} · closes {row.closesOn ? formatDate(row.closesOn) : "date not stated"}</div>
+                {row.importedAt ? <div className="mv-small mv-muted">Imported automatically from {row.sourceName ?? "an official source"}; not verified by Medveris.</div> : null}
                 <p className="mv-small">{row.description}</p>
                 {row.eligibility ? <p className="mv-small"><strong>Eligibility:</strong> {row.eligibility}</p> : null}
                 {row.sponsorshipStatus !== "none" ? <Badge tone="warning">{human(row.sponsorshipStatus)}</Badge> : null}

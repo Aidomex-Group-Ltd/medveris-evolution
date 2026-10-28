@@ -1,6 +1,7 @@
 import { createSql } from "@medveris/db";
 import { checkpointAllTenants } from "./integrity.js";
 import { runJobsCycle } from "./cycle.js";
+import { syncContentFeeds } from "./feeds/sync.js";
 
 try {
   process.loadEnvFile(`${process.cwd()}/.env`);
@@ -15,11 +16,25 @@ const keyId = process.env.AUDIT_SIGNING_KEY_ID ?? "local-dev-key-1";
 if (!signingKey || signingKey.length < 24) throw new Error("AUDIT_SIGNING_KEY must be at least 24 characters");
 
 const once = process.argv.includes("--once");
+const contentFeedsEnabled = process.env.CONTENT_FEEDS_ENABLED === "true";
 const sql = createSql(databaseUrl, { max: 4 });
 
 let stopping = false;
+let lastFeedSync = 0;
+
+async function feedCycle(): Promise<void> {
+  if (!contentFeedsEnabled || Date.now() - lastFeedSync < 60_000) return;
+  lastFeedSync = Date.now();
+  try {
+    const sources = await syncContentFeeds(sql);
+    if (sources.length) console.log(JSON.stringify({ event: "content_feeds", sources }));
+  } catch (error) {
+    console.error(JSON.stringify({ event: "content_feeds_failed", message: (error as Error).message }));
+  }
+}
 
 async function cycle(): Promise<void> {
+  await feedCycle();
   const { processed, checkpoints, checkpointError } = await runJobsCycle(sql, signingKey!, keyId);
   if (checkpointError) {
     console.error(JSON.stringify({ event: "checkpoint_failed", message: checkpointError }));

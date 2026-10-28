@@ -60,7 +60,9 @@
         "TERMINOLOGY_MODE": "synthetic",
         "DEV_SHOW_TOTP_SECRETS": "false",
         "FHIR_EXTERNAL_WRITES_ENABLED": "false",
-        "FHIR_BULK_EXPORT_ENABLED": "false"
+        "FHIR_BULK_EXPORT_ENABLED": "false",
+        // The cron imports public content from the official sources seeded by migration 027.
+        "CONTENT_FEEDS_ENABLED": "true"
       },
       "secrets": {
         "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]

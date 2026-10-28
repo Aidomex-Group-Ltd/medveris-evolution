@@ -83,6 +83,7 @@ Important `.env` values:
 - `APP_ORIGIN` — public web origin, default `http://localhost:5173`.
 - `TERMINOLOGY_MODE=synthetic` — required locally; production needs a provider URL and licence.
 - `FHIR_EXTERNAL_WRITES_ENABLED=false`, `FHIR_BULK_EXPORT_ENABLED=false`.
+- `CONTENT_FEEDS_ENABLED` — defaults to `false`. When `true`, the jobs runner (`npm run jobs:once` or `npm run jobs:watch`) and the staging cron import public news, outbreak alerts and funding calls from the official sources seeded by migration 027. Tests never fetch these feeds.
 - Feature flags for DICOM, lab, pharmacy, telemedicine, devices, AI, payments, public health and ledger must stay false unless implemented and accepted.
 
 Do not commit `.env`, `.data/`, `.mail-sink/`, `dist/` or test artifacts.

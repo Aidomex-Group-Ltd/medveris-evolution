@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { formatDate, formatMoney, todayInput } from "../lib/format";
 import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
+import { ExternalOpportunitiesCard } from "../components/ExternalContent";
 
 interface ProviderFacility { id: string; publicId: string; name: string; publicationStatus: string }
 
@@ -72,6 +73,10 @@ export function PromotionsPage() {
           </Table>
         )}
       </Card>
+      <ExternalOpportunitiesCard
+        title="External funding, fellowships and sponsorship"
+        description="Open calls from official funders, imported automatically and not verified by Medveris. These are not paid placements; check eligibility on the funder's listing before applying."
+      />
     </div>
   );
 }
