@@ -55,7 +55,8 @@ export function PatientsPage() {
     setBusy("register");
     setError(null);
     setMessage(null);
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     try {
       const response = await api<RegisterResponse>("/reception/patients", {
         method: "POST",
@@ -72,7 +73,7 @@ export function PatientsPage() {
       });
       setMessage(`Registered ${response.patient.publicId}.${response.patient.duplicateReviewQueued ? ` ${response.patient.duplicateReviewQueued} duplicate candidate(s) queued for manual review; no automatic merge occurred.` : ""}`);
       setResolved({ id: response.patient.patientId, publicId: response.patient.publicId, givenName: String(data.get("givenName")), familyName: String(data.get("familyName")), dateOfBirth: String(data.get("dateOfBirth")), sex: String(data.get("sex")) });
-      event.currentTarget.reset();
+      form.reset();
       recent.reload();
     } catch (cause) {
       setError(errorMessage(cause));

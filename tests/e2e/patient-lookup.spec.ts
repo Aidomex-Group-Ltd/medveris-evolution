@@ -23,6 +23,8 @@ test("reception confirms, misses and searches patients without failed API reques
   await page.locator("#reg-dob").fill("1990-04-12");
   await page.getByRole("button", { name: "Register patient" }).click();
   await expect(page.getByText(/Registered MV-/)).toBeVisible();
+  await expect(page.getByText("Unable to load")).toHaveCount(0);
+  await expect(page.getByLabel("Given name")).toHaveValue("");
   const publicId = /MV-[0-9A-Z-]{19}/.exec(await page.getByText(/Registered MV-/).innerText())![0];
 
   await page.locator("#resolve-id").fill(publicId.toLowerCase().replace(/-/g, " "));
