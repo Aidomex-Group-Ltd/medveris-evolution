@@ -9,9 +9,9 @@ import { useQuery } from "../lib/useQuery";
 import { MemberPicker } from "../components/Pickers";
 
 interface Order { id: string; patientId: string; encounterId: string; orderType: string; priority: string; clinicalNote: string; status: string; version: number; publicId: string; givenName: string; familyName: string; createdAt: string }
-interface ResultRow { id: string; version: number; status: string; critical: boolean; value_text: string | null; value_num: string | null; unit_code: string | null; reference_range: string | null; interpretation: string }
-interface SpecimenRow { id: string; status: string; specimen_type: string; rejection_reason: string | null }
-interface StudyRow { id: string; modality: string; body_site: string; pacs_state: string; accession: string | null }
+interface ResultRow { id: string; version: number; status: string; critical: boolean; valueText: string | null; valueNum: string | null; unitCode: string | null; referenceRange: string | null; interpretation: string }
+interface SpecimenRow { id: string; status: string; specimenType: string; rejectionReason: string | null }
+interface StudyRow { id: string; modality: string; bodySite: string; pacsState: string; accession: string | null }
 interface ReportRow { id: string; version: number; status: string; critical: boolean; findings: string; impression: string }
 interface Item { id: string; name: string; specimenType: string | null; status: string; latestResult: ResultRow | null; latestSpecimen: SpecimenRow | null; imagingStudy: StudyRow | null; latestReport: ReportRow | null }
 interface Detail { order: Order; items: Item[] }
@@ -25,7 +25,7 @@ const NEXT_ORDER_STATUS: Record<string, string[]> = {
 export function OrderDetailPage() {
   const { id = "" } = useParams();
   const detail = useQuery<Detail>(id ? `/diagnostic-orders/${id}` : null);
-  if (detail.loading) return <LoadingState label="Loading diagnostic order" />;
+  if (detail.loading) return <LoadingState label="Loading diagnostic order" variant="page" />;
   if (detail.error || !detail.data) return <ErrorState message={detail.error ?? "Order not found"} onRetry={detail.reload} />;
   const { order, items } = detail.data;
   return (
@@ -80,10 +80,10 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
   const radiology = roles.includes("radiology");
   const action = useAction();
   const [specimenType, setSpecimenType] = useState(item.specimenType ?? "");
-  const [valueNum, setValueNum] = useState(item.latestResult?.value_num ?? "");
-  const [valueText, setValueText] = useState(item.latestResult?.value_text ?? "");
-  const [unitCode, setUnitCode] = useState(item.latestResult?.unit_code ?? "");
-  const [referenceRange, setReferenceRange] = useState(item.latestResult?.reference_range ?? "");
+  const [valueNum, setValueNum] = useState(item.latestResult?.valueNum ?? "");
+  const [valueText, setValueText] = useState(item.latestResult?.valueText ?? "");
+  const [unitCode, setUnitCode] = useState(item.latestResult?.unitCode ?? "");
+  const [referenceRange, setReferenceRange] = useState(item.latestResult?.referenceRange ?? "");
   const [interpretation, setInterpretation] = useState("indeterminate");
   const [critical, setCritical] = useState(false);
   const [resultStatus, setResultStatus] = useState<"preliminary" | "final">("preliminary");
@@ -102,10 +102,10 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
 
   useEffect(() => {
     if (!result) return;
-    setValueNum(result.value_num ?? "");
-    setValueText(result.value_text ?? "");
-    setUnitCode(result.unit_code ?? "");
-    setReferenceRange(result.reference_range ?? "");
+    setValueNum(result.valueNum ?? "");
+    setValueText(result.valueText ?? "");
+    setUnitCode(result.unitCode ?? "");
+    setReferenceRange(result.referenceRange ?? "");
     setInterpretation(result.interpretation);
     setCritical(result.critical);
   }, [result?.id, result?.version]);
@@ -200,7 +200,7 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
       {action.error ? <ErrorState message={action.error} /> : null}
       {action.message ? <Notice tone="success">{action.message}</Notice> : null}
       <div className="mv-stack">
-        {specimen ? <div className="mv-note"><div className="mv-spread"><strong>Specimen · {specimen.specimen_type}</strong><Badge tone={specimen.status === "received" ? "success" : specimen.status === "rejected" ? "danger" : "warning"}>{specimen.status}</Badge></div>{specimen.rejection_reason ? <div className="mv-small">{specimen.rejection_reason}</div> : null}</div> : null}
+        {specimen ? <div className="mv-note"><div className="mv-spread"><strong>Specimen · {specimen.specimenType}</strong><Badge tone={specimen.status === "received" ? "success" : specimen.status === "rejected" ? "danger" : "warning"}>{specimen.status}</Badge></div>{specimen.rejectionReason ? <div className="mv-small">{specimen.rejectionReason}</div> : null}</div> : null}
         {lab && (!specimen || specimen.status === "rejected") && (laboratory || clinician || roles.includes("nurse")) ? (
           <form className="mv-stack" onSubmit={collectSpecimen}>
             <Field label="Specimen type" htmlFor={`specimen-${item.id}`}><Input id={`specimen-${item.id}`} value={specimenType} onChange={(event) => setSpecimenType(event.target.value)} required /></Field>
@@ -213,7 +213,7 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
         {result ? (
           <div className="mv-note">
             <div className="mv-spread"><strong>Result v{result.version}</strong><Badge tone={result.critical ? "danger" : result.status === "final" ? "success" : "warning"}>{result.status}{result.critical ? " · critical" : ""}</Badge></div>
-            <div>{result.value_text ?? result.value_num ?? "—"} {result.unit_code ?? ""}{result.reference_range ? <span className="mv-small mv-muted"> (ref {result.reference_range})</span> : null}</div>
+            <div>{result.valueText ?? result.valueNum ?? "—"} {result.unitCode ?? ""}{result.referenceRange ? <span className="mv-small mv-muted"> (ref {result.referenceRange})</span> : null}</div>
             <div className="mv-small mv-muted">Interpretation: {result.interpretation}</div>
             {result.status === "preliminary" && clinician ? <Button size="sm" variant="secondary" onClick={() => void finalizeResult()} disabled={action.busy !== null}>Finalize result</Button> : null}
           </div>
@@ -262,7 +262,7 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
         ) : null}
 
         {imaging ? <StructuredImagingReport orderItemId={item.id} hasStudy={Boolean(item.imagingStudy)} /> : null}
-        {item.imagingStudy ? <div className="mv-note"><strong>{item.imagingStudy.modality} · {item.imagingStudy.body_site}</strong><div className="mv-small mv-muted">PACS {item.imagingStudy.pacs_state}{item.imagingStudy.accession ? ` · accession ${item.imagingStudy.accession}` : ""}</div></div> : null}
+        {item.imagingStudy ? <div className="mv-note"><strong>{item.imagingStudy.modality} · {item.imagingStudy.bodySite}</strong><div className="mv-small mv-muted">PACS {item.imagingStudy.pacsState}{item.imagingStudy.accession ? ` · accession ${item.imagingStudy.accession}` : ""}</div></div> : null}
         {item.latestReport ? (
           <div className="mv-note">
             <div className="mv-spread"><strong>Report v{item.latestReport.version}</strong><Badge tone={item.latestReport.critical ? "danger" : item.latestReport.status === "final" ? "success" : "warning"}>{item.latestReport.status}</Badge></div>

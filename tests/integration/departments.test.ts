@@ -277,6 +277,10 @@ describe("M2/M3 department workflows", () => {
         critical: true, changeReason: "Verified against analyser printout", expectedVersion: 1,
       }),
     }));
+    const labView = await expectOk(await call(clinician, `/api/v1/diagnostic-orders/${labOrderId}`));
+    expect(labView.items[0].latestResult).toMatchObject({ unitCode: "mg/dL", status: "final" });
+    expect(labView.items[0].latestResult.valueNum).not.toBeUndefined();
+    expect(labView.items[0].latestResult).not.toHaveProperty("value_num");
     await expectOk(await call(clinician, `/api/v1/lab-results/${labResultId}/critical-communications`, {
       method: "POST", body: JSON.stringify({ recipientUserId: CLINICIAN_ID, method: "phone", notes: "Read back confirmed" }),
     }), 201);
