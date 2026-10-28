@@ -8,6 +8,7 @@ import { writeAudit } from "../lib/audit.js";
 import { NotFoundError, ValidationError } from "../lib/errors.js";
 import { sendInvitation } from "./auth.js";
 import { listIntegrations } from "../integrations/registry.js";
+import { UNAVAILABLE_LABEL } from "../terminology/unavailable.js";
 import type { AppEnv } from "../types.js";
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -203,7 +204,9 @@ adminRoutes.get("/integrations", async (c) => {
     integrations: listIntegrations(config).map((integration) => ({ ...integration, enabled: integration.state === "available" })),
     terminology: {
       mode: config.terminologyMode,
-      label: config.terminologyMode === "synthetic" ? "Synthetic development terminology (not for production coding)" : "Production terminology adapter",
+      label: config.terminologyMode === "synthetic"
+        ? "Synthetic development terminology (not for production coding)"
+        : config.terminologyMode === "unavailable" ? UNAVAILABLE_LABEL : "Production terminology adapter",
     },
   });
 });

@@ -14,7 +14,7 @@ export interface AppConfig {
   storageAdapter: "local" | "r2";
   localUploadDir: string;
   maxUploadBytes: number;
-  terminologyMode: "synthetic" | "production";
+  terminologyMode: "synthetic" | "production" | "unavailable";
   terminologyProviderUrl: string | null;
   terminologyProviderToken: string | null;
   terminologyTimeoutMs: number;
@@ -73,6 +73,12 @@ const TEST_AUDIT_SIGNING_KEY = "test-audit-signing-key-test-audit-signing-key";
 const TEST_MFA_ENCRYPTION_KEY = "test-mfa-encryption-key-test-mfa-encryption-key";
 const LOCAL_ONLY_ENVIRONMENTS = new Set(["development", "test"]);
 
+const TERMINOLOGY_MODES = ["synthetic", "production", "unavailable"] as const;
+
+function isTerminologyMode(value: string): value is AppConfig["terminologyMode"] {
+  return (TERMINOLOGY_MODES as readonly string[]).includes(value);
+}
+
 function requireSecret(name: string, value: string): void {
   if (value.length < 24) throw new Error(`${name} must be at least 24 characters`);
   if (/replace-with|changeme|placeholder/i.test(value) || value.startsWith("test-")) {
@@ -119,7 +125,11 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
   const rawOrigin = env.APP_ORIGIN ?? (appEnv === "development" ? "http://localhost:5173" : "");
   if (!rawOrigin) throw new Error("APP_ORIGIN is required outside local development");
   const origin = validatedOrigin(rawOrigin, appEnv);
-  const terminologyMode = (env.TERMINOLOGY_MODE ?? "synthetic") === "production" ? "production" : "synthetic";
+  const terminologyMode = env.TERMINOLOGY_MODE || "synthetic";
+  if (!isTerminologyMode(terminologyMode)) throw new Error("TERMINOLOGY_MODE must be synthetic, production or unavailable");
+  if (terminologyMode === "synthetic" && appEnv === "production") {
+    throw new Error("TERMINOLOGY_MODE=synthetic is not allowed in production; use production or unavailable");
+  }
   const terminologyProviderUrl = env.TERMINOLOGY_PROVIDER_URL || null;
   if (terminologyMode === "production" && !terminologyProviderUrl) {
     throw new Error("TERMINOLOGY_MODE=production requires TERMINOLOGY_PROVIDER_URL");

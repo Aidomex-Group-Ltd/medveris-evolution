@@ -38,7 +38,7 @@ export interface ValidateCodeResult {
 }
 
 export interface TerminologyAdapter {
-  readonly mode: "synthetic" | "production";
+  readonly mode: "synthetic" | "production" | "unavailable";
   readonly label: string;
   lookup(system: string, code: string, version?: string): Promise<TerminologyConcept | null>;
   validateCode(input: {

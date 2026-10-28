@@ -70,7 +70,9 @@ terminologyRoutes.get("/terminology/fhir/r4/metadata", (c) => {
     id: "medveris-m1-terminology",
     url: "https://medveris.example/fhir/TerminologyCapabilities/medveris-m1-terminology",
     name: "MedverisSyntheticTerminology",
-    title: config.terminologyMode === "synthetic" ? "Synthetic development terminology (not for production)" : "Configured production terminology adapter",
+    title: config.terminologyMode === "synthetic"
+      ? "Synthetic development terminology (not for production)"
+      : config.terminologyMode === "unavailable" ? "Terminology service not configured" : "Configured production terminology adapter",
     status: "draft",
     experimental: true,
     date: "2026-10-25",
@@ -80,6 +82,8 @@ terminologyRoutes.get("/terminology/fhir/r4/metadata", (c) => {
       description:
         config.terminologyMode === "synthetic"
           ? "Synthetic fixtures for local development and automated tests. They are not production SNOMED CT or LOINC content."
+          : config.terminologyMode === "unavailable"
+          ? "No licensed terminology service is configured; every terminology operation returns 503 dependency_unavailable."
           : "Production adapter boundary. Supported operations depend on the configured licensed terminology service.",
       url: "/terminology/fhir/r4",
     },

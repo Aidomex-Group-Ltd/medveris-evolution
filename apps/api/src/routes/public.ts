@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { listIntegrations } from "../integrations/registry.js";
+import { UNAVAILABLE_LABEL } from "../terminology/unavailable.js";
 import type { AppEnv } from "../types.js";
 
 export const publicRoutes = new Hono<AppEnv>();
@@ -29,7 +30,10 @@ publicRoutes.get("/public/config", async (c) => {
     terminology: {
       mode: config.terminologyMode,
       synthetic: config.terminologyMode === "synthetic",
-      label: config.terminologyMode === "synthetic" ? "Synthetic development terminology" : "Production terminology adapter configured",
+      available: config.terminologyMode !== "unavailable",
+      label: config.terminologyMode === "synthetic"
+        ? "Synthetic development terminology"
+        : config.terminologyMode === "unavailable" ? UNAVAILABLE_LABEL : "Production terminology adapter configured",
     },
     features: Object.fromEntries(listIntegrations(config).map((integration) => [integration.id, integration.state === "available"])),
     release: "M1 outpatient foundation",
