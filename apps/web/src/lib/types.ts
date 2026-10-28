@@ -89,6 +89,7 @@ export interface PatientSummary {
   identityConfidence?: string;
   linked?: boolean;
   releaseSignedRecords?: boolean;
+  mergedFrom?: string | null;
 }
 
 export interface Queue {

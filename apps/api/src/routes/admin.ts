@@ -153,7 +153,7 @@ adminRoutes.get("/duplicate-candidates", async (c) => {
   const auth = c.get("auth")!;
   assertMembershipAdmin(actor(c));
   const rows = await withStaffActor(c, async (tx) => tx`
-    select d.id, d.reason, d.status, d.created_at,
+    select d.id, d.reason, d.status, d.created_at, d.primary_patient_id, d.candidate_patient_id,
            p.public_id as primary_public_id, p.given_name as primary_given_name, p.family_name as primary_family_name,
            c.public_id as candidate_public_id, c.given_name as candidate_given_name, c.family_name as candidate_family_name
       from patient_duplicate_candidates d

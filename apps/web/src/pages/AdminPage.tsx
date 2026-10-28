@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Tabs } from "@medveris/ui";
+import { Link } from "react-router-dom";
+import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Tabs, Textarea } from "@medveris/ui";
 import { api, errorMessage } from "../lib/api";
 import { useQuery } from "../lib/useQuery";
 
@@ -43,6 +44,8 @@ const INTEGRATION_TONE: Record<string, "success" | "warning" | "danger" | "neutr
 };
 
 interface DuplicateCandidate {
+  primaryPatientId: string;
+  candidatePatientId: string;
   id: string;
   reason: string;
   status: string;
@@ -176,6 +179,7 @@ function Integrations() {
 function Duplicates() {
   const duplicates = useQuery<{ candidates: DuplicateCandidate[]; automaticMerge: boolean }>("/admin/duplicate-candidates");
   const [error, setError] = useState<string | null>(null);
+  const [merging, setMerging] = useState<DuplicateCandidate | null>(null);
   async function review(id: string, status: "reviewed-no-merge" | "linked") {
     const note = window.prompt("Review note (minimum 5 characters):");
     if (!note || note.trim().length < 5) return;
@@ -189,7 +193,8 @@ function Duplicates() {
   return (
     <div className="mv-stack">
       {error ? <ErrorState message={error} /> : null}
-      <Notice tone="info" title="Manual review required">Automatic patient merges are disabled. Review is audited, is limited to this facility and does not merge either identity.</Notice>
+      <Notice tone="info" title="Manual review required">Patients are never merged automatically. A merge is requested here and must be approved by a different administrator or records officer on the <Link to="/patient-merges">Patient merges</Link> page.</Notice>
+      {merging ? <MergeRequestForm candidate={merging} onDone={() => { setMerging(null); duplicates.reload(); }} onCancel={() => setMerging(null)} /> : null}
       <Card title="Pending duplicate candidates">
         {duplicates.loading ? <LoadingState /> : duplicates.error ? <ErrorState message={duplicates.error} onRetry={duplicates.reload} /> : !duplicates.data?.candidates.length ? <EmptyState title="No candidates" description="No unresolved duplicate candidates require review." /> : (
           <Table head={["Primary", "Candidate", "Reason", "Actions"]}>
@@ -198,12 +203,50 @@ function Duplicates() {
                 <td>{candidate.primaryGivenName} {candidate.primaryFamilyName}<div className="mv-small mv-muted mv-id">{candidate.primaryPublicId}</div></td>
                 <td>{candidate.candidateGivenName} {candidate.candidateFamilyName}<div className="mv-small mv-muted mv-id">{candidate.candidatePublicId}</div></td>
                 <td className="mv-small">{candidate.reason}</td>
-                <td><div className="mv-row"><Button size="sm" variant="secondary" onClick={() => void review(candidate.id, "reviewed-no-merge")}>No merge</Button><Button size="sm" onClick={() => void review(candidate.id, "linked")}>Confirmed duplicate</Button></div></td>
+                <td><div className="mv-row"><Button size="sm" variant="secondary" onClick={() => void review(candidate.id, "reviewed-no-merge")}>Not a duplicate</Button><Button size="sm" onClick={() => setMerging(candidate)}>Request merge</Button></div></td>
               </tr>
             ))}
           </Table>
         )}
       </Card>
     </div>
+  );
+}
+
+function MergeRequestForm({ candidate, onDone, onCancel }: { candidate: DuplicateCandidate; onDone: () => void; onCancel: () => void }) {
+  const [survivor, setSurvivor] = useState<"primary" | "candidate">("primary");
+  const [reason, setReason] = useState("");
+  const [evidence, setEvidence] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const primary = { id: candidate.primaryPatientId, label: `${candidate.primaryGivenName} ${candidate.primaryFamilyName} (${candidate.primaryPublicId})` };
+  const other = { id: candidate.candidatePatientId, label: `${candidate.candidateGivenName} ${candidate.candidateFamilyName} (${candidate.candidatePublicId})` };
+  const [keep, retire] = survivor === "primary" ? [primary, other] : [other, primary];
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api("/patient-merges", { method: "POST", body: { sourcePatientId: retire.id, survivorPatientId: keep.id, duplicateCandidateId: candidate.id, reason, evidence } });
+      onDone();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card title="Request a patient merge" description="The retired identity's records stay under its original ID and are shown with the surviving record. A second authorised person must approve.">
+      <form className="mv-stack" onSubmit={submit}>
+        {error ? <ErrorState message={error} /> : null}
+        <Field label="Record to keep"><Select value={survivor} onChange={(event) => setSurvivor(event.target.value as "primary" | "candidate")}>
+          <option value="primary">{primary.label}</option><option value="candidate">{other.label}</option>
+        </Select></Field>
+        <p className="mv-small">Retired identity: <strong>{retire.label}</strong></p>
+        <Field label="Reason" htmlFor="merge-reason" hint="At least 10 characters."><Textarea id="merge-reason" value={reason} onChange={(event) => setReason(event.target.value)} minLength={10} required /></Field>
+        <Field label="Identity evidence" htmlFor="merge-evidence" hint="How it was confirmed that both records are the same person (at least 10 characters)."><Textarea id="merge-evidence" value={evidence} onChange={(event) => setEvidence(event.target.value)} minLength={10} required /></Field>
+        <div className="mv-row"><Button type="submit" disabled={busy || reason.trim().length < 10 || evidence.trim().length < 10}>{busy ? "Requesting…" : "Request merge"}</Button><Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button></div>
+      </form>
+    </Card>
   );
 }

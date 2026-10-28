@@ -137,6 +137,7 @@ export function PatientsPage() {
             <div>
               <strong>{resolved.givenName} {resolved.familyName}</strong>
               <div className="mv-small mv-muted"><span className="mv-id">{resolved.publicId}</span> · DOB {resolved.dateOfBirth} · {resolved.sex}</div>
+              {resolved.mergedFrom ? <div className="mv-small"><Badge tone="warning">{`ID ${resolved.mergedFrom} was merged into this record`}</Badge></div> : null}
             </div>
             <div className="mv-row">
               <Field label="Encounter reason" htmlFor="encounter-reason"><Input id="encounter-reason" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>

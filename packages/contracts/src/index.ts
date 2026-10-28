@@ -2071,3 +2071,19 @@ export const radiologyWorklistSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).max(10_000).default(0),
 });
+
+export const patientMergeRequestSchema = z.object({
+  sourcePatientId: uuidSchema,
+  survivorPatientId: uuidSchema,
+  duplicateCandidateId: uuidSchema.optional(),
+  reason: z.string().trim().min(10).max(2000),
+  evidence: z.string().trim().min(10).max(2000),
+});
+
+export const patientMergeDecisionSchema = z.object({
+  note: z.string().trim().min(5).max(2000),
+});
+
+export const patientMergeReverseSchema = z.object({
+  reason: z.string().trim().min(10).max(2000),
+});

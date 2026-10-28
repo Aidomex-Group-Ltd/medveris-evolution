@@ -114,14 +114,21 @@ receptionRoutes.post("/patients/resolve", async (c) => {
   const meta = requestMeta(c);
   const body = await parseJson(c, resolvePatientSchema);
   const data = await withStaffActor(c, async (tx) => {
-    const rows = await tx`
+    // Identity is confirmed against the record the ID belongs to; a merged ID then resolves to its survivor.
+    const [confirmed] = await tx`
+      select p.id, p.public_id, p.merged_into from patients p
+       where p.public_id = ${body.publicId} and lower(p.family_name) = lower(${body.familyName}) and p.date_of_birth = ${body.dateOfBirth}
+       limit 1
+    `;
+    const targetId = confirmed ? String(confirmed.mergedInto ?? confirmed.id) : null;
+    const rows = targetId ? await tx`
       select p.id, p.public_id, p.given_name, p.family_name, to_char(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth, p.sex, p.identity_confidence,
              EXISTS (SELECT 1 FROM tenant_patient_links l WHERE l.tenant_id = ${auth.activeTenant!.id} AND l.patient_id = p.id) as linked
-        from patients p where p.public_id = ${body.publicId} and lower(p.family_name) = lower(${body.familyName})
-          and p.date_of_birth = ${body.dateOfBirth} and p.merged_into is null
-        limit 1
-    `;
-    const patient = rows[0];
+        from patients p where p.id = ${targetId} and p.merged_into is null
+    ` : [];
+    const patient: (Record<string, unknown> & { id: unknown }) | undefined = rows[0]
+      ? { ...rows[0], id: rows[0].id, mergedFrom: confirmed?.mergedInto ? String(confirmed.publicId) : null }
+      : undefined;
     await writeAudit(tx, deps.config, {
       tenantId: auth.activeTenant!.id,
       actorKind: "staff",
@@ -481,8 +488,14 @@ receptionRoutes.post("/encounters", async (c) => {
   if (replayed) return replayed;
   try {
     await withStaffActor(c, async (tx) => {
-      const link = await tx`select 1 from tenant_patient_links where tenant_id = ${tenantId} and patient_id = ${body.patientId}`;
+      const link = await tx`
+        select p.merged_into from tenant_patient_links l join patients p on p.id = l.patient_id
+         where l.tenant_id = ${tenantId} and l.patient_id = ${body.patientId}
+      `;
       if (!link.length) throw new NotFoundError("Patient is not linked to this facility");
+      if (link[0]!.mergedInto) {
+        throw new ConflictError("This patient identity was merged; open the encounter on the surviving record", { survivorPatientId: String(link[0]!.mergedInto) });
+      }
       if (!actor(c).roles.some((r) => ["receptionist", "nurse", "clinician", "facility_admin"].includes(r))) {
         throw new ForbiddenError("Front-desk access is required");
       }
