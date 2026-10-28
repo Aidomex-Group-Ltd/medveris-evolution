@@ -6,6 +6,8 @@ interface AuthState {
   me: MeResponse | null;
   loading: boolean;
   error: string | null;
+  /** True after an explicit sign-out, so the next sign-in does not return to the previous user's page. */
+  signedOut: boolean;
 }
 
 interface AuthActions {
@@ -20,7 +22,7 @@ interface AuthActions {
 const AuthContext = createContext<(AuthState & AuthActions) | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ me: null, loading: true, error: null });
+  const [state, setState] = useState<AuthState>({ me: null, loading: true, error: null, signedOut: false });
   const generation = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -31,21 +33,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (current !== generation.current) return null;
       if (!session.authenticated) {
         clearCsrfToken();
-        setState({ me: null, loading: false, error: null });
+        setState((s) => ({ ...s, me: null, loading: false, error: null }));
         return null;
       }
       const me = await api<MeResponse>("/me");
       if (current !== generation.current) return null;
       setCsrfToken(me.csrfToken);
-      setState({ me, loading: false, error: null });
+      setState({ me, loading: false, error: null, signedOut: false });
       return me;
     } catch (error) {
       if (current !== generation.current) return null;
       clearCsrfToken();
-      setState({ me: null, loading: false, error: null });
-      if (error instanceof Error && !("status" in error)) {
-        setState({ me: null, loading: false, error: errorMessage(error) });
-      }
+      setState((s) => ({ ...s, me: null, loading: false, error: error instanceof Error && !("status" in error) ? errorMessage(error) : null }));
       return null;
     }
   }, []);
@@ -77,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       generation.current += 1;
       clearCsrfToken();
-      setState({ me: null, loading: false, error: null });
+      setState({ me: null, loading: false, error: null, signedOut: true });
     }
   }, []);
 

@@ -11,6 +11,21 @@ export const CLINICIAN_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 export interface Session { cookie: string; csrf: string }
 
+/**
+ * Sign-in opens a facility only when the user has exactly one; with several, the user chooses, as the
+ * facility selector does through /me/context. Picks `tenantId` (Kampala by default) when it is one of them.
+ */
+export async function chooseFacility(app: { fetch(request: Request): Response | Promise<Response> }, session: Session, tenantId = KAMPALA_TENANT): Promise<void> {
+  const facilities = await (await app.fetch(new Request("http://localhost/api/v1/me/facilities", { headers: { cookie: session.cookie } }))).json() as any;
+  if (facilities.activeTenantId !== null || !facilities.facilities?.some((facility: { tenantId: string }) => facility.tenantId === tenantId)) return;
+  const switched = await app.fetch(new Request("http://localhost/api/v1/me/context", {
+    method: "POST",
+    headers: { cookie: session.cookie, "x-medveris-csrf": session.csrf, "content-type": "application/json" },
+    body: JSON.stringify({ tenantId }),
+  }));
+  expect(switched.status).toBe(200);
+}
+
 /** One app instance per test file against the local test database, with dev TOTP enabled. */
 export function createHarness(label: string) {
   const url = process.env.DATABASE_URL;
@@ -19,10 +34,11 @@ export function createHarness(label: string) {
   const config = loadConfig({ ...process.env, APP_ENV: "test", APP_ORIGIN: "http://localhost:5173", DEV_SHOW_TOTP_SECRETS: "true" });
   config.terminologyMode = "synthetic";
   const tmp = process.env.TMPDIR ?? "/tmp";
+  const mailDir = `${tmp}/medveris-${label}-mail-${crypto.randomUUID()}`;
   const deps: AppDeps = {
     sql,
     config,
-    email: new LocalMailSink(`${tmp}/medveris-${label}-mail-${crypto.randomUUID()}`),
+    email: new LocalMailSink(mailDir),
     storage: new LocalStorage(`${tmp}/medveris-${label}-storage-${crypto.randomUUID()}`),
   };
   const app = createApp(deps);
@@ -42,7 +58,8 @@ export function createHarness(label: string) {
     return match.split(";")[0]!;
   }
 
-  async function login(email: string): Promise<Session> {
+  /** Signs in; a user with several facilities chooses `tenantId` (Kampala by default), as the facility selector does. */
+  async function login(email: string, tenantId = KAMPALA_TENANT): Promise<Session> {
     const challenge = await app.fetch(new Request("http://localhost/api/v1/auth/login", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, password: "Medveris!2026" }),
@@ -57,7 +74,9 @@ export function createHarness(label: string) {
     }));
     const verified = await json(mfa);
     expect(mfa.status, JSON.stringify(verified)).toBe(200);
-    return { cookie: sessionCookie(mfa), csrf: verified.csrfToken };
+    const session = { cookie: sessionCookie(mfa), csrf: verified.csrfToken };
+    await chooseFacility(app, session, tenantId);
+    return session;
   }
 
   async function call(session: Session, path: string, init: RequestInit & { idempotencyKey?: string } = {}): Promise<Response> {
@@ -86,5 +105,5 @@ export function createHarness(label: string) {
     return created.patient.patientId as string;
   }
 
-  return { app, sql, config, json, login, call, expectOk, post, registerPatient };
+  return { app, sql, config, mailDir, json, login, call, expectOk, post, registerPatient };
 }

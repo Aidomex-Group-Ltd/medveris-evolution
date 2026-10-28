@@ -77,8 +77,8 @@ export function MfaSetupPage() {
   }
 
   async function finish() {
-    await refresh();
-    navigate("/", { replace: true });
+    const current = await refresh();
+    navigate(current && current.memberships.length > 0 && !current.activeTenant ? "/facility-staff" : "/", { replace: true });
   }
 
   async function signInAgain() {

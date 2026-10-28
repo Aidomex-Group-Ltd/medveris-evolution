@@ -55,6 +55,8 @@ function isCsrfProtected(path: string): boolean {
   if (path.startsWith("/auth/login") || path.startsWith("/auth/register") || path.startsWith("/auth/forgot") || path.startsWith("/auth/reset")) return false;
   if (path.startsWith("/api/v1/auth/login") || path.startsWith("/api/v1/auth/register") || path.startsWith("/api/v1/auth/forgot") || path.startsWith("/api/v1/auth/reset")) return false;
   if (path.startsWith("/api/v1/auth/verify-email")) return false;
+  // Read-only: shows an invitation for the emailed token and changes nothing.
+  if (path === "/api/v1/auth/invitations/status") return false;
   return path.startsWith("/api/") || path.startsWith("/fhir/") || path.startsWith("/terminology/");
 }
 

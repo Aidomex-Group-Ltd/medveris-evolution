@@ -17,6 +17,7 @@ Scope: code and configuration review plus executed tests on 2026-10-28. This is 
 | Production gate refuses staging resources, a shared database server, unverified TLS, synthetic terminology, enabled integrations, missing backups or migrations, and early domain attachment | `production-gate.test.ts` |
 | Production secrets are generated with OpenSSL only when missing, never overwrite local or remote values, and data-bound keys need fresh-installation evidence | `production-secrets.test.ts` |
 | Production never serves synthetic terminology; an unconfigured service reports 503 | `terminology-unavailable.test.ts` |
+| Staff invitations bind to the issuing facility, need the invited signed-in account, accept once under a row lock, and cannot be steered by client-supplied facility or role fields; sign-in opens a facility only from an active staff assignment | `invitations.test.ts` (integration), `invitations.spec.ts` (browser) |
 
 ## Findings
 

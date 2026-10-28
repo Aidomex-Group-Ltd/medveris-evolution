@@ -12,7 +12,8 @@ import {
   verifyTotp,
 } from "@medveris/auth";
 import {
-  invitationAcceptSchema,
+  invitationRegisterSchema,
+  invitationTokenSchema,
   loginSchema,
   mfaEmailCodeSchema,
   mfaEnrollVerifySchema,
@@ -29,7 +30,8 @@ import { AppError, ConflictError, DependencyError, ForbiddenError, NotFoundError
 import { auditMeta, parseJson, requestMeta } from "../lib/http.js";
 import { rateLimit, clientKey } from "../lib/rate-limit.js";
 import { writeAudit } from "../lib/audit.js";
-import { setSessionCookie, revokeCurrentSession } from "../auth/middleware.js";
+import { requireAuth, setSessionCookie, revokeCurrentSession } from "../auth/middleware.js";
+import { acceptInvitation, declineInvitation, describeInvitation, maskEmail, registerInvitee } from "../services/invitations.js";
 import { createSession, loadAuthContext, SESSION_COOKIE } from "../auth/session.js";
 import type { Tx } from "@medveris/db";
 import type { AppEnv } from "../types.js";
@@ -41,10 +43,13 @@ function slugify(name: string): string {
   return `${base || "facility"}-${randomToken(3).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5)}`;
 }
 
-async function firstTenantId(sql: Parameters<typeof withRegistration>[0], userId: string): Promise<string | null> {
+/** The facility a sign-in opens: only an unambiguous single active assignment; several require a choice. */
+async function defaultTenantId(sql: Parameters<typeof withRegistration>[0], userId: string): Promise<string | null> {
   return withContext(sql, { userId, actorKind: "staff" }, async (tx) => {
-    const rows = await tx`select tenant_id from memberships where user_id = ${userId} and status = 'active' order by created_at limit 1`;
-    return (rows[0]?.tenantId as string | undefined) ?? null;
+    const rows = await tx`
+      select m.tenant_id from memberships m join tenants t on t.id = m.tenant_id
+       where m.user_id = ${userId} and m.status = 'active' and t.status = 'active' limit 2`;
+    return rows.length === 1 ? String(rows[0]!.tenantId) : null;
   });
 }
 
@@ -207,7 +212,7 @@ authRoutes.post("/login", async (c) => {
     `;
     return c.json({ mfaRequired: true, challengeId });
   }
-  const activeTenantId = await firstTenantId(deps.sql, user.id);
+  const activeTenantId = await defaultTenantId(deps.sql, user.id);
   const meta = requestMeta(c);
   const session = await createSession(deps.sql, deps.config, user.id, {
     mfaVerified: false,
@@ -230,11 +235,6 @@ function sixDigitCode(): string {
   const value = new Uint32Array(1);
   do crypto.getRandomValues(value); while (value[0]! >= limit);
   return String(value[0]! % 1_000_000).padStart(6, "0");
-}
-
-function maskEmail(email: string): string {
-  const [local = "", domain = ""] = email.split("@");
-  return `${local.slice(0, 1)}•••@${domain}`;
 }
 
 function emailCodeHash(challengeId: string, code: string): Promise<string> {
@@ -361,7 +361,7 @@ authRoutes.post("/login/mfa", async (c) => {
       });
     });
   }
-  const activeTenantId = await firstTenantId(deps.sql, String(challenge.userId));
+  const activeTenantId = await defaultTenantId(deps.sql, String(challenge.userId));
   const meta = requestMeta(c);
   const session = await createSession(deps.sql, deps.config, String(challenge.userId), {
     mfaVerified: true,
@@ -537,91 +537,47 @@ authRoutes.post("/mfa/enroll/verify", async (c) => {
   return c.json({ ok: true, recoveryCodes, warning: "Store these recovery codes securely. They are shown once." });
 });
 
+authRoutes.post("/invitations/status", async (c) => {
+  const deps = c.get("deps");
+  rateLimit(clientKey(c.req.raw.headers, "invitation-status"), 60, 60_000);
+  const body = await parseJson(c, invitationTokenSchema);
+  const auth = c.get("auth");
+  return c.json(await describeInvitation(deps.sql, body.token, auth ? { id: auth.user.id, email: auth.user.email } : null));
+});
+
+authRoutes.post("/invitations/register", async (c) => {
+  const deps = c.get("deps");
+  rateLimit(clientKey(c.req.raw.headers, "invitation-register"), 20, 60_000);
+  const body = await parseJson(c, invitationRegisterSchema);
+  rateLimit(`invitation-register:${await sha256Hex(body.token)}`, 5, 15 * 60_000);
+  if (c.get("auth")) throw new AppError(409, "invitation_signed_in", "Sign out before creating a new account for this invitation");
+  const { userId } = await registerInvitee(deps.sql, deps.config, { ...body, meta: auditMeta(c) });
+  const session = await createSession(deps.sql, deps.config, userId, { mfaVerified: false, activeTenantId: null, ...requestMeta(c) });
+  setSessionCookie(c, session);
+  return c.json({ ok: true, csrfToken: session.csrfToken }, 201);
+});
+
 authRoutes.post("/invitations/accept", async (c) => {
   const deps = c.get("deps");
-  const body = await parseJson(c, invitationAcceptSchema);
-  const tokenHash = await sha256Hex(body.token);
-  const rows = await deps.sql`
-    select i.id, i.tenant_id, i.email, i.roles, i.expires_at, i.accepted_at, t.name as tenant_name
-      from invitations i join tenants t on t.id = i.tenant_id
-     where i.token_hash = ${tokenHash} limit 1
-  `;
-  const invite = rows[0];
-  if (!invite || invite.acceptedAt || new Date(invite.expiresAt as Date).getTime() <= Date.now()) {
-    throw new ValidationError("Invitation is invalid or expired");
-  }
-  const existing = await deps.sql`select id, password_hash from users where email = ${invite.email} limit 1`;
-  let userId: string;
-  if (existing[0]) {
-    const valid = await verifyPassword(body.password, String(existing[0].passwordHash));
-    if (!valid) throw new UnauthorizedError("Existing account password is incorrect");
-    userId = String(existing[0].id);
-  } else {
-    userId = crypto.randomUUID();
-    const passwordHash = await hashPassword(body.password);
-    await deps.sql`
-      insert into users (id, email, password_hash, display_name, given_name, family_name, email_verified_at)
-      values (${userId}, ${invite.email}, ${passwordHash}, ${`${body.givenName} ${body.familyName}`}, ${body.givenName}, ${body.familyName}, now())
-    `;
-  }
-  const membershipId = crypto.randomUUID();
-  await deps.sql.begin(async (tx) => {
-    await tx`
-      insert into memberships (id, tenant_id, user_id, roles, invited_by)
-      values (${membershipId}, ${invite.tenantId}, ${userId}, ${invite.roles}, ${null})
-      on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active', updated_at = now()
-    `;
-    await tx`update invitations set accepted_at = now() where id = ${invite.id} and accepted_at is null`;
-    await writeAudit(tx, deps.config, {
-      tenantId: String(invite.tenantId),
-      actorKind: "staff",
-      actorUserId: userId,
-      action: "membership.accept-invitation",
-      resourceType: "Membership",
-      resourceId: membershipId,
-      ...auditMeta(c),
-      metadata: { roles: invite.roles },
-    });
+  const auth = requireAuth(c);
+  rateLimit(clientKey(c.req.raw.headers, `invitation-accept:${auth.user.id}`), 20, 60_000);
+  if (auth.user.mfaEnrolledAt && !auth.mfaVerified) throw new ForbiddenError("Complete two-step verification before accepting the invitation");
+  const body = await parseJson(c, invitationTokenSchema);
+  const accepted = await acceptInvitation(deps.sql, deps.config, {
+    token: body.token,
+    user: { id: auth.user.id, email: auth.user.email },
+    meta: auditMeta(c),
   });
-  const session = await createSession(deps.sql, deps.config, userId, {
-    mfaVerified: false,
-    activeTenantId: String(invite.tenantId),
-    ...requestMeta(c),
-  });
-  setSessionCookie(c, session);
-  return c.json({ ok: true, csrfToken: session.csrfToken, tenantId: invite.tenantId, mfaEnrollmentRequired: true });
+  return c.json({ ok: true, ...accepted });
 });
 
-authRoutes.get("/invitations/lookup", async (c) => {
+authRoutes.post("/invitations/decline", async (c) => {
   const deps = c.get("deps");
-  const token = c.req.query("token") ?? "";
-  if (!token) throw new ValidationError("Invitation token is required");
-  const tokenHash = await sha256Hex(token);
-  const rows = await deps.sql`
-    select i.email, i.roles, i.expires_at, i.accepted_at, t.name as tenant_name
-      from invitations i join tenants t on t.id = i.tenant_id
-     where i.token_hash = ${tokenHash} limit 1
-  `;
-  const invite = rows[0];
-  if (!invite || invite.acceptedAt || new Date(invite.expiresAt as Date).getTime() <= Date.now()) {
-    throw new NotFoundError("Invitation is invalid or expired");
-  }
-  return c.json({ email: invite.email, roles: invite.roles, tenantName: invite.tenantName });
+  rateLimit(clientKey(c.req.raw.headers, "invitation-decline"), 20, 60_000);
+  const body = await parseJson(c, invitationTokenSchema);
+  await declineInvitation(deps.sql, deps.config, { token: body.token, userId: c.get("auth")?.user.id ?? null, meta: auditMeta(c) });
+  return c.json({ ok: true });
 });
-
-export async function sendInvitation(
-  c: Parameters<typeof setSessionCookie>[0],
-  input: { tenantId: string; email: string; roles: string[]; invitedBy: string; token: string; tokenId: string },
-) {
-  const deps = c.get("deps");
-  const result = await deps.email.send({
-    to: input.email,
-    subject: "Medveris facility invitation",
-    text: `You have been invited to join a Medveris facility. Accept: ${deps.config.origin}/accept-invitation?token=${input.token}`,
-  });
-  await deps.sql`update invitations set delivery_status = ${result.delivered ? "delivered" : "failed"} where id = ${input.tokenId}`;
-  return result;
-}
 
 authRoutes.get("/totp/dev", async (c) => {
   const deps = c.get("deps");

@@ -78,6 +78,8 @@ const OnboardingPage = lazyPage(() => import("./pages/OnboardingPage"), "Onboard
 const OnboardingWorkflowPage = lazyPage(() => import("./pages/OnboardingWorkflowPage"), "OnboardingWorkflowPage");
 const CatalogueEditorPage = lazyPage(() => import("./pages/CatalogueEditorPage"), "CatalogueEditorPage");
 const CaregiversPage = lazyPage(() => import("./pages/CaregiversPage"), "CaregiversPage");
+const InvitationPage = lazyPage(() => import("./pages/InvitationPage"), "InvitationPage");
+const FacilityStaffPage = lazyPage(() => import("./pages/FacilityStaffPage"), "FacilityStaffPage");
 
 function NotFoundPage() {
   return (
@@ -97,6 +99,9 @@ export function App() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/mfa-setup" element={<MfaSetupPage />} />
+      {/* The emailed invitation link. Public: it never opens a workspace by itself. */}
+      <Route path="/accept-invitation" element={<InvitationPage />} />
+      <Route path="/facility-staff" element={<FacilityStaffPage />} />
       <Route path="/directory" element={<DirectoryPage />} />
       <Route path="/directory/:publicId" element={<DirectoryDetailPage />} />
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>

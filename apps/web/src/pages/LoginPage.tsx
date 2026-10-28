@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Button, Card, ErrorState, Field, Input, Notice } from "@medveris/ui";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Button, Card, ErrorState, Field, Input, Notice, Tabs } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
 import { api, errorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { safeReturnPath } from "../lib/navigation";
+import type { MeResponse } from "../lib/types";
 
 type MfaMethod = "app" | "email" | "recovery";
 
@@ -13,9 +15,23 @@ const MFA_DESCRIPTIONS: Record<MfaMethod, string> = {
   recovery: "Enter one of the recovery codes you saved when you set up two-step verification.",
 };
 
+type SignInMode = "general" | "staff";
+
+/** Where a completed sign-in goes: back to the page that asked for it, else the workspace for the chosen mode. */
+function destination(me: MeResponse, mode: SignInMode, returnTo: string | null): string {
+  if (returnTo) return returnTo;
+  if (mode === "staff") return "/facility-staff";
+  if (me.patientId) return "/portal";
+  return me.memberships.length > 1 && !me.activeTenant ? "/facility-staff" : "/";
+}
+
 export function LoginPage() {
   const { login, loginMfa, me } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [params, setParams] = useSearchParams();
+  const mode: SignInMode = params.get("as") === "staff" ? "staff" : "general";
+  const returnTo = safeReturnPath((location.state as { from?: unknown } | null)?.from);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [challengeId, setChallengeId] = useState<string | null>(null);
@@ -28,8 +44,8 @@ export function LoginPage() {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    if (me) navigate(me.patientId ? "/portal" : "/", { replace: true });
-  }, [me, navigate]);
+    if (me) navigate(destination(me, mode, returnTo), { replace: true });
+  }, [me, mode, returnTo, navigate]);
 
   async function submitPassword(event: FormEvent) {
     event.preventDefault();
@@ -37,11 +53,7 @@ export function LoginPage() {
     setError(null);
     try {
       const result = await login(email, password);
-      if (result.mfaRequired && result.challengeId) {
-        setChallengeId(result.challengeId);
-      } else {
-        navigate("/", { replace: true });
-      }
+      if (result.mfaRequired && result.challengeId) setChallengeId(result.challengeId);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -56,7 +68,6 @@ export function LoginPage() {
     setError(null);
     try {
       await loginMfa(challengeId, code);
-      navigate("/", { replace: true });
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -134,7 +145,16 @@ export function LoginPage() {
       </section>
       <section className="mv-auth__panel">
         <div className="mv-auth__card mv-stack">
-          <Card title={challengeId ? "Two-step verification" : "Sign in"} description={challengeId ? MFA_DESCRIPTIONS[method] : "Use your facility or patient account."}>
+          {!challengeId ? (
+            <Tabs label="Sign-in type" value={mode} onChange={(next) => setParams(next === "staff" ? { as: "staff" } : {}, { replace: true, state: location.state })}
+              options={[{ value: "general", label: "Sign in" }, { value: "staff", label: "Facility staff sign-in" }]} />
+          ) : null}
+          <Card
+            title={challengeId ? "Two-step verification" : mode === "staff" ? "Facility staff sign-in" : "Sign in"}
+            description={challengeId ? MFA_DESCRIPTIONS[method] : mode === "staff"
+              ? "Sign in with your staff account. Your facility is opened from your verified staff assignment."
+              : "Use your facility or patient account."}
+          >
             {error ? <ErrorState message={error} /> : null}
             {challengeId ? (
               <form className="mv-stack" onSubmit={submitMfa}>
@@ -168,7 +188,11 @@ export function LoginPage() {
                 </Field>
                 <Button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</Button>
                 <p className="mv-small"><Link to="/forgot-password">Forgot password?</Link></p>
-                <p className="mv-small mv-muted">Patient account? <Link to="/register?type=patient">Create a free patient account</Link>. Facility? <Link to="/register?type=facility">Register a facility</Link>.</p>
+                {mode === "staff" ? (
+                  <p className="mv-small mv-muted">New staff member? Open the invitation link your facility administrator emailed you to create your account.</p>
+                ) : (
+                  <p className="mv-small mv-muted">Patient account? <Link to="/register?type=patient">Create a free patient account</Link>. Facility? <Link to="/register?type=facility">Register a facility</Link>.</p>
+                )}
               </form>
             )}
           </Card>

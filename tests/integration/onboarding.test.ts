@@ -5,6 +5,7 @@ import { loadConfig } from "../../apps/api/src/config.js";
 import { LocalMailSink } from "../../apps/api/src/lib/local-email.js";
 import { LocalStorage } from "../../apps/api/src/lib/local-storage.js";
 import type { AppDeps } from "../../apps/api/src/types.js";
+import { chooseFacility } from "./support.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required for onboarding tests");
@@ -65,6 +66,7 @@ async function login(email: string): Promise<Session> {
   expect(mfa.status).toBe(200);
   const verified = await json(mfa);
   const cookie = sessionCookie(mfa);
+  await chooseFacility(app, { cookie, csrf: verified.csrfToken });
   const me = await json(await app.fetch(new Request("http://localhost/api/v1/me", { headers: { cookie } })));
   return { cookie, csrf: verified.csrfToken, userId: me.user.id };
 }

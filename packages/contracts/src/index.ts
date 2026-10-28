@@ -109,8 +109,12 @@ export const mfaEnrollVerifySchema = z.object({
   code: z.string().trim().regex(/^\d{6}$/),
 });
 
-export const invitationAcceptSchema = z.object({
-  token: z.string().min(20),
+/** Only the emailed token identifies an invitation; facility, role and inviter come from the server record. */
+export const invitationTokenSchema = z.object({
+  token: z.string().min(20).max(200).regex(/^[A-Za-z0-9_-]+$/),
+});
+
+export const invitationRegisterSchema = invitationTokenSchema.extend({
   password: passwordSchema,
   givenName: z.string().trim().min(1).max(120),
   familyName: z.string().trim().min(1).max(120),

@@ -5,6 +5,7 @@ import { loadConfig } from "../../apps/api/src/config.js";
 import { LocalMailSink } from "../../apps/api/src/lib/local-email.js";
 import { LocalStorage } from "../../apps/api/src/lib/local-storage.js";
 import type { AppDeps } from "../../apps/api/src/types.js";
+import { chooseFacility } from "./support.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required for patient registration tests");
@@ -61,7 +62,9 @@ async function login(email: string): Promise<Session> {
   }));
   expect(mfa.status).toBe(200);
   const verified = await json(mfa);
-  return { cookie: sessionCookie(mfa), csrf: verified.csrfToken };
+  const session = { cookie: sessionCookie(mfa), csrf: verified.csrfToken };
+  await chooseFacility(app, session);
+  return session;
 }
 
 async function call(session: Session, path: string, init: RequestInit = {}): Promise<Response> {

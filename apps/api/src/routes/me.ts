@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { switchTenantSchema, uuidSchema } from "@medveris/contracts";
+import { withContext } from "@medveris/db";
 import { withActor, requireAuth, requirePatient } from "../auth/middleware.js";
 import { auditMeta, parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
@@ -26,6 +27,28 @@ meRoutes.get("/me", async (c) => {
     patientId: auth.patientId,
     platformRoles: auth.platformRoles,
     csrfToken: auth.session.csrfToken,
+  });
+});
+
+/**
+ * Facility staff assignments for staff sign-in. `facilities` holds only active assignments at active
+ * facilities (the same set /me/context accepts); `inactive` explains assignments that no longer grant access.
+ */
+meRoutes.get("/me/facilities", async (c) => {
+  const auth = requireAuth(c);
+  const inactive = await withContext(c.get("deps").sql, { userId: auth.user.id, actorKind: "staff" }, async (tx) => tx`
+    select t.name, m.status as membership_status, t.status as facility_status
+      from memberships m join tenants t on t.id = m.tenant_id
+     where m.user_id = ${auth.user.id} and (m.status <> 'active' or t.status <> 'active')
+     order by t.name`);
+  return c.json({
+    facilities: auth.memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenantName, roles: m.roles, membershipId: m.id })),
+    inactive: inactive.map((row) => ({
+      name: row.name,
+      reason: row.membershipStatus !== "active" ? String(row.membershipStatus) : "facility_unavailable",
+    })),
+    activeTenantId: auth.activeTenant?.id ?? null,
+    mfa: { enrolled: Boolean(auth.user.mfaEnrolledAt), verified: auth.mfaVerified },
   });
 });
 

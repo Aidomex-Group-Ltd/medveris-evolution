@@ -5,8 +5,8 @@ import { assertMembershipAdmin, type ActorContext } from "@medveris/authz";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
-import { NotFoundError, ValidationError } from "../lib/errors.js";
-import { sendInvitation } from "./auth.js";
+import { ConflictError, NotFoundError, ValidationError } from "../lib/errors.js";
+import { adminInvitationStatus, assertInvitable, INVITATION_TTL_MS, invitationEmail } from "../services/invitations.js";
 import { listIntegrations } from "../integrations/registry.js";
 import { UNAVAILABLE_LABEL } from "../terminology/unavailable.js";
 import type { AppEnv } from "../types.js";
@@ -41,21 +41,35 @@ adminRoutes.get("/memberships", async (c) => {
 adminRoutes.post("/invitations", async (c) => {
   const auth = c.get("auth")!;
   assertMembershipAdmin(actor(c));
+  const deps = c.get("deps");
   const body = await parseJson(c, createInvitationSchema);
-  if (body.roles.includes("credential_reviewer") && !auth.platformRoles.includes("credential_reviewer")) {
-    throw new ValidationError("Credential reviewer is a platform role and cannot be assigned by a facility administrator");
-  }
+  const refused = assertInvitable(body.roles);
+  if (refused) throw new ValidationError(refused);
+  const tenantId = auth.activeTenant!.id;
   const token = randomToken(32);
   const tokenHash = await sha256Hex(token);
   const id = crypto.randomUUID();
-  await withStaffActor(c, async (tx) => {
+  const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
+  const facilityName = await withStaffActor(c, async (tx) => {
+    const [facility] = await tx`select name, status from tenants where id = ${tenantId}`;
+    if (facility?.status !== "active") throw new ValidationError("This facility is not active and cannot onboard staff");
+    const member = await tx`
+      select m.roles from memberships m join users u on u.id = m.user_id
+       where m.tenant_id = ${tenantId} and m.status = 'active' and lower(u.email) = ${body.email}`;
+    if (member[0] && body.roles.every((role) => (member[0]!.roles as string[]).includes(role))) {
+      throw new ConflictError("This person is already an active member with these roles");
+    }
+    const superseded = await tx`
+      update invitations set revoked_at = now(), revoked_by = ${auth.user.id}
+       where tenant_id = ${tenantId} and lower(email) = ${body.email}
+         and accepted_at is null and revoked_at is null and declined_at is null
+       returning id`;
     await tx`
       insert into invitations (id, tenant_id, email, roles, token_hash, invited_by, expires_at)
-      values (${id}, ${auth.activeTenant!.id}, ${body.email}, ${body.roles}, ${tokenHash}, ${auth.user.id},
-        ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)})
+      values (${id}, ${tenantId}, ${body.email}, ${body.roles}, ${tokenHash}, ${auth.user.id}, ${expiresAt})
     `;
-    await writeAudit(tx, c.get("deps").config, {
-      tenantId: auth.activeTenant!.id,
+    await writeAudit(tx, deps.config, {
+      tenantId,
       actorKind: "staff",
       actorUserId: auth.user.id,
       actorRoles: auth.activeTenant!.roles,
@@ -63,18 +77,72 @@ adminRoutes.post("/invitations", async (c) => {
       resourceType: "Invitation",
       resourceId: id,
       ...auditMeta(c),
-      metadata: { roles: body.roles, emailDomain: body.email.split("@")[1] },
+      metadata: { roles: body.roles, emailDomain: body.email.split("@")[1], supersedes: superseded.map((row) => row.id) },
+    });
+    return String(facility.name);
+  });
+  const delivery = await deps.email.send({ to: body.email, ...invitationEmail({ origin: deps.config.origin, facilityName, token, expiresAt }) });
+  await withStaffActor(c, async (tx) => tx`update invitations set delivery_status = ${delivery.delivered ? "delivered" : "failed"} where id = ${id}`);
+  return c.json({ ok: true, invitationId: id, delivery: { delivered: delivery.delivered, detail: delivery.detail } }, 201);
+});
+
+adminRoutes.get("/invitations", async (c) => {
+  const auth = c.get("auth")!;
+  assertMembershipAdmin(actor(c));
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select i.id, i.email, i.roles, i.created_at, i.expires_at, i.accepted_at, i.revoked_at, i.declined_at, i.delivery_status,
+           inviter.display_name as invited_by_name, accepter.display_name as accepted_by_name
+      from invitations i
+      join users inviter on inviter.id = i.invited_by
+      left join users accepter on accepter.id = i.accepted_by
+     where i.tenant_id = ${auth.activeTenant!.id}
+     order by i.created_at desc
+     limit 200
+  `);
+  return c.json({
+    invitations: rows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      roles: row.roles,
+      status: adminInvitationStatus({
+        acceptedAt: row.acceptedAt as Date | null,
+        revokedAt: row.revokedAt as Date | null,
+        declinedAt: row.declinedAt as Date | null,
+        expiresAt: row.expiresAt as Date,
+      }),
+      deliveryStatus: row.deliveryStatus,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      acceptedAt: row.acceptedAt,
+      invitedByName: row.invitedByName,
+      acceptedByName: row.acceptedByName,
+    })),
+  });
+});
+
+adminRoutes.post("/invitations/:id/revoke", async (c) => {
+  const auth = c.get("auth")!;
+  assertMembershipAdmin(actor(c));
+  const id = uuidSchema.parse(c.req.param("id"));
+  await withStaffActor(c, async (tx) => {
+    const rows = await tx`
+      update invitations set revoked_at = now(), revoked_by = ${auth.user.id}
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+         and accepted_at is null and revoked_at is null and declined_at is null
+       returning id`;
+    if (!rows[0]) throw new NotFoundError("No pending invitation with this id in your facility");
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "membership.invitation.revoke",
+      resourceType: "Invitation",
+      resourceId: id,
+      ...auditMeta(c),
     });
   });
-  const delivery = await sendInvitation(c, {
-    tenantId: auth.activeTenant!.id,
-    email: body.email,
-    roles: body.roles,
-    invitedBy: auth.user.id,
-    token,
-    tokenId: id,
-  });
-  return c.json({ ok: true, invitationId: id, delivery: { delivered: delivery.delivered, detail: delivery.detail } }, 201);
+  return c.json({ ok: true });
 });
 
 adminRoutes.patch("/memberships/:id", async (c) => {

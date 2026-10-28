@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Tabs, Textarea } from "@medveris/ui";
 import { api, errorMessage } from "../lib/api";
@@ -15,6 +15,27 @@ interface MembershipRow {
   emailVerifiedAt: string | null;
   mfaEnrolledAt: string | null;
 }
+
+interface InvitationRow {
+  id: string;
+  email: string;
+  roles: string[];
+  status: "pending" | "accepted" | "revoked" | "declined" | "expired";
+  deliveryStatus: string;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  invitedByName: string;
+  acceptedByName: string | null;
+}
+
+const INVITATION_TONE: Record<InvitationRow["status"], "success" | "warning" | "danger" | "neutral" | "info"> = {
+  pending: "info",
+  accepted: "success",
+  revoked: "neutral",
+  declined: "neutral",
+  expired: "warning",
+};
 
 interface IntegrationResponse {
   integrations: Array<{
@@ -75,6 +96,25 @@ export function AdminPage() {
 
 function Memberships() {
   const memberships = useQuery<{ memberships: MembershipRow[] }>("/admin/memberships");
+  const invitations = useQuery<{ invitations: InvitationRow[] }>("/admin/invitations");
+  const { reload: reloadMemberships } = memberships;
+  const { reload: reloadInvitations } = invitations;
+
+  // Invitees accept from their own device; refresh when the administrator returns to this tab.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        reloadMemberships();
+        reloadInvitations();
+      }
+    };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [reloadMemberships, reloadInvitations]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("receptionist");
   const [busy, setBusy] = useState(false);
@@ -88,9 +128,11 @@ function Memberships() {
     setMessage(null);
     try {
       const response = await api<{ delivery: { delivered: boolean; detail?: string } }>("/admin/invitations", { method: "POST", body: { email, roles: [role] } });
-      setMessage(`Invitation created. ${response.delivery.delivered ? "Delivered to the local mail sink." : response.delivery.detail ?? "Delivery failed."}`);
+      setMessage(response.delivery.delivered
+        ? `Invitation emailed to ${email}. They appear under staff once they accept.`
+        : `Invitation created, but the email could not be sent: ${response.delivery.detail ?? "delivery failed"}. Revoke it and try again later.`);
       setEmail("");
-      memberships.reload();
+      invitations.reload();
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -104,6 +146,17 @@ function Memberships() {
     try {
       await api(`/admin/memberships/${id}`, { method: "DELETE" });
       memberships.reload();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }
+
+  async function revoke(id: string) {
+    if (!window.confirm("Revoke this invitation? Its link will stop working.")) return;
+    setError(null);
+    try {
+      await api(`/admin/invitations/${id}/revoke`, { method: "POST" });
+      invitations.reload();
     } catch (cause) {
       setError(errorMessage(cause));
     }
@@ -132,8 +185,27 @@ function Memberships() {
           </ul>
         </Card>
       </div>
-      <Card title="Memberships">
-        {memberships.loading ? <LoadingState /> : memberships.error ? <ErrorState message={memberships.error} onRetry={memberships.reload} /> : !memberships.data?.memberships.length ? <EmptyState title="No memberships" description="Invite the first staff member." /> : (
+      <Card title="Invitations" description="Accepted invitations appear under facility staff. Pending links expire after 7 days." actions={<Button variant="ghost" size="sm" onClick={() => invitations.reload()}>Refresh</Button>}>
+        {invitations.loading && !invitations.data ? <LoadingState /> : invitations.error ? <ErrorState message={invitations.error} onRetry={invitations.reload} /> : !invitations.data?.invitations.length ? <EmptyState title="No invitations" description="Invitations you send appear here with their status." /> : (
+          <Table head={["Invited email", "Role", "Status", "Sent", ""]} caption="Facility staff invitations">
+            {invitations.data.invitations.map((invitation) => (
+              <tr key={invitation.id}>
+                <td>{invitation.email}<div className="mv-small mv-muted">by {invitation.invitedByName}</div></td>
+                <td>{invitation.roles.join(", ")}</td>
+                <td>
+                  <Badge tone={INVITATION_TONE[invitation.status]}>{invitation.status}</Badge>
+                  {invitation.status === "accepted" && invitation.acceptedByName ? <div className="mv-small mv-muted">by {invitation.acceptedByName}</div> : null}
+                  {invitation.status === "pending" && invitation.deliveryStatus === "failed" ? <div className="mv-small mv-muted">email not delivered</div> : null}
+                </td>
+                <td className="mv-small">{new Date(invitation.createdAt).toLocaleString()}</td>
+                <td>{invitation.status === "pending" ? <Button variant="secondary" size="sm" onClick={() => void revoke(invitation.id)}>Revoke</Button> : null}</td>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </Card>
+      <Card title="Facility staff" actions={<Button variant="ghost" size="sm" onClick={() => memberships.reload()}>Refresh</Button>}>
+        {memberships.loading && !memberships.data ? <LoadingState /> : memberships.error ? <ErrorState message={memberships.error} onRetry={memberships.reload} /> : !memberships.data?.memberships.length ? <EmptyState title="No staff yet" description="Invite the first staff member." /> : (
           <Table head={["Member", "Roles", "MFA", "Status", ""]} caption="Facility memberships">
             {memberships.data.memberships.map((member) => (
               <tr key={member.id}>
