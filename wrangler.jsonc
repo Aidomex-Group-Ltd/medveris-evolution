@@ -1,8 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  // Top level is for local `wrangler dev` only. Deploy staging with `npm run deploy:staging`,
-  // which refuses placeholder IDs and verifies the remote Hyperdrive configs and bucket.
-  // There is no production environment yet.
+  // Top level is for local `wrangler dev` only. Deploy staging with `npm run deploy:staging` and
+  // production with `npm run deploy:production`; both refuse placeholder IDs and verify the remote
+  // Hyperdrive configs, bucket and secrets before anything is uploaded.
   "name": "medveris-local",
   // Pins every remote command to the MedVeris account regardless of which account Wrangler is logged into.
   "account_id": "6337ed24a5f8ff4ec3f74517a55a7e6b",
@@ -63,6 +63,60 @@
         "FHIR_BULK_EXPORT_ENABLED": "false",
         // The cron imports public content from the official sources seeded by migration 027.
         "CONTENT_FEEDS_ENABLED": "true"
+      },
+      "secrets": {
+        "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]
+      }
+    },
+    "production": {
+      "name": "medveris-production",
+      // workers.dev is the verification origin until `npm run domain:production` attaches medveris.online.
+      // Routes are declared here only after that attachment, so a deploy never attaches the domain early.
+      "workers_dev": true,
+      "preview_urls": false,
+      // Both configs need --caching-disabled and verify-full TLS on a PostgreSQL server that is separate
+      // from staging: HYPERDRIVE as medveris_runtime, HYPERDRIVE_JOBS as medveris_jobs, both on
+      // medveris_production. The placeholders block `npm run deploy:production` until real IDs exist.
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PRODUCTION_RUNTIME_HYPERDRIVE_ID" },
+        { "binding": "HYPERDRIVE_JOBS", "id": "REPLACE_WITH_PRODUCTION_JOBS_HYPERDRIVE_ID" }
+      ],
+      "r2_buckets": [
+        { "binding": "UPLOADS", "bucket_name": "medveris-production-uploads" }
+      ],
+      "version_metadata": { "binding": "CF_VERSION_METADATA" },
+      "observability": {
+        "enabled": true,
+        "redact_query_string": true,
+        "logs": { "enabled": true, "invocation_logs": true },
+        "traces": { "enabled": true }
+      },
+      "triggers": { "crons": ["*/5 * * * *"] },
+      "vars": {
+        "APP_ENV": "production",
+        "APP_ORIGIN": "https://medveris.online",
+        "EXPECTED_DATABASE_NAME": "medveris_production",
+        "AUDIT_SIGNING_KEY_ID": "production-key-1",
+        "EMAIL_ADAPTER": "resend",
+        "EMAIL_FROM": "Medveris <no-reply@medveris.online>",
+        "STORAGE_ADAPTER": "r2",
+        // No licensed terminology service is contracted: coded entries report 503 instead of synthetic codes.
+        "TERMINOLOGY_MODE": "unavailable",
+        "DEV_SHOW_TOTP_SECRETS": "false",
+        "FHIR_EXTERNAL_WRITES_ENABLED": "false",
+        "FHIR_BULK_EXPORT_ENABLED": "false",
+        // Auto-published imports need content-governance approval before production use.
+        "CONTENT_FEEDS_ENABLED": "false",
+        "DIRECTORY_SPONSORED_LISTINGS": "false",
+        "FEATURE_DICOMWEB": "false",
+        "FEATURE_LAB": "false",
+        "FEATURE_PHARMACY": "false",
+        "FEATURE_TELEMEDICINE": "false",
+        "FEATURE_DEVICES": "false",
+        "FEATURE_AI": "false",
+        "FEATURE_PAYMENTS": "false",
+        "FEATURE_PUBLIC_HEALTH": "false",
+        "FEATURE_LEDGER_ANCHORING": "false"
       },
       "secrets": {
         "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]

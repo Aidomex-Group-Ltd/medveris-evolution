@@ -14,6 +14,9 @@ Scope: code and configuration review plus executed tests on 2026-10-28. This is 
 | Integrations cannot be enabled by configuration alone | `integration-registry.test.ts`, `departments.test.ts` |
 | Email delivery failures are recorded truthfully | `email.test.ts` |
 | Staging deploy gate refuses placeholder secrets, shared caches, public buckets and production references | `staging-gate.test.ts` |
+| Production gate refuses staging resources, a shared database server, unverified TLS, synthetic terminology, enabled integrations, missing backups or migrations, and early domain attachment | `production-gate.test.ts` |
+| Production secrets are generated with OpenSSL only when missing, never overwrite local or remote values, and data-bound keys need fresh-installation evidence | `production-secrets.test.ts` |
+| Production never serves synthetic terminology; an unconfigured service reports 503 | `terminology-unavailable.test.ts` |
 
 ## Findings
 

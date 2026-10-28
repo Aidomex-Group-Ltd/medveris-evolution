@@ -37,6 +37,13 @@
     "deploy:staging:check": "node scripts/staging-deploy.mjs --dry-run",
     "deploy:staging": "node scripts/staging-deploy.mjs",
     "deploy:staging:rollback": "node scripts/staging-rollback.mjs",
+    "secrets:production:check": "node scripts/production-secrets.mjs --check",
+    "secrets:production": "node scripts/production-secrets.mjs",
+    "deploy:production:check": "node scripts/production-deploy.mjs --dry-run",
+    "deploy:production": "node scripts/production-deploy.mjs",
+    "deploy:production:rollback": "node scripts/production-rollback.mjs",
+    "domain:production:check": "node scripts/production-domain.mjs --check",
+    "domain:production": "node scripts/production-domain.mjs",
     "start": "node apps/api/dist/server.mjs"
   },
   "dependencies": {

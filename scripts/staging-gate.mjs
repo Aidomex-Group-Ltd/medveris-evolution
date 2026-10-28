@@ -241,17 +241,18 @@ const VERSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * Blue is the version serving all traffic. A split deployment means an earlier release did not finish,
  * so a new release must not start until it is promoted or rolled back.
  * @param {any} status output of `wrangler deployments status --json`
+ * @param {string} [env] Wrangler environment, used in messages
  * @returns {{ blue: string | null, problems: string[] }}
  */
-export function blueVersion(status) {
+export function blueVersion(status, env = "staging") {
   const versions = Array.isArray(status?.versions) ? status.versions : [];
   if (versions.length === 1 && versions[0].percentage === 100 && VERSION_ID.test(versions[0].version_id ?? "")) {
     return { blue: versions[0].version_id, problems: [] };
   }
   if (versions.length > 1) {
-    return { blue: null, problems: ["the live deployment is split between versions; finish it or run `npm run deploy:staging:rollback` first"] };
+    return { blue: null, problems: [`the live deployment is split between versions; finish it or run \`npm run deploy:${env}:rollback\` first`] };
   }
-  return { blue: null, problems: ["could not determine the version serving 100% of staging traffic"] };
+  return { blue: null, problems: [`could not determine the version serving 100% of ${env} traffic`] };
 }
 
 /**
@@ -284,7 +285,7 @@ export function rollbackTarget(status, deployments) {
     return { target: serving.version_id, current: null, problems: [] };
   }
   const current = live[0]?.version_id ?? null;
-  if (!current) return { target: null, current: null, problems: ["could not read the live staging deployment"] };
+  if (!current) return { target: null, current: null, problems: ["could not read the live deployment"] };
   for (const deployment of [...(deployments ?? [])].reverse()) {
     const versions = deployment?.versions ?? [];
     if (versions.length === 1 && versions[0].percentage === 100 && versions[0].version_id !== current) {

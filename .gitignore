@@ -14,3 +14,11 @@ playwright-report/
 .dev.vars*
 *.log
 .DS_Store
+# Environment secrets live in ~/.config/medveris/<env>/; never commit copies.
+.config/medveris/
+secrets.env
+resend.env
+db.env
+seed.env
+backup-verification.json
+*.pem
