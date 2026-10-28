@@ -36,3 +36,7 @@ No database migration was added. No integration was enabled.
 ### Not done in this pass
 
 Structured radiology templates, authorized patient merge, reports framework, separate §16 roles, concurrency tests for bed allocation and dispensing, browser journeys A–G, backup restore drill and legal review. Status and next actions are in `FEATURE_GAP_MATRIX.md`.
+
+## 2026-10-28 — Scalability, real-time and resilience layer
+
+Added multi-layer caching (allowlisted public routes only), primary/replica read routing with lag-aware health and read-your-writes, a tenant shard directory (migration 030) with freeze and move tooling, Cloudflare Queues relay and consumers on top of the transactional outbox, authenticated WebSockets on Durable Objects, Durable Object rate limiting, timeouts/retries/circuit breakers, database outage handling and privacy-safe telemetry. Design, status (VERIFIED/PARTIAL/BLOCKED), measurements and risks: `SCALABILITY_AND_RESILIENCE.md`; procedures: `RESILIENCE_RUNBOOK.md`. Not deployed: staging needs the two queues, migration 030 and one `--apply-durable-object-migrations` release; production remains blocked.
