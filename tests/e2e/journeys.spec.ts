@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "./fixtures.js";
 
 /**
  * Department journeys A–G. Every journey runs in real browser sessions signed in through the UI with MFA.

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.js";
 import { totpCode } from "../../packages/auth/src/index.js";
 
 test("a newly registered facility admin enrols MFA before facility workspaces load", async ({ page }) => {

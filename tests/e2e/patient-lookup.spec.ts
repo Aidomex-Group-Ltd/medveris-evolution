@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.js";
 
 test("reception confirms, misses and searches patients without failed API requests", async ({ page }) => {
   test.slow();

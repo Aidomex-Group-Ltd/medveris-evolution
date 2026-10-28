@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.js";
 
 async function latestLink(email: string, path: "/reset-password" | "/verify-email"): Promise<string> {
   const dir = join(process.cwd(), process.env.MAIL_SINK_DIR ?? ".mail-sink");

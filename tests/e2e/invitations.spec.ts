@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures.js";
 import { totpCode } from "../../packages/auth/src/index.js";
 
 const SEED_PASSWORD = "Medveris!2026";
