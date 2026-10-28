@@ -1,5 +1,5 @@
 import { randomToken, sha256Hex } from "@medveris/auth";
-import { withContext, type Sql } from "@medveris/db";
+import { withContext, type ShardState, type Sql } from "@medveris/db";
 import type { AppConfig } from "../config.js";
 import type { AuthContext, MembershipRecord, SessionRecord, UserRecord } from "../types.js";
 import { withImpliedRoles, type Role } from "@medveris/authz";
@@ -70,8 +70,10 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
   };
   const related = await withContext(sql, { userId: user.id, actorKind: "staff" }, async (tx) => {
     const membershipsRaw = await tx`
-      select m.id, m.tenant_id, t.name as tenant_name, t.slug as tenant_slug, m.roles, m.status
+      select m.id, m.tenant_id, t.name as tenant_name, t.slug as tenant_slug, m.roles, m.status,
+             a.shard_id, a.state as shard_state, a.routing_version
         from memberships m join tenants t on t.id = m.tenant_id
+        left join tenant_shard_assignments a on a.tenant_id = m.tenant_id
        where m.user_id = ${user.id} and m.status = 'active' and t.status = 'active'
        order by t.name
     `;
@@ -93,6 +95,9 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
       tenantSlug: m.tenantSlug as string,
       roles: (m.roles as string[]) as Role[],
       status: m.status as string,
+      shard: m.shardId
+        ? { tenantId: m.tenantId as string, shardId: m.shardId as string, state: m.shardState as ShardState, routingVersion: Number(m.routingVersion) }
+        : null,
     }));
   for (const grant of related.roleGrantRows) {
     const membership = memberships.find((m) => m.tenantId === grant.tenantId);
@@ -119,6 +124,7 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
           slug: active.tenantSlug,
           roles: active.roles,
           membershipId: active.id,
+          shard: active.shard,
         }
       : null,
     patientId: (patientRows[0]?.patientId as string | undefined) ?? null,

@@ -1,12 +1,18 @@
-import { Hono, type Context } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
+import { setCookie } from "hono/cookie";
+import { ShardRoutingError } from "@medveris/db";
 import { ZodError } from "zod";
 import { bodyLimit } from "hono/body-limit";
-import { authMiddleware } from "./auth/middleware.js";
+import { authMiddleware, READ_YOUR_WRITES_COOKIE } from "./auth/middleware.js";
+import { httpCachePolicy } from "./lib/cache-policy.js";
+import { DATABASE_RETRY_AFTER_SECONDS, isDatabaseUnavailable } from "./lib/db-health.js";
+import { requestTelemetry, routeShape } from "./lib/observability.js";
+import { enforceRateLimit, RateLimitedError, requestAddress } from "./lib/rate-limit.js";
 import { AppError, nativeErrorBody } from "./lib/errors.js";
 import { AuthzError } from "@medveris/authz";
 import { DomainError } from "@medveris/domain";
 import { operationOutcome } from "./fhir/router.js";
-import type { AppBaseDeps, AppEnv } from "./types.js";
+import type { AppBaseDeps, AppBindings, AppEnv } from "./types.js";
 import { publicRoutes } from "./routes/public.js";
 import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
@@ -41,40 +47,95 @@ import { integrationRoutes } from "./routes/integrations.js";
 import { radiologyRoutes } from "./routes/radiology.js";
 import { patientMergeRoutes } from "./routes/patient-merge.js";
 import { reportRoutes } from "./routes/reports.js";
+import { realtimeRoutes } from "./routes/realtime.js";
+import { opsRoutes } from "./routes/ops.js";
 
 function isFhirPath(path: string): boolean {
   return path.startsWith("/fhir/") || path.startsWith("/terminology/fhir/");
 }
 
 function fhirResponse(c: Context<AppEnv>, body: unknown, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/fhir+json; charset=utf-8",
-      "cache-control": "no-store, private",
-      "x-content-type-options": "nosniff",
-    },
+  const headers = new Headers({
+    "content-type": "application/fhir+json; charset=utf-8",
+    "cache-control": "no-store, private",
+    "x-content-type-options": "nosniff",
   });
+  const retryAfter = c.res.headers.get("retry-after");
+  if (retryAfter) headers.set("retry-after", retryAfter);
+  return new Response(JSON.stringify(body), { status, headers });
+}
+
+const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** After a successful write, this session reads its own data from the primary for a bounded time. */
+function readYourWrites(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    await next();
+    const deps = c.get("deps");
+    if (!MUTATING.has(c.req.method) || c.res.status >= 400 || !c.get("auth") || !deps?.db?.hasReplica()) return;
+    const windowMs = deps.config.database.readYourWritesMs;
+    setCookie(c, READ_YOUR_WRITES_COOKIE, String(Date.now() + windowMs), {
+      httpOnly: true, sameSite: "Strict", path: "/api", maxAge: Math.ceil(windowMs / 1000),
+      secure: deps.config.origin.startsWith("https://"),
+    });
+  };
+}
+
+/** Session and facility-selection changes touch only the directory database, so they stay open during a tenant freeze. */
+const FREEZE_EXEMPT = [/^\/api\/v1\/auth\//, /^\/api\/v1\/me\/context$/];
+
+/**
+ * While a facility is frozen or being moved between shards, its data must not change. Writes
+ * with that facility active get 503 with Retry-After; reads continue. Unknown shard placement
+ * fails closed through ShardRoutingError.
+ */
+function tenantWriteGuard(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const auth = c.get("auth");
+    const shards = c.get("deps")?.shards;
+    if (auth?.activeTenant && shards && MUTATING.has(c.req.method) && !FREEZE_EXEMPT.some((pattern) => pattern.test(c.req.path))) {
+      const decision = shards.resolve(auth.activeTenant.id, auth.activeTenant.shard ?? null);
+      if (!decision.writable) {
+        c.header("retry-after", "60");
+        throw new AppError(503, "tenant_maintenance", "This facility is in a maintenance window; changes are paused. Try again shortly.");
+      }
+    }
+    await next();
+  };
+}
+
+/**
+ * Coarse per-isolate request-volume guard (no coordination round trip). Endpoint policies such
+ * as sign-in, recovery and search are enforced globally where they are handled.
+ */
+function requestVolumeGuard(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    if (c.req.path === "/api/v1/health/live") return next();
+    const auth = c.get("auth");
+    if (auth) await enforceRateLimit(c, "api.authenticated", auth.user.id);
+    else await enforceRateLimit(c, "api.public", requestAddress(c));
+    await next();
+  };
 }
 
 export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  app.use("*", authMiddleware(deps));
+  app.use("*", requestTelemetry({ sampleRate: deps.config.observability.requestLogSampleRate }));
 
   app.use("*", async (c, next) => {
-    const id = c.req.header("x-correlation-id") ?? crypto.randomUUID();
-    c.set("correlationId", id);
     await next();
-    c.header("x-correlation-id", id);
     c.header("x-content-type-options", "nosniff");
     c.header("x-frame-options", "DENY");
     c.header("referrer-policy", "no-referrer");
     c.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
-    if (isFhirPath(c.req.path) || c.req.path.startsWith("/api/")) {
-      c.header("cache-control", "no-store, private");
-    }
   });
+
+  app.use("*", httpCachePolicy());
+  app.use("*", authMiddleware(deps));
+  app.use("*", readYourWrites());
+  app.use("*", tenantWriteGuard());
+  app.use("/api/*", requestVolumeGuard());
 
   app.use(
     "*",
@@ -127,6 +188,8 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", radiologyRoutes);
   app.route("/api/v1", patientMergeRoutes);
   app.route("/api/v1", reportRoutes);
+  app.route("/api/v1", realtimeRoutes);
+  app.route("/api/v1", opsRoutes);
 
   app.notFound((c) => {
     if (isFhirPath(c.req.path)) {
@@ -155,6 +218,23 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
       if (isFhirPath(c.req.path)) return fhirResponse(c, operationOutcome("error", "invalid", appError.message), 422);
       return c.json(nativeErrorBody(c, appError), 422);
     }
+    if (error instanceof ShardRoutingError) {
+      const appError = new AppError(503, "tenant_unavailable", "This facility's records are temporarily unavailable");
+      console.error(JSON.stringify({ event: "shard_routing_refused", correlationId: correlation, reason: error.reason }));
+      c.header("retry-after", "60");
+      if (isFhirPath(c.req.path)) return fhirResponse(c, operationOutcome("error", "transient", appError.message), 503);
+      return c.json(nativeErrorBody(c, appError), 503);
+    }
+    if (isDatabaseUnavailable(error)) {
+      const state = (c.env as AppBindings | undefined)?.requestState;
+      if (state) state.databaseUnavailable = true;
+      const appError = new AppError(503, "database_unavailable", "The service is temporarily unavailable. Try again shortly.");
+      console.error(JSON.stringify({ event: "database_unavailable", correlationId: correlation, path: routeShape(c.req.path), errorCode: String((error as { code?: unknown }).code ?? "") }));
+      c.header("retry-after", String(DATABASE_RETRY_AFTER_SECONDS));
+      if (isFhirPath(c.req.path)) return fhirResponse(c, operationOutcome("error", "transient", appError.message), 503);
+      return c.json(nativeErrorBody(c, appError), 503);
+    }
+    if (error instanceof RateLimitedError) c.header("retry-after", String(error.retryAfterSeconds));
     if (error instanceof AppError) {
       if (isFhirPath(c.req.path)) {
         const code = error.status === 401 ? "login" : error.status === 403 ? "forbidden" : error.status === 404 ? "not-found" : error.status === 409 ? "conflict" : error.status === 422 ? "invalid" : error.status === 429 ? "throttled" : error.status >= 500 ? "transient" : "processing";
@@ -162,7 +242,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
       }
       return c.json(nativeErrorBody(c, error), error.status as 400);
     }
-    console.error(JSON.stringify({ event: "unhandled_error", correlationId: correlation, path: c.req.path, message: (error as Error).message, stack: deps.config.appEnv === "production" ? undefined : (error as Error).stack }));
+    console.error(JSON.stringify({ event: "unhandled_error", correlationId: correlation, path: routeShape(c.req.path), message: (error as Error).message, stack: deps.config.appEnv === "production" ? undefined : (error as Error).stack }));
     if (isFhirPath(c.req.path)) {
       return fhirResponse(c, operationOutcome("error", "exception", "An unexpected error occurred"), 500);
     }

@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { sha256Hex } from "@medveris/auth";
 import { withContext } from "@medveris/db";
 import { UnauthorizedError, ForbiddenError } from "../lib/errors.js";
-import { rateLimit } from "../lib/rate-limit.js";
+import { enforceRateLimit } from "../lib/rate-limit.js";
 import type { AppEnv } from "../types.js";
 
 export interface IntegrationClient {
@@ -45,7 +45,7 @@ export async function requireIntegration(c: Context<AppEnv>, requiredScope: stri
   if (!scopes.includes(requiredScope)) {
     throw new ForbiddenError(`The integration token does not include the ${requiredScope} scope`);
   }
-  rateLimit(`integration:${result.id}`, 120, 60_000);
+  await enforceRateLimit(c, "integration.request", String(result.id));
   if (!result.tenantId && requiredScope !== "integration.directory.read") {
     throw new ForbiddenError("The integration client is not bound to a facility tenant");
   }

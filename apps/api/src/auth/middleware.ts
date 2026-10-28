@@ -1,6 +1,9 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { withContext, type Tx } from "@medveris/db";
+import { DatabaseRouter, withContext, withReadOnlyContext, type ReadRoute, type TenantContext, type Tx } from "@medveris/db";
+import { metric } from "@medveris/platform";
+import { isDatabaseUnavailable } from "../lib/db-health.js";
+import { annotate } from "../lib/observability.js";
 import type { ActorContext, Role } from "@medveris/authz";
 import { ForbiddenError, UnauthorizedError } from "../lib/errors.js";
 import type { AppBaseDeps, AppBindings, AppDeps, AppEnv, AuthContext } from "../types.js";
@@ -111,21 +114,63 @@ export function actorFrom(auth: AuthContext): ActorContext {
   };
 }
 
-export async function withActor<T>(c: Context<AppEnv>, fn: (tx: Tx) => Promise<T>): Promise<T> {
-  const auth = requireAuth(c);
-  const deps = c.get("deps");
+function actorContext(auth: AuthContext): TenantContext {
   const actor = actorFrom(auth);
-  const actorKind = auth.activeTenant ? "staff" : auth.patientId ? "patient" : "staff";
-  return withContext(deps.sql, {
+  return {
     tenantId: auth.activeTenant?.id ?? null,
     userId: auth.user.id,
     patientId: auth.patientId,
-    actorKind,
+    actorKind: auth.activeTenant ? "staff" : auth.patientId ? "patient" : "staff",
     roles: actor.roles,
     platformRole: auth.platformRoles.includes("platform_operator")
       ? "platform_operator"
       : auth.platformRoles.includes("credential_reviewer") ? "credential_reviewer" : null,
-  }, fn);
+  };
+}
+
+export async function withActor<T>(c: Context<AppEnv>, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  const auth = requireAuth(c);
+  return withContext(c.get("deps").sql, actorContext(auth), fn);
+}
+
+export const READ_YOUR_WRITES_COOKIE = "mv_ryw";
+
+function readYourWritesUntil(c: Context<AppEnv>): number | null {
+  const value = Number(getCookie(c, READ_YOUR_WRITES_COOKIE));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
+ * Read-only query for data that tolerates bounded staleness (approved reports, dashboards,
+ * listings). It runs with the same RLS context as `withActor` inside a READ ONLY transaction,
+ * on the replica only when the router measured it healthy, within the lag bound, and this
+ * session has not written recently. A replica failure is retried once on the primary, which is
+ * safe because the transaction cannot write. Never use this for authorization, consent or
+ * clinical reads that must reflect the latest write.
+ */
+export async function withStaleTolerantRead<T>(
+  c: Context<AppEnv>,
+  options: { maxStalenessMs?: number },
+  fn: (tx: Tx) => Promise<T>,
+): Promise<{ value: T; route: Pick<ReadRoute, "target" | "reason" | "maxStalenessMs"> }> {
+  const auth = requireAuth(c);
+  const deps = c.get("deps");
+  const router = deps.db ?? DatabaseRouter.primaryOnly(deps.sql);
+  const route = await router.forRead({ consistency: "bounded-staleness", maxStalenessMs: options.maxStalenessMs, readYourWritesUntil: readYourWritesUntil(c) });
+  const context = actorContext(auth);
+  try {
+    const value = await withReadOnlyContext(route.sql, context, fn);
+    annotate(c, { dbRead: route.target, dbReadReason: route.reason });
+    metric("db.read_route", 1, { target: route.target, reason: route.reason });
+    return { value, route: { target: route.target, reason: route.reason, maxStalenessMs: route.maxStalenessMs } };
+  } catch (error) {
+    if (route.target !== "replica" || !isDatabaseUnavailable(error)) throw error;
+    router.markReplicaFailed("query-failed");
+    metric("db.read_route", 1, { target: "primary", reason: "replica-failed-fallback" });
+    annotate(c, { dbRead: "primary", dbReadReason: "replica-failed-fallback" });
+    const value = await withReadOnlyContext(deps.sql, context, fn);
+    return { value, route: { target: "primary", reason: "replica-failed-fallback", maxStalenessMs: 0 } };
+  }
 }
 
 export async function withPlatformActor<T>(c: Context<AppEnv>, fn: (tx: Tx) => Promise<T>): Promise<T> {
@@ -164,4 +209,6 @@ export async function revokeCurrentSession(c: Context<AppEnv>): Promise<void> {
   const auth = requireAuth(c);
   await revokeSession(c.get("deps").sql, auth.session.id, "user-logout");
   clearSessionCookie(c);
+  // Open live-update connections would otherwise run until their own expiry.
+  await c.get("deps").realtime?.revokeUser(auth.user.id, auth.memberships.map((m) => m.tenantId)).catch(() => undefined);
 }

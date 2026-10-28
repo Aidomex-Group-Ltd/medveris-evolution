@@ -41,12 +41,3 @@ publicRoutes.get("/public/config", async (c) => {
 });
 
 publicRoutes.get("/health/live", (c) => c.json({ status: "ok" }));
-
-publicRoutes.get("/health/ready", async (c) => {
-  try {
-    await c.get("deps").sql`select 1 as ok`;
-    return c.json({ status: "ready", database: "reachable" });
-  } catch {
-    return c.json({ status: "unavailable", database: "unreachable" }, 503);
-  }
-});

@@ -11,7 +11,7 @@ import { requireAuth, requirePlatformReviewer, requireStaff, withActor, withRevi
 import { auditMeta, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
-import { rateLimit, clientKey } from "../lib/rate-limit.js";
+import { enforceRateLimit } from "../lib/rate-limit.js";
 import type { AppEnv } from "../types.js";
 
 export const credentialRoutes = new Hono<AppEnv>();
@@ -48,7 +48,7 @@ const ALLOWED_TYPES = new Set(["application/pdf", "image/png", "image/jpeg"]);
 credentialRoutes.post("/uploads", async (c) => {
   const auth = requireStaff(c);
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, `upload:${auth.user.id}`), 20, 60 * 60_000);
+  await enforceRateLimit(c, "upload", auth.user.id);
   const body = await parseJson(c, uploadSchema);
   let bytes: Uint8Array;
   try {

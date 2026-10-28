@@ -10,6 +10,7 @@
       "@medveris/contracts": ["packages/contracts/src/index.ts"],
       "@medveris/db": ["packages/db/src/index.ts"],
       "@medveris/domain": ["packages/domain/src/index.ts"],
+      "@medveris/platform": ["packages/platform/src/index.ts"],
       "@medveris/ui": ["packages/ui/src/index.ts"]
     }
   },

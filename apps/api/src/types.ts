@@ -1,8 +1,11 @@
-import type { Sql } from "@medveris/db";
+import type { DatabaseRouter, ShardAssignment, ShardRouter, Sql } from "@medveris/db";
 import type { Role } from "@medveris/authz";
 import type { AppConfig } from "./config.js";
 import type { EmailAdapter } from "./lib/email.js";
 import type { StorageAdapter } from "./lib/storage.js";
+import type { RequestAnnotations } from "./lib/observability.js";
+import type { RateLimiter } from "./lib/rate-limit.js";
+import type { RealtimePublisher } from "./realtime/publisher.js";
 
 export interface UserRecord {
   id: string;
@@ -34,6 +37,8 @@ export interface MembershipRecord {
   tenantSlug: string;
   roles: Role[];
   status: string;
+  /** Shard directory entry for this facility; null when the directory has no row for it. */
+  shard?: ShardAssignment | null;
 }
 
 export interface AuthContext {
@@ -46,6 +51,7 @@ export interface AuthContext {
     slug: string;
     roles: Role[];
     membershipId: string;
+    shard?: ShardAssignment | null;
   } | null;
   patientId: string | null;
   platformRoles: string[];
@@ -53,7 +59,13 @@ export interface AuthContext {
 }
 
 export interface AppDeps {
+  /** Primary (read-write) connection. */
   sql: Sql;
+  /** Read routing; absent means every read uses `sql`. */
+  db?: DatabaseRouter;
+  shards?: ShardRouter;
+  rateLimiter?: RateLimiter;
+  realtime?: RealtimePublisher;
   config: AppConfig;
   email: EmailAdapter;
   storage: StorageAdapter;
@@ -63,14 +75,23 @@ export interface AppVariables {
   deps: AppDeps;
   auth: AuthContext | null;
   correlationId: string;
+  annotations: RequestAnnotations;
 }
 
 /** Dependencies shared by every request; `sql` is omitted when each request binds its own client. */
 export type AppBaseDeps = Omit<AppDeps, "sql"> & { sql?: Sql };
 
+/** Outcomes the Worker reads back after the router returns, e.g. to drive the database breaker. */
+export interface RequestState {
+  databaseUnavailable: boolean;
+}
+
 export interface AppBindings {
   /** Per-request dependencies. Workers must not share database sockets between requests. */
   requestDeps?: AppDeps;
+  requestState?: RequestState;
+  /** Workers execution context, present only on Cloudflare; used for background cache writes. */
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export type AppEnv = { Bindings: AppBindings; Variables: AppVariables };

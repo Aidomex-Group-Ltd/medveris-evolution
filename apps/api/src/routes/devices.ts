@@ -11,7 +11,7 @@ import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
-import { clientKey, rateLimit } from "../lib/rate-limit.js";
+import { enforceRateLimit } from "../lib/rate-limit.js";
 import { ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
 import { assertIntegrationAvailable } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
@@ -92,7 +92,7 @@ deviceRoutes.post("/devices/:id/ingest", async (c) => {
   requireStaff(c);
   assertWardAccess(requestActor(c));
   assertIntegrationAvailable(c.get("deps").config, "devices", "devices.ingest", "no observation was stored");
-  rateLimit(clientKey(c.req.raw.headers, `device-ingest:${c.get("auth")!.user.id}`), 120, 60_000);
+  await enforceRateLimit(c, "device.ingest", c.get("auth")!.user.id);
   const auth = c.get("auth")!;
   const id = uuidSchema.parse(c.req.param("id"));
   const body = await parseJson(c, deviceObservationSchema);

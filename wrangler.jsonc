@@ -29,6 +29,25 @@
     { "binding": "HYPERDRIVE_JOBS", "id": "local-only" }
   ],
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  // Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
+  "durable_objects": {
+    "bindings": [
+      { "name": "RATE_LIMITER", "class_name": "RateLimiterObject" },
+      { "name": "REALTIME", "class_name": "RealtimeHub" }
+    ]
+  },
+  "migrations": [{ "tag": "v1-scaling", "new_sqlite_classes": ["RateLimiterObject", "RealtimeHub"] }],
+  // The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
+  "queues": {
+    "producers": [
+      { "binding": "JOBS_QUEUE", "queue": "medveris-local-jobs" },
+      { "binding": "JOBS_DLQ", "queue": "medveris-local-jobs-dlq" }
+    ],
+    "consumers": [
+      { "queue": "medveris-local-jobs", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "max_concurrency": 2, "dead_letter_queue": "medveris-local-jobs-dlq" },
+      { "queue": "medveris-local-jobs-dlq", "max_batch_size": 10, "max_batch_timeout": 30, "max_retries": 3, "max_concurrency": 1 }
+    ]
+  },
   "env": {
     "staging": {
       "name": "medveris-staging",
@@ -47,6 +66,25 @@
       ],
       // Blue-green releases (scripts/staging-deploy.mjs) read the answering version from this binding.
       "version_metadata": { "binding": "CF_VERSION_METADATA" },
+      // Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
+      "durable_objects": {
+        "bindings": [
+          { "name": "RATE_LIMITER", "class_name": "RateLimiterObject" },
+          { "name": "REALTIME", "class_name": "RealtimeHub" }
+        ]
+      },
+      "migrations": [{ "tag": "v1-scaling", "new_sqlite_classes": ["RateLimiterObject", "RealtimeHub"] }],
+      // The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
+      "queues": {
+        "producers": [
+          { "binding": "JOBS_QUEUE", "queue": "medveris-staging-jobs" },
+          { "binding": "JOBS_DLQ", "queue": "medveris-staging-jobs-dlq" }
+        ],
+        "consumers": [
+          { "queue": "medveris-staging-jobs", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "max_concurrency": 2, "dead_letter_queue": "medveris-staging-jobs-dlq" },
+          { "queue": "medveris-staging-jobs-dlq", "max_batch_size": 10, "max_batch_timeout": 30, "max_retries": 3, "max_concurrency": 1 }
+        ]
+      },
       "triggers": { "crons": ["*/5 * * * *"] },
       "vars": {
         "APP_ENV": "staging",
@@ -62,7 +100,10 @@
         "FHIR_EXTERNAL_WRITES_ENABLED": "false",
         "FHIR_BULK_EXPORT_ENABLED": "false",
         // The cron imports public content from the official sources seeded by migration 027.
-        "CONTENT_FEEDS_ENABLED": "true"
+        "CONTENT_FEEDS_ENABLED": "true",
+        // Live updates are verified on synthetic staging data before any production use.
+        "REALTIME_ENABLED": "true",
+        "REQUEST_LOG_SAMPLE_RATE": "1"
       },
       "secrets": {
         "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]
@@ -85,6 +126,25 @@
         { "binding": "UPLOADS", "bucket_name": "medveris-production-uploads" }
       ],
       "version_metadata": { "binding": "CF_VERSION_METADATA" },
+      // Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
+      "durable_objects": {
+        "bindings": [
+          { "name": "RATE_LIMITER", "class_name": "RateLimiterObject" },
+          { "name": "REALTIME", "class_name": "RealtimeHub" }
+        ]
+      },
+      "migrations": [{ "tag": "v1-scaling", "new_sqlite_classes": ["RateLimiterObject", "RealtimeHub"] }],
+      // The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
+      "queues": {
+        "producers": [
+          { "binding": "JOBS_QUEUE", "queue": "medveris-production-jobs" },
+          { "binding": "JOBS_DLQ", "queue": "medveris-production-jobs-dlq" }
+        ],
+        "consumers": [
+          { "queue": "medveris-production-jobs", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "max_concurrency": 2, "dead_letter_queue": "medveris-production-jobs-dlq" },
+          { "queue": "medveris-production-jobs-dlq", "max_batch_size": 10, "max_batch_timeout": 30, "max_retries": 3, "max_concurrency": 1 }
+        ]
+      },
       "observability": {
         "enabled": true,
         "redact_query_string": true,
@@ -116,7 +176,10 @@
         "FEATURE_AI": "false",
         "FEATURE_PAYMENTS": "false",
         "FEATURE_PUBLIC_HEALTH": "false",
-        "FEATURE_LEDGER_ANCHORING": "false"
+        "FEATURE_LEDGER_ANCHORING": "false",
+        // Off until staging failover and WebSocket verification are signed off.
+        "REALTIME_ENABLED": "false",
+        "REQUEST_LOG_SAMPLE_RATE": "0.1"
       },
       "secrets": {
         "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]

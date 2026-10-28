@@ -19,7 +19,7 @@ import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, ensureMatch, parseJson, parseQuery, requestMeta } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
-import { rateLimit, clientKey } from "../lib/rate-limit.js";
+import { enforceRateLimit } from "../lib/rate-limit.js";
 import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
 import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
 import type { AppEnv } from "../types.js";
@@ -108,7 +108,7 @@ receptionRoutes.post("/reception/patients", async (c) => {
 receptionRoutes.post("/patients/resolve", async (c) => {
   requireStaff(c);
   requireFrontDesk(c);
-  rateLimit(clientKey(c.req.raw.headers, `resolve:${c.get("auth")!.user.id}`), 30, 60_000);
+  await enforceRateLimit(c, "patient.resolve", c.get("auth")!.user.id);
   const auth = c.get("auth")!;
   const deps = c.get("deps");
   const meta = requestMeta(c);
@@ -155,7 +155,7 @@ receptionRoutes.post("/patients/resolve", async (c) => {
 receptionRoutes.get("/patients/search", async (c) => {
   requireStaff(c);
   requireFrontDesk(c);
-  rateLimit(clientKey(c.req.raw.headers, `search:${c.get("auth")!.user.id}`), 60, 60_000);
+  await enforceRateLimit(c, "patient.search", c.get("auth")!.user.id);
   const auth = c.get("auth")!;
   const query = parseQuery(c, patientSearchSchema);
   const term = `${query.q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;

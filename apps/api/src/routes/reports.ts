@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { reportQuerySchema } from "@medveris/contracts";
-import { requireStaff, withStaffActor } from "../auth/middleware.js";
+import { requireStaff, withStaffActor, withStaleTolerantRead } from "../auth/middleware.js";
+import { enforceRateLimit } from "../lib/rate-limit.js";
 import { requestActor, requestAudit } from "../lib/actor.js";
 import { writeAudit } from "../lib/audit.js";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
@@ -12,6 +13,8 @@ export const reportRoutes = new Hono<AppEnv>();
 
 const MAX_RANGE_DAYS = 366;
 const DEFINITION_VERSION = "medveris-reports-1";
+/** Reports state their data source and staleness bound in metadata; operational decisions use live screens. */
+const REPORT_MAX_STALENESS_MS = 30_000;
 
 function allowed(report: ReportDefinition, roles: readonly string[]): boolean {
   return report.roles.some((role) => roles.includes(role));
@@ -57,28 +60,34 @@ reportRoutes.get("/reports/:id", async (c) => {
   const auth = c.get("auth")!;
   const config = c.get("deps").config;
   const generatedAt = new Date();
-  const result = await withStaffActor(c, async (tx) => {
+  if (query.format === "csv") await enforceRateLimit(c, "jobs.submit", auth.user.id);
+  else await enforceRateLimit(c, "reports.run", auth.user.id);
+  // Reports tolerate bounded staleness, so they may read from a healthy replica. The access is
+  // audited on the primary afterwards and before any rows leave the server.
+  const { value: result, route } = await withStaleTolerantRead(c, { maxStalenessMs: REPORT_MAX_STALENESS_MS }, async (tx) => {
     const [range] = await tx`
       select ((${query.from}::date)::timestamp at time zone ${query.timeZone}) as start_at,
              ((${query.to}::date + 1)::timestamp at time zone ${query.timeZone}) as end_at
     `;
-    const output = await report.run(tx, {
+    return report.run(tx, {
       tenantId: auth.activeTenant!.id, from: query.from, to: query.to, timeZone: query.timeZone,
       startAt: range!.startAt as Date, endAt: range!.endAt as Date,
       params: query.expiryWindowDays ? { expiryWindowDays: query.expiryWindowDays } : {},
     }, config);
-    if (report.sensitive || query.format === "csv") {
+  });
+  if (report.sensitive || query.format === "csv") {
+    await withStaffActor(c, async (tx) => {
       await writeAudit(tx, config, requestAudit(c, query.format === "csv" ? "report.export" : "report.view", {
         resourceType: "Report", resourceId: null,
-        metadata: { report: report.id, from: query.from, to: query.to, timeZone: query.timeZone, rows: output.rows.length, format: query.format },
+        metadata: { report: report.id, from: query.from, to: query.to, timeZone: query.timeZone, rows: result.rows.length, format: query.format, dataSource: route.target },
       }));
-    }
-    return output;
-  });
+    });
+  }
   const metadata = {
     report: report.id, title: report.title, definitionVersion: DEFINITION_VERSION,
     facility: auth.activeTenant!.name, from: query.from, to: query.to, timeZone: query.timeZone,
     generatedAt: generatedAt.toISOString(), generatedBy: auth.user.displayName,
+    dataSource: route.target, maxStalenessSeconds: Math.ceil(route.maxStalenessMs / 1000),
   };
   if (query.format === "csv") {
     const lines = [

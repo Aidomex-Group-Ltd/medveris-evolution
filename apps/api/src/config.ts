@@ -1,3 +1,5 @@
+import { parseShardTopology, type ShardTopology } from "@medveris/db";
+
 export interface AppConfig {
   appEnv: string;
   origin: string;
@@ -54,9 +56,92 @@ export interface AppConfig {
     tokenTtlMinutes: number;
   };
   features: Record<string, boolean>;
+  database: {
+    /** Replica reads need an explicit opt-in plus a HYPERDRIVE_REPLICA binding. */
+    replicaEnabled: boolean;
+    replicaMaxLagMs: number;
+    /** After a write, the session reads from the primary for this long. */
+    readYourWritesMs: number;
+    replicaHealthTtlMs: number;
+    replicaHealthTimeoutMs: number;
+  };
+  shardTopology: ShardTopology;
+  cache: {
+    /** Bump to invalidate every Worker-cache key without a deployment. */
+    keyEpoch: string;
+  };
+  observability: {
+    requestLogSampleRate: number;
+  };
+  realtime: {
+    enabled: boolean;
+    /** Origins allowed to open WebSockets; always includes APP_ORIGIN. */
+    allowedOrigins: string[];
+    /** Outbox event types delivered as real-time notifications; clinical types need explicit approval. */
+    eventTypes: string[];
+    ticketTtlSeconds: number;
+    /** Connections are closed after this and must re-authenticate through a new ticket. */
+    maxConnectionSeconds: number;
+  };
+  rateLimit: {
+    overrides: RateLimitOverride[];
+    trustForwardedFor: boolean;
+  };
+  jobs: {
+    relayBatchSize: number;
+    perTenantBatchLimit: number;
+  };
+}
+
+export interface RateLimitOverride {
+  policy: string;
+  /** Multiplies the policy limit; bounded to 0.1–10. */
+  factor: number;
+  expiresAt: string;
+  reason: string;
 }
 
 type EnvLike = Record<string, string | undefined>;
+
+function fraction(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : fallback;
+}
+
+function list(value: string | undefined): string[] {
+  return (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+/**
+ * Overrides are deployment configuration, so every change is in the Worker version history.
+ * Expired or malformed entries are rejected at startup rather than silently ignored.
+ */
+export function parseRateLimitOverrides(raw: string | undefined, now = Date.now()): RateLimitOverride[] {
+  if (!raw || !raw.trim()) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("RATE_LIMIT_OVERRIDES must be a JSON array");
+  }
+  if (!Array.isArray(parsed)) throw new Error("RATE_LIMIT_OVERRIDES must be a JSON array");
+  return parsed.map((entry, index) => {
+    const item = entry as Partial<RateLimitOverride>;
+    const expires = Date.parse(String(item.expiresAt ?? ""));
+    if (typeof item.policy !== "string" || !/^[a-z][a-z0-9.-]{1,60}$/.test(item.policy)) throw new Error(`RATE_LIMIT_OVERRIDES[${index}].policy is invalid`);
+    if (typeof item.factor !== "number" || item.factor < 0.1 || item.factor > 10) throw new Error(`RATE_LIMIT_OVERRIDES[${index}].factor must be between 0.1 and 10`);
+    if (!Number.isFinite(expires) || expires <= now) throw new Error(`RATE_LIMIT_OVERRIDES[${index}].expiresAt must be a future time`);
+    if (expires - now > 7 * 86_400_000) throw new Error(`RATE_LIMIT_OVERRIDES[${index}] may last at most 7 days`);
+    if (typeof item.reason !== "string" || item.reason.trim().length < 10) throw new Error(`RATE_LIMIT_OVERRIDES[${index}].reason must explain the override`);
+    return { policy: item.policy, factor: item.factor, expiresAt: new Date(expires).toISOString(), reason: item.reason.trim() };
+  });
+}
+
+function allowedOrigins(raw: string | undefined, origin: string, appEnv: string): string[] {
+  const origins = new Set([origin]);
+  for (const candidate of list(raw)) origins.add(validatedOrigin(candidate, appEnv));
+  return [...origins];
+}
 
 function bool(value: string | undefined, fallback = false): boolean {
   if (value == null || value === "") return fallback;
@@ -148,6 +233,11 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
   if (mapProviderState !== "disabled" && !tileUrl) {
     throw new Error("MAP_TILE_URL is required when the map tile provider is enabled");
   }
+  const shardTopology = parseShardTopology(env.SHARD_TOPOLOGY);
+  const realtimeEventTypes = list(env.REALTIME_EVENT_TYPES ?? DEFAULT_REALTIME_EVENT_TYPES.join(","));
+  for (const type of realtimeEventTypes) {
+    if (!/^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$/.test(type)) throw new Error(`REALTIME_EVENT_TYPES contains an invalid event type ${type}`);
+  }
   const minZoom = Math.max(0, Math.min(integer(env.MAP_MIN_ZOOM, 3), 22));
   const maxZoom = Math.max(minZoom, Math.min(integer(env.MAP_MAX_ZOOM, 19), 22));
   return {
@@ -214,8 +304,41 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
       publicHealth: bool(env.FEATURE_PUBLIC_HEALTH, false),
       ledgerAnchoring: bool(env.FEATURE_LEDGER_ANCHORING, false),
     },
+    database: {
+      replicaEnabled: bool(env.DB_REPLICA_ENABLED, false),
+      replicaMaxLagMs: Math.max(100, Math.min(integer(env.DB_REPLICA_MAX_LAG_MS, 5_000), 60_000)),
+      readYourWritesMs: Math.max(1_000, Math.min(integer(env.DB_READ_YOUR_WRITES_MS, 15_000), 300_000)),
+      replicaHealthTtlMs: Math.max(1_000, Math.min(integer(env.DB_REPLICA_HEALTH_TTL_MS, 5_000), 60_000)),
+      replicaHealthTimeoutMs: Math.max(100, Math.min(integer(env.DB_REPLICA_HEALTH_TIMEOUT_MS, 1_000), 5_000)),
+    },
+    shardTopology,
+    cache: {
+      keyEpoch: /^[A-Za-z0-9._-]{1,32}$/.test(env.CACHE_KEY_EPOCH ?? "") ? env.CACHE_KEY_EPOCH! : "1",
+    },
+    observability: {
+      requestLogSampleRate: fraction(env.REQUEST_LOG_SAMPLE_RATE, appEnv === "production" ? 0.1 : 1),
+    },
+    realtime: {
+      enabled: bool(env.REALTIME_ENABLED, false),
+      allowedOrigins: allowedOrigins(env.REALTIME_ALLOWED_ORIGINS, origin, appEnv),
+      eventTypes: realtimeEventTypes,
+      ticketTtlSeconds: Math.max(10, Math.min(integer(env.REALTIME_TICKET_TTL_SECONDS, 30), 120)),
+      maxConnectionSeconds: Math.max(60, Math.min(integer(env.REALTIME_MAX_CONNECTION_SECONDS, 900), 3600)),
+    },
+    rateLimit: {
+      overrides: parseRateLimitOverrides(env.RATE_LIMIT_OVERRIDES),
+      // Only the Node server behind a proxy the operator controls may trust X-Forwarded-For.
+      trustForwardedFor: LOCAL_ONLY_ENVIRONMENTS.has(appEnv) || bool(env.TRUST_FORWARDED_FOR, false),
+    },
+    jobs: {
+      relayBatchSize: Math.max(1, Math.min(integer(env.JOBS_RELAY_BATCH_SIZE, 100), 500)),
+      perTenantBatchLimit: Math.max(1, Math.min(integer(env.JOBS_PER_TENANT_BATCH_LIMIT, 25), 500)),
+    },
   };
 }
+
+/** Non-clinical notifications only; clinical workflow events are added per deployment after approval. */
+export const DEFAULT_REALTIME_EVENT_TYPES = ["content.published", "job.progress"] as const;
 
 export function publicConfig(config: AppConfig) {
   return {

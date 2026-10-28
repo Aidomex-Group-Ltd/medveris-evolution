@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { readdir } from "node:fs/promises";
 import pg from "pg";
-import { blueVersion, parseEnvFile, parseJsonOutput, parseWranglerConfig, planSecretUpload, uploadedVersionId } from "./staging-gate.mjs";
+import { blueVersion, parseEnvFile, parseJsonOutput, parseWranglerConfig, planSecretUpload, requiredQueues, uploadedVersionId } from "./staging-gate.mjs";
 import {
   PRODUCTION,
   PRODUCTION_SECRETS,
@@ -145,6 +145,9 @@ problems.push(...checkBackupAttestation(backup, new Date()));
 evidence.backupVerification = backup ? { provider: backup.provider, restoreDrillAt: backup.restoreDrillAt } : null;
 
 // 3. Private R2 bucket.
+for (const queue of requiredQueues(production)) {
+  if (wrangler("queues", "info", queue).status !== 0) problems.push(`queue ${queue} does not exist; create it with \`npx wrangler queues create ${queue}\``);
+}
 const bucketInfo = wrangler("r2", "bucket", "info", PRODUCTION.bucket, "--json");
 if (bucketInfo.status !== 0 || parseJsonOutput(bucketInfo.stdout)?.name !== PRODUCTION.bucket) {
   problems.push(`R2 bucket ${PRODUCTION.bucket} was not found`);

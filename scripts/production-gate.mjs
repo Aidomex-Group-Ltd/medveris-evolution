@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { checkScalingConfig } from "./staging-gate.mjs";
 
 /**
  * Pure production gate rules used by scripts/production-deploy.mjs and scripts/production-domain.mjs.
@@ -126,6 +127,9 @@ export function checkProductionConfig(config) {
   check(!serialized.includes("REPLACE_WITH"), "production config still contains REPLACE_WITH placeholders");
   check(!NON_PRODUCTION_REFERENCE.test(serialized.replaceAll("REPLACE_WITH", "")), "production config references a staging, local or synthetic resource");
   check(!/migrat/i.test(JSON.stringify([config.build ?? null, production.build ?? null])), "a Wrangler build command must not run database migrations");
+  problems.push(...checkScalingConfig(production, "medveris-production"));
+  check(vars.REALTIME_ENABLED !== "true", "REALTIME_ENABLED must stay false in production until staging WebSocket and failover verification is signed off");
+  check(vars.DB_REPLICA_ENABLED !== "true", "DB_REPLICA_ENABLED must stay false until a provider read replica is provisioned and its failover tested");
   return problems;
 }
 

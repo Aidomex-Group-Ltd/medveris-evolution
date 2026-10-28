@@ -14,10 +14,13 @@ import {
   parseEnvFile,
   parseJsonOutput,
   parseWranglerConfig,
+  pendingMigrationTag,
   planSecretUpload,
+  requiredQueues,
   requiredSecrets,
   uploadedVersionId,
 } from "./staging-gate.mjs";
+import { cloudflare } from "./cloudflare-api.mjs";
 import { probeHealth, verifyVersion, versionsDeploy } from "./staging-release.mjs";
 
 /**
@@ -41,6 +44,8 @@ import { probeHealth, verifyVersion, versionsDeploy } from "./staging-release.mj
  */
 
 const dryRun = process.argv.includes("--dry-run");
+// Gradual uploads cannot apply Durable Object migrations; this flag allows one full `wrangler deploy` for them.
+const applyDurableObjectMigrations = process.argv.includes("--apply-durable-object-migrations");
 const ACCOUNT_ID = "6337ed24a5f8ff4ec3f74517a55a7e6b";
 const DEFAULT_SECRETS_FILE = resolve(homedir(), ".config/medveris/staging/secrets.env");
 const DEFAULT_RESEND_FILE = resolve(homedir(), ".config/medveris/staging/resend.env");
@@ -109,6 +114,24 @@ if (secretList.status === 0 && Array.isArray(parseJsonOutput(secretList.stdout))
   notes.push(`Worker ${EXPECTED.worker} does not exist yet, so no stored data depends on existing keys`);
 } else {
   problems.push("could not list the staging Worker secrets");
+}
+
+for (const queue of requiredQueues(staging)) {
+  if (wrangler("queues", "info", queue).status !== 0) {
+    problems.push(`queue ${queue} does not exist; create it with \`npx wrangler queues create ${queue}\``);
+  }
+}
+
+let pendingMigration = null;
+if (remoteSecretNames) {
+  const scripts = await cloudflare(`/accounts/${ACCOUNT_ID}/workers/scripts`).catch(() => null);
+  const script = scripts?.success ? scripts.result.find((item) => item.id === EXPECTED.worker) : undefined;
+  if (!script) problems.push("could not read the staging Worker's Durable Object migration state");
+  else pendingMigration = pendingMigrationTag(staging, script.migration_tag ?? null);
+  if (pendingMigration && !applyDurableObjectMigrations) {
+    problems.push(`Durable Object migration ${pendingMigration} is not applied; gradual releases cannot apply it. Re-run with --apply-durable-object-migrations to release with \`wrangler deploy\` (all traffic moves at once, then health is verified and the previous version is restored on failure)`);
+  }
+  if (pendingMigration) notes.push(`Durable Object migration ${pendingMigration} will be applied by this release`);
 }
 
 const live = remoteSecretNames ? blueVersion(parseJsonOutput(wrangler("deployments", "status", "--env", "staging", "--json").stdout)) : { blue: null, problems: [] };
@@ -189,6 +212,24 @@ if (remoteSecretNames === null) {
   }
   const health = await probeHealth();
   console.log(`staging gate: first deployment of ${EXPECTED.worker}; live=${health.live} ready=${health.ready}`);
+  process.exit(health.ok ? 0 : 1);
+}
+
+// 5a'. A Durable Object migration: one `wrangler deploy`, verified, with the previous version restored on failure.
+if (pendingMigration) {
+  const previous = live.blue;
+  const deploy = withSecretsFile((file) => spawnSync("npx", ["wrangler", "deploy", "--env", "staging", "--strict", ...(file ? ["--secrets-file", file] : [])], { stdio: "inherit" }));
+  if (deploy.status !== 0) {
+    console.error(`staging release: wrangler deploy failed (exit ${deploy.status}); ${previous ? `blue ${previous} should still be live` : "check the deployment list"}`);
+    process.exit(deploy.status ?? 1);
+  }
+  const health = await probeHealth();
+  if (!health.ok && previous) {
+    console.error(`staging release: health failed after applying ${pendingMigration}; restoring ${previous}`);
+    versionsDeploy([`${previous}@100%`], `restore ${previous} after failed migration release`);
+    process.exit(1);
+  }
+  console.log(`staging release: applied Durable Object migration ${pendingMigration}; live=${health.live} ready=${health.ready}`);
   process.exit(health.ok ? 0 : 1);
 }
 

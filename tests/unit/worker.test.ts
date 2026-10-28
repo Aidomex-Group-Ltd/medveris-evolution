@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import worker, { VERSION_HEADER, withVersionHeader } from "../../apps/api/src/worker.js";
+import worker from "../../apps/api/src/worker.js";
+import { VERSION_HEADER, withVersionHeader } from "../../apps/api/src/worker-support.js";
 
 const stagingEnv = {
   APP_ENV: "staging",

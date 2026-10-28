@@ -114,8 +114,8 @@ export function checkStagingConfig(config) {
   const bindings = staging.hyperdrive ?? [];
   const ids = Object.fromEntries(bindings.map((/** @type {any} */ binding) => [binding.binding, binding.id]));
   const topLevelIds = new Set((config.hyperdrive ?? []).map((/** @type {any} */ binding) => binding.id));
-  check(bindings.length === 2 && Object.keys(HYPERDRIVE_ROLES).every((name) => name in ids),
-    "env.staging.hyperdrive must declare exactly HYPERDRIVE and HYPERDRIVE_JOBS");
+  check(bindings.filter((/** @type {any} */ b) => b.binding !== "HYPERDRIVE_REPLICA").length === 2 && Object.keys(HYPERDRIVE_ROLES).every((name) => name in ids),
+    "env.staging.hyperdrive must declare HYPERDRIVE and HYPERDRIVE_JOBS (plus an optional HYPERDRIVE_REPLICA)");
   for (const name of Object.keys(HYPERDRIVE_ROLES)) {
     const id = ids[name];
     check(/^[0-9a-f]{32}$/.test(id ?? ""), `${name} needs a real 32-character Hyperdrive ID (found ${id ?? "none"})`);
@@ -153,6 +153,9 @@ export function checkStagingConfig(config) {
   check(!serialized.includes("local-only"), "staging config references a local-only resource");
   check(!PRODUCTION_REFERENCE.test(serialized), "staging config references a production resource or value");
   check(!/migrat/i.test(JSON.stringify([config.build ?? null, staging.build ?? null])), "a Wrangler build command must not run database migrations");
+  problems.push(...checkScalingConfig(staging, "medveris-staging"));
+  check(staging.vars?.DB_REPLICA_ENABLED !== "true" || (staging.hyperdrive ?? []).some((/** @type {any} */ b) => b.binding === "HYPERDRIVE_REPLICA"),
+    "DB_REPLICA_ENABLED needs a HYPERDRIVE_REPLICA binding");
   return problems;
 }
 
@@ -314,4 +317,75 @@ export function planSecretUpload({ remoteNames, availableNames, required }) {
   }
   const notes = remoteNames === null ? ["new Worker: secrets will be uploaded with the first deployment"] : [`uploading missing secrets only: ${missing.join(", ")}`];
   return { upload: missing, problems: [], notes };
+}
+
+export const DURABLE_OBJECTS = Object.freeze({ RATE_LIMITER: "RateLimiterObject", REALTIME: "RealtimeHub" });
+
+/**
+ * Durable Object and queue bindings for one environment. Queue names must carry the
+ * environment prefix so staging can never consume production jobs (or the reverse), the
+ * consumer must dead-letter, and concurrency and retries must be bounded.
+ * @param {any} envConfig env.staging or env.production
+ * @param {string} prefix e.g. medveris-staging
+ * @returns {string[]}
+ */
+export function checkScalingConfig(envConfig, prefix) {
+  const problems = [];
+  const check = (/** @type {unknown} */ condition, /** @type {string} */ message) => {
+    if (!condition) problems.push(message);
+  };
+  const objects = envConfig?.durable_objects?.bindings ?? [];
+  for (const [name, className] of Object.entries(DURABLE_OBJECTS)) {
+    const binding = objects.find((/** @type {any} */ item) => item.name === name);
+    check(binding?.class_name === className, `durable_objects must bind ${name} to ${className}`);
+    check(!binding?.script_name, `${name} must use this Worker's own class, not another script`);
+  }
+  const migrated = (envConfig?.migrations ?? []).flatMap((/** @type {any} */ migration) => [...(migration.new_sqlite_classes ?? []), ...(migration.new_classes ?? [])]);
+  for (const className of Object.values(DURABLE_OBJECTS)) {
+    check(migrated.includes(className), `migrations must create ${className}`);
+  }
+  check(!(envConfig?.migrations ?? []).some((/** @type {any} */ migration) => (migration.new_classes ?? []).length),
+    "Durable Object classes must be SQLite-backed (new_sqlite_classes), which the Free plan supports");
+
+  const producers = envConfig?.queues?.producers ?? [];
+  const consumers = envConfig?.queues?.consumers ?? [];
+  const jobs = `${prefix}-jobs`;
+  const dlq = `${prefix}-jobs-dlq`;
+  check(producers.find((/** @type {any} */ p) => p.binding === "JOBS_QUEUE")?.queue === jobs, `JOBS_QUEUE must produce to ${jobs}`);
+  check(producers.find((/** @type {any} */ p) => p.binding === "JOBS_DLQ")?.queue === dlq, `JOBS_DLQ must produce to ${dlq}`);
+  const main = consumers.find((/** @type {any} */ c) => c.queue === jobs);
+  check(main, `this Worker must consume ${jobs}`);
+  check(main?.dead_letter_queue === dlq, `${jobs} must dead-letter to ${dlq}`);
+  check(Number.isInteger(main?.max_retries) && main.max_retries >= 1 && main.max_retries <= 20, `${jobs} needs bounded max_retries`);
+  check(Number.isInteger(main?.max_concurrency) && main.max_concurrency >= 1 && main.max_concurrency <= 10, `${jobs} needs bounded max_concurrency`);
+  check(consumers.some((/** @type {any} */ c) => c.queue === dlq), `this Worker must consume ${dlq} to record dead letters`);
+  for (const queue of [...producers.map((/** @type {any} */ p) => p.queue), ...consumers.map((/** @type {any} */ c) => c.queue)]) {
+    check(String(queue).startsWith(`${prefix}-`), `queue ${queue} must belong to ${prefix}`);
+  }
+  return problems;
+}
+
+/** Queue names the environment needs to exist remotely before deployment. */
+export function requiredQueues(envConfig) {
+  const names = new Set();
+  for (const producer of envConfig?.queues?.producers ?? []) names.add(producer.queue);
+  for (const consumer of envConfig?.queues?.consumers ?? []) {
+    names.add(consumer.queue);
+    if (consumer.dead_letter_queue) names.add(consumer.dead_letter_queue);
+  }
+  return [...names];
+}
+
+/**
+ * Gradual releases (`wrangler versions upload`) cannot apply Durable Object migrations, so a
+ * release whose newest migration tag is not yet applied must go out with `wrangler deploy`.
+ * @param {any} envConfig
+ * @param {string | null | undefined} remoteTag migration_tag of the deployed script, if any
+ * @returns {string | null} the tag that still has to be applied
+ */
+export function pendingMigrationTag(envConfig, remoteTag) {
+  const tags = (envConfig?.migrations ?? []).map((/** @type {any} */ migration) => migration.tag);
+  const latest = tags[tags.length - 1] ?? null;
+  if (!latest || latest === remoteTag) return null;
+  return latest;
 }

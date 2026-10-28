@@ -1,5 +1,12 @@
+import { breakerFor, CircuitOpenError, retry, withTimeout } from "@medveris/platform";
 import { DependencyError } from "../lib/errors.js";
 import type { TerminologyAdapter, TerminologyConcept, ValidateCodeResult } from "./types.js";
+
+class ProviderStatus extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+  }
+}
 
 export class ProductionTerminologyAdapter implements TerminologyAdapter {
   readonly mode = "production" as const;
@@ -11,27 +18,37 @@ export class ProductionTerminologyAdapter implements TerminologyAdapter {
     private readonly timeoutMs: number,
   ) {}
 
+  /** Lookup and $validate-code are read-only FHIR operations, so a bounded retry cannot duplicate an effect. */
   private async request(path: string, init?: RequestInit): Promise<unknown> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const breaker = breakerFor("terminology", {
+      failureThreshold: 5,
+      resetTimeoutMs: 30_000,
+      isFailure: (error) => !(error instanceof ProviderStatus) || error.status >= 500 || error.status === 429,
+    });
     try {
-      const response = await fetch(`${this.baseUrl.replace(/\/$/, "")}${path}`, {
-        ...init,
-        signal: controller.signal,
-        headers: {
-          accept: "application/fhir+json",
-          "content-type": "application/fhir+json",
-          ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
-          ...(init?.headers ?? {}),
+      return await retry(
+        () => breaker.execute(() => withTimeout("terminology", this.timeoutMs, async (signal) => {
+          const response = await fetch(`${this.baseUrl.replace(/\/$/, "")}${path}`, {
+            ...init,
+            signal,
+            headers: {
+              accept: "application/fhir+json",
+              "content-type": "application/fhir+json",
+              ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+              ...(init?.headers ?? {}),
+            },
+          });
+          if (!response.ok) throw new ProviderStatus(response.status);
+          return await response.json();
+        })),
+        {
+          attempts: 2, baseDelayMs: 100, maxDelayMs: 500,
+          retryable: (error) => !(error instanceof CircuitOpenError) && (!(error instanceof ProviderStatus) || error.status >= 500 || error.status === 429),
         },
-      });
-      if (!response.ok) throw new DependencyError(`Terminology provider returned HTTP ${response.status}`);
-      return await response.json();
+      );
     } catch (error) {
-      if (error instanceof DependencyError) throw error;
+      if (error instanceof ProviderStatus) throw new DependencyError(`Terminology provider returned HTTP ${error.status}`);
       throw new DependencyError("Terminology provider is unavailable");
-    } finally {
-      clearTimeout(timer);
     }
   }
 

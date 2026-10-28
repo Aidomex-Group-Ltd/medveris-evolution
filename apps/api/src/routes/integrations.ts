@@ -22,7 +22,7 @@ import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
-import { rateLimit } from "../lib/rate-limit.js";
+import { enforceRateLimit, requestAddress } from "../lib/rate-limit.js";
 import { withAnonymous, withContext } from "@medveris/db";
 import type { AppEnv } from "../types.js";
 
@@ -204,7 +204,7 @@ integrationRoutes.post("/public/integrations/oauth/token", async (c) => {
     return c.json({ error: "invalid_request", error_description: "grant_type, client_id and client_secret are required" }, 400);
   }
   const body = parsed.data;
-  rateLimit(`integration-token:${body.client_id}:${c.req.header("x-forwarded-for") ?? "local"}`, 20, 60_000);
+  await enforceRateLimit(c, "integration.token", requestAddress(c), body.client_id.slice(0, 120));
   const sql = c.get("deps").sql;
   const client = await withContext(sql, { actorKind: "system", platformRole: "platform_operator" }, async (tx) => {
     const rows = await tx`

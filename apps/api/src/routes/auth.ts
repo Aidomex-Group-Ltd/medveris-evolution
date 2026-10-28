@@ -28,7 +28,7 @@ import { randomPatientPublicId } from "@medveris/domain";
 import { setLocalContext, withAnonymous, withContext, withRegistration } from "@medveris/db";
 import { AppError, ConflictError, DependencyError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "../lib/errors.js";
 import { auditMeta, parseJson, requestMeta } from "../lib/http.js";
-import { rateLimit, clientKey } from "../lib/rate-limit.js";
+import { enforceRateLimit, peekRateLimit, recordRateLimitHit, requestAddress } from "../lib/rate-limit.js";
 import { writeAudit } from "../lib/audit.js";
 import { requireAuth, setSessionCookie, revokeCurrentSession } from "../auth/middleware.js";
 import { acceptInvitation, declineInvitation, describeInvitation, maskEmail, registerInvitee } from "../services/invitations.js";
@@ -80,7 +80,7 @@ async function deliver(c: Parameters<typeof setSessionCookie>[0], to: string, su
 
 authRoutes.post("/register/patient", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "register"), 10, 60_000);
+  await enforceRateLimit(c, "auth.register", requestAddress(c));
   const body = await parseJson(c, registerPatientSchema);
   const meta = requestMeta(c);
   const userId = crypto.randomUUID();
@@ -130,7 +130,7 @@ authRoutes.post("/register/patient", async (c) => {
 
 authRoutes.post("/register/facility", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "facility-register"), 8, 60_000);
+  await enforceRateLimit(c, "auth.facility-register", requestAddress(c));
   const body = await parseJson(c, registerFacilitySchema);
   const userId = crypto.randomUUID();
   const tenantId = crypto.randomUUID();
@@ -184,8 +184,11 @@ authRoutes.post("/register/facility", async (c) => {
 
 authRoutes.post("/login", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "login"), 12, 60_000);
+  await enforceRateLimit(c, "auth.login", requestAddress(c));
   const body = await parseJson(c, loginSchema);
+  // Counts failed attempts against the submitted address from any network, existing account or not.
+  const accountKey = await sha256Hex(`login-account:${body.email.trim().toLowerCase()}`);
+  await peekRateLimit(c, "auth.login.account", accountKey);
   const rows = await deps.sql`
     select id, email, password_hash, display_name, mfa_enrolled_at, status, totp_secret_enc
       from users where email = ${body.email} limit 1
@@ -193,6 +196,7 @@ authRoutes.post("/login", async (c) => {
   const user = rows[0];
   const ok = user ? await verifyPassword(body.password, String(user.passwordHash)) : false;
   if (!user || !ok || user.status !== "active") {
+    await recordRateLimitHit(c, "auth.login.account", accountKey);
     await withAnonymous(deps.sql, async (tx) => {
       await writeAudit(tx, deps.config, {
         actorKind: "anonymous",
@@ -245,7 +249,7 @@ interface RecoveryCode { hash: string; used: boolean }
 
 authRoutes.post("/login/mfa/email", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "login-mfa-email"), 6, 15 * 60_000);
+  await enforceRateLimit(c, "auth.mfa-email", requestAddress(c));
   const body = await parseJson(c, mfaEmailCodeSchema);
   const rows = await deps.sql`
     select ch.id, ch.user_id, ch.email_code_sends, ch.email_code_sent_at, ch.failed_attempts, u.email, u.status
@@ -296,7 +300,7 @@ authRoutes.post("/login/mfa/email", async (c) => {
 
 authRoutes.post("/login/mfa", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "login-mfa"), 15, 60_000);
+  await enforceRateLimit(c, "auth.mfa", requestAddress(c));
   const body = await parseJson(c, mfaLoginSchema);
   const challenges = await deps.sql`
     select ch.id, ch.user_id, ch.failed_attempts, ch.email_code_hash, ch.email_code_expires_at,
@@ -432,7 +436,7 @@ authRoutes.post("/verify-email/resend", async (c) => {
   const auth = c.get("auth");
   if (!auth) throw new UnauthorizedError();
   if (auth.user.emailVerifiedAt) return c.json({ ok: true, alreadyVerified: true });
-  rateLimit(clientKey(c.req.raw.headers, `resend:${auth.user.id}`), 3, 15 * 60_000);
+  await enforceRateLimit(c, "auth.verify-resend", auth.user.id);
   const token = await withContext(deps.sql, { actorKind: "registration" }, async (tx) => createEmailToken(tx, auth.user.id, "verify-email"));
   const delivery = await deliver(
     c,
@@ -447,7 +451,7 @@ authRoutes.post("/verify-email/resend", async (c) => {
 
 authRoutes.post("/forgot-password", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "forgot"), 6, 15 * 60_000);
+  await enforceRateLimit(c, "auth.recovery", requestAddress(c));
   const body = await parseJson(c, passwordForgotSchema);
   const rows = await deps.sql`select id from users where email = ${body.email} and status = 'active' limit 1`;
   if (rows[0]) {
@@ -468,7 +472,7 @@ authRoutes.post("/forgot-password", async (c) => {
 
 authRoutes.post("/reset-password", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "reset"), 8, 15 * 60_000);
+  await enforceRateLimit(c, "auth.reset", requestAddress(c));
   const body = await parseJson(c, passwordResetSchema);
   const tokenHash = await sha256Hex(body.token);
   const rows = await deps.sql`
@@ -539,7 +543,7 @@ authRoutes.post("/mfa/enroll/verify", async (c) => {
 
 authRoutes.post("/invitations/status", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "invitation-status"), 60, 60_000);
+  await enforceRateLimit(c, "invitation.status", requestAddress(c));
   const body = await parseJson(c, invitationTokenSchema);
   const auth = c.get("auth");
   return c.json(await describeInvitation(deps.sql, body.token, auth ? { id: auth.user.id, email: auth.user.email } : null));
@@ -547,9 +551,9 @@ authRoutes.post("/invitations/status", async (c) => {
 
 authRoutes.post("/invitations/register", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "invitation-register"), 20, 60_000);
+  await enforceRateLimit(c, "invitation.register", requestAddress(c));
   const body = await parseJson(c, invitationRegisterSchema);
-  rateLimit(`invitation-register:${await sha256Hex(body.token)}`, 5, 15 * 60_000);
+  await enforceRateLimit(c, "invitation.register.token", await sha256Hex(body.token));
   if (c.get("auth")) throw new AppError(409, "invitation_signed_in", "Sign out before creating a new account for this invitation");
   const { userId } = await registerInvitee(deps.sql, deps.config, { ...body, meta: auditMeta(c) });
   const session = await createSession(deps.sql, deps.config, userId, { mfaVerified: false, activeTenantId: null, ...requestMeta(c) });
@@ -560,7 +564,7 @@ authRoutes.post("/invitations/register", async (c) => {
 authRoutes.post("/invitations/accept", async (c) => {
   const deps = c.get("deps");
   const auth = requireAuth(c);
-  rateLimit(clientKey(c.req.raw.headers, `invitation-accept:${auth.user.id}`), 20, 60_000);
+  await enforceRateLimit(c, "invitation.accept", auth.user.id);
   if (auth.user.mfaEnrolledAt && !auth.mfaVerified) throw new ForbiddenError("Complete two-step verification before accepting the invitation");
   const body = await parseJson(c, invitationTokenSchema);
   const accepted = await acceptInvitation(deps.sql, deps.config, {
@@ -573,7 +577,7 @@ authRoutes.post("/invitations/accept", async (c) => {
 
 authRoutes.post("/invitations/decline", async (c) => {
   const deps = c.get("deps");
-  rateLimit(clientKey(c.req.raw.headers, "invitation-decline"), 20, 60_000);
+  await enforceRateLimit(c, "invitation.decline", requestAddress(c));
   const body = await parseJson(c, invitationTokenSchema);
   await declineInvitation(deps.sql, deps.config, { token: body.token, userId: c.get("auth")?.user.id ?? null, meta: auditMeta(c) });
   return c.json({ ok: true });
