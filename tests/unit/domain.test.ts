@@ -6,6 +6,7 @@ import {
   canonicalJson,
   contentDigest,
   isPatientPublicId,
+  localMedicalRecordNumber,
   nextEntryStatus,
   randomPatientPublicId,
   DEFAULT_PRIVILEGES,
@@ -33,6 +34,12 @@ describe("patient public identifier", () => {
 
   it("rejects ambiguous characters", () => {
     expect(isPatientPublicId("MV-IIII-1111-OOOO-0000")).toBe(false);
+  });
+
+  it("derives distinct facility record numbers for public IDs that share a suffix", () => {
+    expect(localMedicalRecordNumber("kampala-clinic", "MV-AAAA-BBBB-CCCC-7XYZ")).toBe("MRN-KAMPALA--AAAABBBBCCCC7XYZ");
+    expect(localMedicalRecordNumber("kampala-clinic", "MV-DDDD-EEEE-FFFF-7XYZ")).not.toBe(localMedicalRecordNumber("kampala-clinic", "MV-AAAA-BBBB-CCCC-7XYZ"));
+    expect(() => localMedicalRecordNumber("kampala-clinic", "not-an-id")).toThrow();
   });
 });
 

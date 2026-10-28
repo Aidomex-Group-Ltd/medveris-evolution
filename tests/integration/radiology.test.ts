@@ -5,6 +5,8 @@ import { CLINICIAN_ID, KAMPALA_TENANT, createHarness, type Session } from "./sup
 const h = createHarness("radiology");
 const NURSE_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const RADIOLOGIST_ID = "dededede-dede-4ded-8ded-dededededede";
+const ADMIN_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SPECIALIST_ID = crypto.randomUUID();
 
 let reception: Session;
 let clinician: Session;
@@ -36,6 +38,14 @@ beforeAll(async () => {
   nurse = await h.login("nurse@medveris.local");
   radiographer = await h.login("radiographer@medveris.local");
   radiologist = await h.login("radiology@medveris.local");
+  await h.sql`
+    insert into users (id, email, password_hash, display_name, given_name, family_name)
+    values (${SPECIALIST_ID}, ${`specialist-${SPECIALIST_ID}@example.test`}, 'synthetic-test-only', 'Synthetic Specialist', 'Synthetic', 'Specialist')
+  `;
+  await withContext(h.sql, { tenantId: KAMPALA_TENANT, userId: ADMIN_ID, actorKind: "staff", roles: ["facility_admin"] }, async (tx) => tx`
+    insert into memberships (id, tenant_id, user_id, roles, status)
+    values (${crypto.randomUUID()}, ${KAMPALA_TENANT}, ${SPECIALIST_ID}, ${["specialist_clinician", "department_lead"]}, 'active')
+  `);
 });
 
 afterAll(async () => {
@@ -166,6 +176,10 @@ describe("release, critical findings, addenda and corrections", () => {
       method: "POST", body: JSON.stringify({ releaseNote: "Synthetic release" }),
     });
     expect(blocked.status).toBe(409);
+    const toSpecialist = await h.call(radiologist, `/api/v1/radiology/reports/${reportId}/critical-communications`, {
+      method: "POST", body: JSON.stringify({ recipientUserId: SPECIALIST_ID, method: "phone", findingSummary: "Synthetic finding for a recipient who cannot open it." }),
+    });
+    expect(toSpecialist.status).toBe(422);
     await h.post(radiologist, `/api/v1/radiology/reports/${reportId}/critical-communications`, {
       recipientUserId: NURSE_ID, method: "phone", findingSummary: "Synthetic critical finding read back by the nurse.",
     });
@@ -183,6 +197,10 @@ describe("release, critical findings, addenda and corrections", () => {
       method: "POST", body: JSON.stringify({ note: "Not a clinician" }),
     });
     expect(byRadiographer.status).toBe(403);
+    const toDepartmentLead = await h.call(radiologist, `/api/v1/radiology/critical-communications/${communication.id}/escalate`, {
+      method: "POST", body: JSON.stringify({ toUserId: SPECIALIST_ID, note: "Synthetic escalation to someone who cannot acknowledge it." }),
+    });
+    expect(toDepartmentLead.status).toBe(422);
     await h.post(radiologist, `/api/v1/radiology/critical-communications/${communication.id}/escalate`, {
       toUserId: CLINICIAN_ID, note: "Synthetic escalation: nurse recipient did not acknowledge.",
     }, 200);

@@ -287,6 +287,34 @@ describe("M2/M3 department workflows", () => {
     await expectOk(await call(clinician, `/api/v1/lab-results/${labResultId}/critical-communications`, {
       method: "POST", body: JSON.stringify({ recipientUserId: CLINICIAN_ID, method: "phone", notes: "Read back confirmed" }),
     }), 201);
+
+    const emergency = await expectOk(await call(clinician, "/api/v1/diagnostic-orders", {
+      method: "POST", body: JSON.stringify({
+        patientId, encounterId, orderType: "laboratory", priority: "emergency",
+        clinicalNote: "Emergency glucose (synthetic).",
+        items: [{ labTestId, name: "Blood glucose", specimenType: "capillary blood" }],
+      }),
+    }), 201);
+    const worklist = await expectOk(await call(laboratory, "/api/v1/diagnostic-reporting/worklist"));
+    const position = (id: string) => worklist.worklist.findIndex((row: { id: string }) => row.id === id);
+    expect(position(emergency.order.id)).toBeGreaterThanOrEqual(0);
+    expect(position(emergency.order.id)).toBeLessThan(position(labOrderId));
+
+    const emergencyItem = (await expectOk(await call(laboratory, `/api/v1/diagnostic-orders/${emergency.order.id}`))).items[0].id;
+    const emergencySpecimen = await expectOk(await call(laboratory, "/api/v1/specimens", {
+      method: "POST", body: JSON.stringify({ orderItemId: emergencyItem, specimenType: "capillary blood" }),
+    }), 201);
+    await expectOk(await call(laboratory, `/api/v1/specimens/${emergencySpecimen.specimen.id}`, {
+      method: "PATCH", body: JSON.stringify({ status: "received" }),
+    }));
+    const selfVerified = await call(clinician, "/api/v1/lab-results", {
+      method: "POST", body: JSON.stringify({
+        orderItemId: emergencyItem, valueNum: 5.2, unitCode: "mmol/L", interpretation: "normal", critical: false, status: "final",
+      }),
+    });
+    expect(selfVerified.status).toBe(403);
+    const unresulted = await expectOk(await call(clinician, `/api/v1/diagnostic-orders/${emergency.order.id}`));
+    expect(unresulted.items[0].latestResult ?? null).toBeNull();
     const imaging = await expectOk(await call(clinician, "/api/v1/diagnostic-orders", {
       method: "POST", body: JSON.stringify({
         patientId, encounterId, orderType: "imaging", priority: "routine",

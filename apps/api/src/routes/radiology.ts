@@ -535,9 +535,9 @@ radiologyRoutes.post("/radiology/reports/:id/critical-communications", async (c)
     }
     const recipient = await tx`
       select 1 from memberships where tenant_id = ${tenantId} and user_id = ${body.recipientUserId} and status = 'active'
-         and roles && ARRAY['clinician', 'nurse', 'specialist_clinician', 'midwife']
+         and roles && ARRAY['clinician', 'nurse']
     `;
-    if (!recipient.length) throw new ValidationError("The recipient must be an active clinical member of this facility");
+    if (!recipient.length) throw new ValidationError("The recipient must be an active clinician or nurse of this facility, who can open and acknowledge the finding");
     await tx`
       insert into radiology_critical_communications (id, tenant_id, report_id, recipient_user_id, method, finding_summary, communicated_by)
       values (${communicationId}, ${tenantId}, ${id}, ${body.recipientUserId}, ${body.method}, ${body.findingSummary}, ${auth.user.id})
@@ -617,7 +617,7 @@ radiologyRoutes.post("/radiology/critical-communications/:id/escalate", async (c
     if (body.toUserId === String(communication.recipientUserId)) throw new ValidationError("Escalate to a different clinician");
     const target = await tx`
       select 1 from memberships where tenant_id = ${tenantId} and user_id = ${body.toUserId} and status = 'active'
-         and roles && ARRAY['clinician', 'specialist_clinician', 'department_lead']
+         and roles && ARRAY['clinician']
     `;
     if (!target.length) throw new ValidationError("Escalation must go to an active clinician of this facility");
     await tx`

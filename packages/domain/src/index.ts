@@ -61,6 +61,12 @@ export function randomPatientPublicId(random = crypto.getRandomValues(new Uint8A
   return `MV-${body.slice(0, 4)}-${body.slice(4, 8)}-${body.slice(8, 12)}-${body.slice(12, 16)}`;
 }
 
+/** A facility medical record number unique within the facility because it carries the whole public ID body. */
+export function localMedicalRecordNumber(facilitySlug: string, publicId: string): string {
+  if (!isPatientPublicId(publicId)) throw new Error("A patient public ID is required");
+  return `MRN-${facilitySlug.slice(0, 8).toUpperCase()}-${publicId.slice(3).replaceAll("-", "")}`;
+}
+
 export function isPatientPublicId(value: string): boolean {
   return /^MV-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(value);
 }

@@ -255,7 +255,6 @@ diagnosticsRoutes.post("/lab-results", async (c) => {
   const auth = c.get("auth")!;
   const body = await parseJson(c, labResultSchema);
   const resultId = crypto.randomUUID();
-  const isClinician = hasRole(c, "clinician");
   await withStaffActor(c, async (tx) => {
     const item = await loadOrderItem(c, tx, body.orderItemId);
     if (item.orderType !== "laboratory") throw new ValidationError("Laboratory results require a laboratory order item");
@@ -263,22 +262,23 @@ diagnosticsRoutes.post("/lab-results", async (c) => {
       select status from specimens where order_item_id = ${body.orderItemId} order by created_at desc limit 1
     `;
     if (!specimen[0] || specimen[0].status !== "received") throw new ConflictError("A received specimen is required before a result can be entered");
-    if (body.status === "final" && !isClinician) throw new ForbiddenError("Final laboratory results require clinician verification");
+    if (body.status === "final") {
+      throw new ForbiddenError("Enter the result as preliminary; it must be validated by someone other than the person who entered it");
+    }
     if (!body.valueText && body.valueNum == null) throw new ValidationError("A numeric or textual result value is required");
     const previous = await tx`select id from lab_results where order_item_id = ${body.orderItemId} for update`;
     if (previous[0]) throw new ConflictError("A result already exists; use the correction workflow");
     const content = {
       valueNum: body.valueNum ?? null, valueText: body.valueText || null, unitCode: body.unitCode || null,
       referenceRange: body.referenceRange || null, interpretation: body.interpretation,
-      critical: body.critical, status: body.status,
+      critical: body.critical, status: "preliminary",
     };
     await tx`
       insert into lab_results (id, tenant_id, order_item_id, patient_id, value_num, value_text, unit_code, reference_range,
-        interpretation, critical, status, authored_by, verified_by, verified_at)
+        interpretation, critical, status, authored_by)
       values (${resultId}, ${auth.activeTenant!.id}, ${body.orderItemId}, ${item.patientId},
         ${body.valueNum ?? null}, ${body.valueText || null}, ${body.unitCode || null}, ${body.referenceRange || null},
-        ${body.interpretation}, ${body.critical}, ${body.status}, ${auth.user.id},
-        ${body.status === "final" ? auth.user.id : null}, ${body.status === "final" ? new Date() : null})
+        ${body.interpretation}, ${body.critical}, 'preliminary', ${auth.user.id})
     `;
     await tx`
       insert into lab_result_versions (id, tenant_id, result_id, version, content, change_reason, author_id)
@@ -538,7 +538,7 @@ diagnosticsRoutes.get("/diagnostic-reporting/worklist", async (c) => {
       left join users u on u.id = o.assigned_reporter_id
      where o.tenant_id = ${auth.activeTenant!.id} and o.order_type in ('laboratory','imaging')
        and o.status not in ('cancelled')
-     order by case o.priority when 'urgent' then 0 when 'stat' then 0 else 1 end, o.created_at asc
+     order by case o.priority when 'emergency' then 0 when 'urgent' then 1 else 2 end, o.created_at asc
      limit 200
   `);
   return c.json({ worklist: rows });

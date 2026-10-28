@@ -14,7 +14,7 @@ import {
 } from "@medveris/contracts";
 import type { ActorContext } from "@medveris/authz";
 import type { Tx } from "@medveris/db";
-import { canTransitionAppointment, canTransitionEncounter, randomPatientPublicId, type AppointmentStatus, type EncounterState } from "@medveris/domain";
+import { canTransitionAppointment, canTransitionEncounter, localMedicalRecordNumber, randomPatientPublicId, type AppointmentStatus, type EncounterState } from "@medveris/domain";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, ensureMatch, parseJson, parseQuery, requestMeta } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
@@ -72,7 +72,7 @@ receptionRoutes.post("/reception/patients", async (c) => {
     await tx`
       insert into tenant_patient_links (id, tenant_id, patient_id, local_mrn)
       values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${patientId},
-        ${`MRN-${auth.activeTenant!.slug.slice(0, 8).toUpperCase()}-${publicId.slice(-4)}`})
+        ${localMedicalRecordNumber(auth.activeTenant!.slug, publicId)})
     `;
     const possible = await tx`
       select p.id, p.public_id from patients p

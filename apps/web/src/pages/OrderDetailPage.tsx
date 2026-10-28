@@ -77,6 +77,7 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
   const roles = me?.activeTenant?.roles ?? [];
   const clinician = roles.includes("clinician");
   const laboratory = roles.includes("laboratory");
+  const validator = clinician || roles.includes("lab_validator");
   const radiology = roles.includes("radiology");
   const action = useAction();
   const [specimenType, setSpecimenType] = useState(item.specimenType ?? "");
@@ -86,7 +87,6 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
   const [referenceRange, setReferenceRange] = useState(item.latestResult?.referenceRange ?? "");
   const [interpretation, setInterpretation] = useState("indeterminate");
   const [critical, setCritical] = useState(false);
-  const [resultStatus, setResultStatus] = useState<"preliminary" | "final">("preliminary");
   const [changeReason, setChangeReason] = useState("");
   const [recipient, setRecipient] = useState("");
   const [commMethod, setCommMethod] = useState("phone");
@@ -152,7 +152,7 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
         referenceRange,
         interpretation,
         critical,
-        status: clinician ? resultStatus : "preliminary",
+        status: "preliminary",
       },
     }), "Laboratory result recorded.");
   }
@@ -215,7 +215,9 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
             <div className="mv-spread"><strong>Result v{result.version}</strong><Badge tone={result.critical ? "danger" : result.status === "final" ? "success" : "warning"}>{result.status}{result.critical ? " · critical" : ""}</Badge></div>
             <div>{result.valueText ?? result.valueNum ?? "—"} {result.unitCode ?? ""}{result.referenceRange ? <span className="mv-small mv-muted"> (ref {result.referenceRange})</span> : null}</div>
             <div className="mv-small mv-muted">Interpretation: {result.interpretation}</div>
-            {result.status === "preliminary" && clinician ? <Button size="sm" variant="secondary" onClick={() => void finalizeResult()} disabled={action.busy !== null}>Finalize result</Button> : null}
+            {result.status === "preliminary" ? (validator
+              ? <Button size="sm" variant="secondary" onClick={() => void finalizeResult()} disabled={action.busy !== null}>Finalize result</Button>
+              : <p className="mv-small mv-muted">Awaiting validation by a clinician or laboratory validator other than the person who entered it.</p>) : null}
           </div>
         ) : null}
         {lab && specimen?.status === "received" && !result ? (
@@ -226,7 +228,6 @@ function ItemWorkflow({ order, item, onDone }: { order: Order; item: Item; onDon
               <Field label="Unit" htmlFor={`unit-${item.id}`}><Input id={`unit-${item.id}`} value={unitCode} onChange={(event) => setUnitCode(event.target.value)} /></Field>
               <Field label="Reference range" htmlFor={`ref-${item.id}`}><Input id={`ref-${item.id}`} value={referenceRange} onChange={(event) => setReferenceRange(event.target.value)} /></Field>
               <Field label="Interpretation"><Select value={interpretation} onChange={(event) => setInterpretation(event.target.value)}><option value="indeterminate">Indeterminate</option><option value="normal">Normal</option><option value="abnormal">Abnormal</option><option value="critical">Critical</option></Select></Field>
-              {clinician ? <Field label="Result status"><Select value={resultStatus} onChange={(event) => setResultStatus(event.target.value as "preliminary" | "final")}><option value="preliminary">Preliminary</option><option value="final">Final (clinician verified)</option></Select></Field> : null}
             </div>
             <label className="mv-check"><input type="checkbox" checked={critical} onChange={(event) => setCritical(event.target.checked)} /> Flag as critical</label>
             <Button type="submit" size="sm" disabled={action.busy !== null || (!valueText && !valueNum)}>{action.busy === "result" ? "Recording…" : "Record result"}</Button>
