@@ -76,10 +76,10 @@
       "preview_urls": false,
       // Both configs need --caching-disabled and verify-full TLS on a PostgreSQL server that is separate
       // from staging: HYPERDRIVE as medveris_runtime, HYPERDRIVE_JOBS as medveris_jobs, both on
-      // medveris_production. The placeholders block `npm run deploy:production` until real IDs exist.
+      // medveris_production (Aiven service medverispro).
       "hyperdrive": [
-        { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PRODUCTION_RUNTIME_HYPERDRIVE_ID" },
-        { "binding": "HYPERDRIVE_JOBS", "id": "REPLACE_WITH_PRODUCTION_JOBS_HYPERDRIVE_ID" }
+        { "binding": "HYPERDRIVE", "id": "c6e463fe4d6649a3a41c7c38fee16d3d" },
+        { "binding": "HYPERDRIVE_JOBS", "id": "770ba2f6008d4b7d97e9045f38d987fa" }
       ],
       "r2_buckets": [
         { "binding": "UPLOADS", "bucket_name": "medveris-production-uploads" }

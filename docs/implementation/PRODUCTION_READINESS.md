@@ -8,7 +8,7 @@ Registration and delegation are healthy: Namecheap registration, active until 20
 
 ## Production PostgreSQL (`medverispro`, inspected read-only 2026-10-28)
 
-`~/.config/medveris/production/db.env` (0600) targets `medverispro-lokangtom2017-78dc.l.aivencloud.com:23226`, a different server from staging, with `sslmode=verify-full` against `~/.config/medveris/production/ca.pem`; all four URLs share that host, and the three role passwords are distinct and at least 20 characters. A read-only admin connection verified the certificate and found PostgreSQL 18.6 with only `_aiven` and `defaultdb`. With approval, `db-setup.ts` then created `medveris_migrator`, `medveris_runtime` and `medveris_jobs` (LOGIN, no superuser, no BYPASSRLS), `medveris_exchange` (NOLOGIN, BYPASSRLS) and `medveris_production` owned by `medveris_migrator`; all three login roles connect with verified TLS. The database is empty (no `schema_migrations`): migrations `001`–`029` have not been applied and need separate approval after the backup check.
+`~/.config/medveris/production/db.env` (0600) targets `medverispro-lokangtom2017-78dc.l.aivencloud.com:23226`, a different server from staging, with `sslmode=verify-full` against `~/.config/medveris/production/ca.pem`; all four URLs share that host, and the three role passwords are distinct and at least 20 characters. A read-only admin connection verified the certificate and found PostgreSQL 18.6 with only `_aiven` and `defaultdb`. With approval, `db-setup.ts` then created `medveris_migrator`, `medveris_runtime` and `medveris_jobs` (LOGIN, no superuser, no BYPASSRLS), `medveris_exchange` (NOLOGIN, BYPASSRLS) and `medveris_production` owned by `medveris_migrator`; all three login roles connect with verified TLS. On the release request, `db-migrate.ts --confirm-database=medveris_production` applied `001`–`029` to the still-empty database, each in its own transaction, and the schema integrity check passed. No data has been written.
 
 ## Resources (verified against Cloudflare and PostgreSQL on 2026-10-28)
 
@@ -19,7 +19,7 @@ Registration and delegation are healthy: Namecheap registration, active until 20
 | Worker `medveris-production` | Does not exist (API error 10007) |
 | R2 `medveris-production-uploads` | Created 2026-10-28, location WEUR, r2.dev disabled, no custom domain, no CORS, empty |
 | R2 `medveris` | Pre-existing, empty, private, WEUR, unreferenced by the repository; left untouched |
-| Hyperdrive (production) | None. Only `medveris-staging-runtime` and `medveris-staging-jobs` exist |
+| Hyperdrive (production) | `medveris-production-runtime` (`c6e463fe4d6649a3a41c7c38fee16d3d`, `medveris_runtime`) and `medveris-production-jobs` (`770ba2f6008d4b7d97e9045f38d987fa`, `medveris_jobs`) on `medveris_production`, caching disabled, `verify-full` with the Aiven project CA `1227360c-…` (one CA signs every service in the Aiven project, so staging and production share it; the servers and roles are separate) |
 | PostgreSQL | Staging Aiven server holds `medveris_staging`. Production Aiven server `medverispro` (PostgreSQL 18.6, separate host) is reachable with verified TLS and empty: no `medveris_production`, no `medveris_*` roles |
 | Local secrets | `~/.config/medveris/production/secrets.env` (0600, directory 0700): `SESSION_SECRET`, `AUDIT_SIGNING_KEY`, `MFA_ENCRYPTION_KEY` generated with `openssl rand -hex 32`; not uploaded (no Worker) |
 
@@ -36,15 +36,13 @@ Registration and delegation are healthy: Namecheap registration, active until 20
 
 ## Migrations
 
-29 migrations (`001`–`029`); `029_invitation_lifecycle.sql` was added after this record was first written and its staging state was not re-checked here. Staging had `001`–`028` applied; `027_content_feed_ingestion.sql` on 2026-10-28T04:26Z and `028_email_sign_in_codes.sql` on 2026-10-28T04:45Z, and the live staging version runs on them. `027` is additive: new nullable columns and defaults, partial unique indexes, jobs-role grants and policies, and replacement CHECK constraints that accept every row the previous constraints accepted while also allowing attributed imports. A version built before `027` keeps working against the migrated schema. No migration has been applied to production: the `medverispro` server has no `medveris_production` database yet.
+29 migrations (`001`–`029`); `029_invitation_lifecycle.sql` was added after this record was first written and its staging state was not re-checked here. Staging had `001`–`028` applied; `027_content_feed_ingestion.sql` on 2026-10-28T04:26Z and `028_email_sign_in_codes.sql` on 2026-10-28T04:45Z, and the live staging version runs on them. `027` is additive: new nullable columns and defaults, partial unique indexes, jobs-role grants and policies, and replacement CHECK constraints that accept every row the previous constraints accepted while also allowing attributed imports. A version built before `027` keeps working against the migrated schema. Production `medveris_production` has `001`–`029` applied (2026-10-28).
 
 ## Blockers (provider-side actions)
 
-1. **Production migrations (approval required).** Roles and `medveris_production` exist on `medverispro`. Confirm point-in-time recovery and encrypted backups on the Aiven plan, then apply the reviewed migrations `001`–`029` as described in `docs/16_OPERATIONS_AND_DEPLOYMENT.md`.
-2. **Backup and restore drill.** Record it in `~/.config/medveris/production/backup-verification.json`.
-3. **Hyperdrive.** Create the runtime and jobs configs (caching disabled, `verify-full`) and replace the `REPLACE_WITH_PRODUCTION_*` IDs.
-4. **Resend.** Create a production-only API key restricted to `medveris.online` and save it in `~/.config/medveris/production/resend.env`.
-5. **Domain.** After `npm run deploy:production` passes, run `npm run domain:production`, then declare the custom-domain route. For `www.medveris.online`, add a proxied placeholder record (`AAAA 100::`) and a Redirect Rule to `https://medveris.online` preserving path and query; the Worker serves assets without running for page requests, so it cannot redirect `www` itself, and the Wrangler session cannot edit DNS records or rulesets.
+1. **Backup and restore drill.** Confirm point-in-time recovery and encrypted backups on the `medverispro` Aiven plan, run a restore drill, and record it in `~/.config/medveris/production/backup-verification.json`.
+2. **Resend.** Create a production-only API key restricted to `medveris.online` and save it in `~/.config/medveris/production/resend.env`.
+3. **Domain.** After `npm run deploy:production` passes, run `npm run domain:production`, then declare the custom-domain route. For `www.medveris.online`, add a proxied placeholder record (`AAAA 100::`) and a Redirect Rule to `https://medveris.online` preserving path and query; the Worker serves assets without running for page requests, so it cannot redirect `www` itself, and the Wrangler session cannot edit DNS records or rulesets.
 
 ## Decisions needing qualified review
 

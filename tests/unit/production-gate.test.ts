@@ -43,8 +43,17 @@ function remote(user: string, overrides: Record<string, unknown> = {}): any {
 }
 
 describe("production configuration rules", () => {
-  it("blocks the committed configuration only on the missing Hyperdrive IDs", () => {
-    expect(checkProductionConfig(repoConfig())).toEqual([
+  it("passes the committed configuration", () => {
+    expect(checkProductionConfig(repoConfig())).toEqual([]);
+  });
+
+  it("blocks placeholder Hyperdrive IDs", () => {
+    const config = repoConfig();
+    config.env.production.hyperdrive = [
+      { binding: "HYPERDRIVE", id: "REPLACE_WITH_PRODUCTION_RUNTIME_HYPERDRIVE_ID" },
+      { binding: "HYPERDRIVE_JOBS", id: "REPLACE_WITH_PRODUCTION_JOBS_HYPERDRIVE_ID" },
+    ];
+    expect(checkProductionConfig(config)).toEqual([
       "HYPERDRIVE needs a real 32-character Hyperdrive ID (found REPLACE_WITH_PRODUCTION_RUNTIME_HYPERDRIVE_ID)",
       "HYPERDRIVE_JOBS needs a real 32-character Hyperdrive ID (found REPLACE_WITH_PRODUCTION_JOBS_HYPERDRIVE_ID)",
       "production config still contains REPLACE_WITH placeholders",
