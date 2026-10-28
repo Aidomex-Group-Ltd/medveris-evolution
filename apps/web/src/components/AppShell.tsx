@@ -65,6 +65,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/caregiver-requests", label: "Caregiver requests", roles: ["facility_admin", "records"] },
       { to: "/admin", label: "Facility administration", roles: ["facility_admin"] },
       { to: "/patient-merges", label: "Patient merges", roles: ["facility_admin", "records"] },
+      { to: "/reports", label: "Reports" },
       { to: "/catalogue-editor", label: "Catalogue editor", roles: ["facility_admin"] },
       { to: "/directory-governance", label: "Directory governance", platform: true },
       { to: "/reviewer", label: "Credential review", platform: true },

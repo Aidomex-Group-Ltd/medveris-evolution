@@ -2087,3 +2087,11 @@ export const patientMergeDecisionSchema = z.object({
 export const patientMergeReverseSchema = z.object({
   reason: z.string().trim().min(10).max(2000),
 });
+
+export const reportQuerySchema = z.object({
+  from: z.string().date(),
+  to: z.string().date(),
+  timeZone: z.string().trim().min(1).max(64).default("Africa/Kampala"),
+  format: z.enum(["json", "csv"]).default("json"),
+  expiryWindowDays: z.string().regex(/^\d{1,3}$/).optional(),
+});
