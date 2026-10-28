@@ -119,7 +119,7 @@ Known limitation: patient-portal writes (no active facility) are not covered by 
 |---|---|---|---|
 | Sign-in | 12/min per address, with progressive cooldown 60 s → 15 min; 10 failures / 15 min per submitted account (counted for existing and unknown addresses alike) | connecting IP; hashed address | local-strict (¼ quota per instance) |
 | MFA, emailed codes, recovery, reset, signup, verification resend | 3–15 per window | IP or user | local-strict |
-| Invitation token guessing | 5 / 15 min per token hash | token hash | **closed** |
+| Invitation registration retries | 5 / 15 min per token hash (tokens are 256-bit random, so guessing is not the threat) | token hash | local-strict |
 | Patient search and resolve, uploads, report exports | per user | user ID | local-strict |
 | Reports, devices, integrations, invitation status/accept | per user/client | user/client | local |
 | Real-time connect | 10/min per user | user ID | local-strict |
@@ -184,4 +184,4 @@ Every deploy gate (`deploy:staging:check`, `deploy:production:check`) now verifi
 3. `wrangler versions upload` cannot apply Durable Object migrations; the first release with them is an all-at-once `wrangler deploy` (scripted, health-checked, previous version restored on failure).
 4. The per-instance volume guards are not global. Global volume protection needs the edge WAF rule on the custom domain.
 5. Tenant-freeze coverage excludes patient-portal writes (see §5).
-6. Rate-limit Durable Object calls add a round trip (bounded by a 750 ms timeout) to sign-in and other sensitive endpoints.
+6. Rate-limit Durable Object calls add a round trip to sign-in and other sensitive endpoints. The bound is 3 s because creating a new object in production took over 750 ms; the first 750 ms bound made every first request per key fall back, and the then fail-closed invitation-token policy answered 429 to every invitation registration (fixed 2026-10-28).

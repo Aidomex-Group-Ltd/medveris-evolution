@@ -59,7 +59,7 @@ Proposed objectives (not yet demonstrated): RPO ≤ 15 minutes, RTO ≤ 4 hours.
 ## 5. Rate limiting
 
 - Spike in `ratelimit.rejected` for sign-in: check whether it comes from one address or many (credential stuffing). Account-target limits apply to failed attempts only.
-- `ratelimit.coordination_failure`: Durable Objects unavailable. Sensitive policies are limited per instance at a quarter of quota; invitation-token checks fail closed. Escalate if it lasts more than 10 minutes.
+- `ratelimit.coordination_failure`: Durable Objects unavailable. Sensitive policies, including invitation registration, are limited per instance at a quarter of quota. Escalate if it lasts more than 10 minutes.
 - Emergency override (for example a mass re-enrolment day): add to `RATE_LIMIT_OVERRIDES`, e.g. `[{"policy":"auth.login","factor":2,"expiresAt":"<≤7 days>","reason":"<why>"}]`, and deploy. The change is recorded in version history and expires by itself.
 
 ## 6. Dashboards and alerts

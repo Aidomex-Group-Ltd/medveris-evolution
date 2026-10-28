@@ -34,7 +34,7 @@ export const RATE_LIMIT_POLICIES = {
   "auth.reset": { limit: 8, windowSeconds: 900, distributed: true, failureMode: "local-strict", progressive: { cooldownSeconds: 300, maxCooldownSeconds: 3600 } },
   "invitation.status": { limit: 60, windowSeconds: 60, distributed: true, failureMode: "local" },
   "invitation.register": { limit: 20, windowSeconds: 60, distributed: true, failureMode: "local-strict" },
-  "invitation.register.token": { limit: 5, windowSeconds: 900, distributed: true, failureMode: "closed" },
+  "invitation.register.token": { limit: 5, windowSeconds: 900, distributed: true, failureMode: "local-strict" },
   "invitation.accept": { limit: 20, windowSeconds: 60, distributed: true, failureMode: "local" },
   "invitation.decline": { limit: 20, windowSeconds: 60, distributed: true, failureMode: "local" },
   "patient.resolve": { limit: 30, windowSeconds: 60, distributed: true, failureMode: "local-strict" },
@@ -178,7 +178,12 @@ export interface RateLimiter {
   check(policy: RateLimitPolicyName, identity: string, cost?: number): Promise<RateDecision>;
 }
 
-const COORDINATION_TIMEOUT_MS = 750;
+/**
+ * Every new identity reaches a Durable Object that does not exist yet; creating it in production
+ * has been measured above 750 ms. The bound must cover that cold start, or first requests for a
+ * key (for example each invitation token) always fall back.
+ */
+export const COORDINATION_TIMEOUT_MS = 3_000;
 
 export class CoordinatedRateLimiter implements RateLimiter {
   private readonly overrides: Map<string, RateLimitOverride>;

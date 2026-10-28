@@ -3,6 +3,7 @@ import {
   applyRateCheck,
   clientAddress,
   clientKey,
+  COORDINATION_TIMEOUT_MS,
   CoordinatedRateLimiter,
   emptyState,
   LocalRateLimiter,
@@ -145,10 +146,33 @@ describe("coordinated rate limiting across Worker instances", () => {
     expect(decisions.every((decision) => decision.source === "fallback")).toBe(true);
   });
 
-  it("fails closed for policies that must not degrade", async () => {
+  it("keeps invitation registration working when coordination fails, with a stricter local limit", async () => {
     const { namespace } = fakeNamespace(() => 1_000, { fail: () => true });
     const limiter = new CoordinatedRateLimiter(namespace, new LocalRateLimiter());
-    expect((await limiter.check("invitation.register.token", "token-hash")).allowed).toBe(false);
+    const decisions = [];
+    for (let i = 0; i < 5; i += 1) decisions.push(await limiter.check("invitation.register.token", "token-hash"));
+    expect(decisions[0]).toMatchObject({ allowed: true, source: "fallback" });
+    expect(decisions.filter((decision) => decision.allowed)).toHaveLength(Math.ceil(RATE_LIMIT_POLICIES["invitation.register.token"].limit / 4));
+  });
+
+  it("waits for a cold Durable Object instead of falling back on every new identity", async () => {
+    const { namespace } = fakeNamespace(() => 1_000);
+    const slow: DurableObjectNamespaceLike = {
+      idFromName: namespace.idFromName,
+      get: (id) => ({
+        fetch: async (input, init) => {
+          await new Promise((resolve) => setTimeout(resolve, 1_500));
+          return namespace.get(id).fetch(input, init);
+        },
+      }),
+    };
+    expect(COORDINATION_TIMEOUT_MS).toBeGreaterThan(1_500);
+    const decision = await new CoordinatedRateLimiter(slow, new LocalRateLimiter()).check("invitation.register.token", "new-token-hash");
+    expect(decision).toMatchObject({ allowed: true, source: "distributed" });
+  });
+
+  it("does not leave any policy failing closed, so a coordination outage cannot block sign-in or registration", () => {
+    expect(Object.entries(RATE_LIMIT_POLICIES).filter(([, policy]) => (policy as { failureMode: string }).failureMode === "closed")).toEqual([]);
   });
 
   it("rejects malformed checks sent to the Durable Object", async () => {
