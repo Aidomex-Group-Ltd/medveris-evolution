@@ -8,7 +8,7 @@ Registration and delegation are healthy: Namecheap registration, active until 20
 
 ## Production PostgreSQL (`medverispro`, inspected read-only 2026-10-28)
 
-`~/.config/medveris/production/db.env` (0600) targets `medverispro-lokangtom2017-78dc.l.aivencloud.com:23226`, a different server from staging, with `sslmode=verify-full` against `~/.config/medveris/production/ca.pem`; all four URLs share that host, and the three role passwords are distinct and at least 20 characters. A read-only admin connection verified the certificate and found PostgreSQL 18.6 with only `_aiven` and `defaultdb`: `medveris_production` and the `medveris_*` roles do not exist yet. `db-setup.ts` and migrations `001`–`029` have not been run and need explicit approval.
+`~/.config/medveris/production/db.env` (0600) targets `medverispro-lokangtom2017-78dc.l.aivencloud.com:23226`, a different server from staging, with `sslmode=verify-full` against `~/.config/medveris/production/ca.pem`; all four URLs share that host, and the three role passwords are distinct and at least 20 characters. A read-only admin connection verified the certificate and found PostgreSQL 18.6 with only `_aiven` and `defaultdb`. With approval, `db-setup.ts` then created `medveris_migrator`, `medveris_runtime` and `medveris_jobs` (LOGIN, no superuser, no BYPASSRLS), `medveris_exchange` (NOLOGIN, BYPASSRLS) and `medveris_production` owned by `medveris_migrator`; all three login roles connect with verified TLS. The database is empty (no `schema_migrations`): migrations `001`–`029` have not been applied and need separate approval after the backup check.
 
 ## Resources (verified against Cloudflare and PostgreSQL on 2026-10-28)
 
@@ -40,7 +40,7 @@ Registration and delegation are healthy: Namecheap registration, active until 20
 
 ## Blockers (provider-side actions)
 
-1. **Production database provisioning (approval required).** The `medverispro` server exists; run `db-setup.ts` with `db.env` to create the roles and `medveris_production`, confirm point-in-time recovery and encrypted backups on the Aiven plan, then apply the reviewed migrations `001`–`029` as described in `docs/16_OPERATIONS_AND_DEPLOYMENT.md`.
+1. **Production migrations (approval required).** Roles and `medveris_production` exist on `medverispro`. Confirm point-in-time recovery and encrypted backups on the Aiven plan, then apply the reviewed migrations `001`–`029` as described in `docs/16_OPERATIONS_AND_DEPLOYMENT.md`.
 2. **Backup and restore drill.** Record it in `~/.config/medveris/production/backup-verification.json`.
 3. **Hyperdrive.** Create the runtime and jobs configs (caching disabled, `verify-full`) and replace the `REPLACE_WITH_PRODUCTION_*` IDs.
 4. **Resend.** Create a production-only API key restricted to `medveris.online` and save it in `~/.config/medveris/production/resend.env`.
