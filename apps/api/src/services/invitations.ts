@@ -27,6 +27,8 @@ export interface InvitationRow {
   acceptedBy: string | null;
   revokedAt: Date | null;
   declinedAt: Date | null;
+  scopeDepartmentId: string | null;
+  scopeUnitId: string | null;
 }
 
 interface Facility {
@@ -95,10 +97,12 @@ async function loadByToken(tx: Tx, token: string, options: { lock: boolean; user
   await tx`select set_config('app.invitation_token_hash', ${tokenHash}, true)`;
   const rows = options.lock
     ? await tx`
-        select id, tenant_id, email, roles, invited_by, created_at, expires_at, accepted_at, accepted_by, revoked_at, declined_at
+        select id, tenant_id, email, roles, invited_by, created_at, expires_at, accepted_at, accepted_by, revoked_at, declined_at,
+               scope_department_id, scope_unit_id
           from invitations where token_hash = ${tokenHash} for update`
     : await tx`
-        select id, tenant_id, email, roles, invited_by, created_at, expires_at, accepted_at, accepted_by, revoked_at, declined_at
+        select id, tenant_id, email, roles, invited_by, created_at, expires_at, accepted_at, accepted_by, revoked_at, declined_at,
+               scope_department_id, scope_unit_id
           from invitations where token_hash = ${tokenHash}`;
   const row = rows[0];
   if (!row) return null;
@@ -114,14 +118,17 @@ async function loadByToken(tx: Tx, token: string, options: { lock: boolean; user
     acceptedBy: (row.acceptedBy as string | null) ?? null,
     revokedAt: (row.revokedAt as Date | null) ?? null,
     declinedAt: (row.declinedAt as Date | null) ?? null,
+    scopeDepartmentId: (row.scopeDepartmentId as string | null) ?? null,
+    scopeUnitId: (row.scopeUnitId as string | null) ?? null,
   };
   await setLocalContext(tx, { actorKind: "registration", tenantId: invitation.tenantId, userId: options.userId ?? null });
   const [facility] = await tx`
     select id, name, facility_type, city, country, status from tenants where id = ${invitation.tenantId}`;
   const inviter = await tx`
     select 1 from memberships
-     where tenant_id = ${invitation.tenantId} and user_id = ${invitation.invitedBy}
-       and status = 'active' and 'facility_admin' = any(roles)`;
+     where tenant_id = ${invitation.tenantId} and user_id = ${invitation.invitedBy} and status = 'active'
+       and ('facility_admin' = any(roles)
+            or ('department_admin' = any(roles) and scope_department_id is not distinct from ${row.scopeDepartmentId ?? null}::uuid))`;
   return {
     invitation,
     facility: {
@@ -278,16 +285,24 @@ export async function acceptInvitation(
       membershipId = crypto.randomUUID();
       roles = invitation.roles;
       await tx`
-        insert into memberships (id, tenant_id, user_id, roles, invited_by)
-        values (${membershipId}, ${invitation.tenantId}, ${input.user.id}, ${roles}, ${invitation.invitedBy})`;
+        insert into memberships (id, tenant_id, user_id, roles, invited_by, scope_department_id, scope_unit_id)
+        values (${membershipId}, ${invitation.tenantId}, ${input.user.id}, ${roles}, ${invitation.invitedBy},
+          ${invitation.scopeDepartmentId}, ${invitation.scopeUnitId})`;
     } else if (existing.status === "active") {
       membershipId = String(existing.id);
       roles = [...new Set([...(existing.roles as string[]), ...invitation.roles])];
-      await tx`update memberships set roles = ${roles}, updated_at = now() where id = ${membershipId}`;
+      // A membership has one scope; an existing scope is kept, otherwise the invitation's scope applies.
+      await tx`
+        update memberships set roles = ${roles},
+          scope_department_id = coalesce(scope_department_id, ${invitation.scopeDepartmentId}::uuid),
+          scope_unit_id = case when scope_department_id is null then ${invitation.scopeUnitId}::uuid else scope_unit_id end,
+          updated_at = now()
+         where id = ${membershipId}`;
     } else if (existing.status === "removed" && invitation.createdAt > (existing.updatedAt as Date)) {
       membershipId = String(existing.id);
       roles = invitation.roles;
-      await tx`update memberships set roles = ${roles}, status = 'active', invited_by = ${invitation.invitedBy}, updated_at = now() where id = ${membershipId}`;
+      await tx`update memberships set roles = ${roles}, status = 'active', invited_by = ${invitation.invitedBy},
+        scope_department_id = ${invitation.scopeDepartmentId}, scope_unit_id = ${invitation.scopeUnitId}, updated_at = now() where id = ${membershipId}`;
     } else {
       return { denied: {
         tenantId: invitation.tenantId,

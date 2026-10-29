@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Tabs, Textarea } from "@medveris/ui";
 import { api, errorMessage } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { useQuery } from "../lib/useQuery";
 
 interface MembershipRow {
@@ -14,6 +15,8 @@ interface MembershipRow {
   email: string;
   emailVerifiedAt: string | null;
   mfaEnrolledAt: string | null;
+  scopeDepartmentName: string | null;
+  scopeUnitName: string | null;
 }
 
 interface InvitationRow {
@@ -79,14 +82,20 @@ interface DuplicateCandidate {
   candidateFamilyName: string;
 }
 
-const ROLEOPTIONS = ["receptionist", "nurse", "midwife", "ward_manager", "clinician", "pharmacist", "laboratory", "lab_validator", "radiographer", "radiologist", "records", "hr", "finance", "auditor", "privacy_officer", "facility_admin"];
+const ROLEOPTIONS = ["receptionist", "nurse", "midwife", "ward_manager", "clinician", "pharmacist", "laboratory", "lab_validator", "radiographer", "radiologist", "records", "hr", "finance", "auditor", "privacy_officer", "staff", "report_viewer", "unit_lead", "department_admin", "facility_admin", "owner"];
+/** Roles limited to one department or unit; the server refuses them without a scope. */
+const SCOPED_ROLES = new Set(["department_admin", "unit_lead"]);
 
 export function AdminPage() {
   const [tab, setTab] = useState<"members" | "integrations" | "duplicates">("members");
+  const { me } = useAuth();
+  const facilityAdmin = me?.activeTenant?.roles.includes("facility_admin") ?? false;
   return (
     <div className="mv-stack">
       <PageHeader eyebrow="Facility administration" title="Administration" description="Administrative scope does not grant clinical chart access. Role changes revoke affected sessions." />
-      <Tabs label="Administration sections" value={tab} onChange={setTab} options={[{ value: "members", label: "Memberships" }, { value: "integrations", label: "Integrations" }, { value: "duplicates", label: "Duplicate review" }]} />
+      <Tabs label="Administration sections" value={tab} onChange={setTab} options={facilityAdmin
+        ? [{ value: "members", label: "Memberships" }, { value: "integrations", label: "Integrations" }, { value: "duplicates", label: "Duplicate review" }]
+        : [{ value: "members", label: "Department memberships" }]} />
       {tab === "members" ? <Memberships /> : null}
       {tab === "integrations" ? <Integrations /> : null}
       {tab === "duplicates" ? <Duplicates /> : null}
@@ -117,6 +126,10 @@ function Memberships() {
   }, [reloadMemberships, reloadInvitations]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("receptionist");
+  const [scopeDepartmentId, setScopeDepartmentId] = useState("");
+  const [scopeUnitId, setScopeUnitId] = useState("");
+  const departments = useQuery<{ departments: Array<{ id: string; name: string }> }>("/organization/departments");
+  const units = useQuery<{ units: Array<{ id: string; name: string; departmentId: string }> }>(scopeDepartmentId ? `/organization/units?departmentId=${scopeDepartmentId}` : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -127,7 +140,7 @@ function Memberships() {
     setError(null);
     setMessage(null);
     try {
-      const response = await api<{ delivery: { delivered: boolean; detail?: string } }>("/admin/invitations", { method: "POST", body: { email, roles: [role] } });
+      const response = await api<{ delivery: { delivered: boolean; detail?: string } }>("/admin/invitations", { method: "POST", body: { email, roles: [role], scopeDepartmentId: scopeDepartmentId || null, scopeUnitId: scopeUnitId || null } });
       setMessage(response.delivery.delivered
         ? `Invitation emailed to ${email}. They appear under staff once they accept.`
         : `Invitation created, but the email could not be sent: ${response.delivery.detail ?? "delivery failed"}. Revoke it and try again later.`);
@@ -171,6 +184,18 @@ function Memberships() {
           <form className="mv-stack" onSubmit={invite}>
             <Field label="Work email" htmlFor="invite-email"><Input id="invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
             <Field label="Initial role"><Select value={role} onChange={(e) => setRole(e.target.value)}>{ROLEOPTIONS.map((option) => <option key={option}>{option}</option>)}</Select></Field>
+            <Field label={SCOPED_ROLES.has(role) ? "Department (required)" : "Department (optional)"} htmlFor="invite-department" hint="Limits department administrators and unit leads to this department.">
+              <Select id="invite-department" value={scopeDepartmentId} onChange={(e) => { setScopeDepartmentId(e.target.value); setScopeUnitId(""); }} required={SCOPED_ROLES.has(role)}>
+                <option value="">Whole workspace</option>{departments.data?.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
+              </Select>
+            </Field>
+            {scopeDepartmentId ? (
+              <Field label={role === "unit_lead" ? "Unit (required)" : "Unit (optional)"} htmlFor="invite-unit">
+                <Select id="invite-unit" value={scopeUnitId} onChange={(e) => setScopeUnitId(e.target.value)} required={role === "unit_lead"}>
+                  <option value="">Whole department</option>{units.data?.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+                </Select>
+              </Field>
+            ) : null}
             <Button type="submit" disabled={busy}>{busy ? "Inviting…" : "Create invitation"}</Button>
           </form>
         </Card>
@@ -181,6 +206,9 @@ function Memberships() {
             <li>Only clinicians sign notes; nurses may document observations and triage.</li>
             <li>Only radiologists sign imaging reports; radiographers register studies and draft. Laboratory validators release results they did not enter.</li>
             <li>Privacy officers review audit and access history; they cannot open clinical records.</li>
+            <li>Owners and facility administrators manage the whole workspace; only an owner can grant ownership, and the last owner cannot be removed.</li>
+            <li>Department administrators and unit leads manage staff, stock and reports for their own department or unit only.</li>
+            <li>Report viewers have read-only access to operational reports.</li>
             <li>Credential reviewer is a platform role and cannot be assigned here.</li>
           </ul>
         </Card>
@@ -210,7 +238,7 @@ function Memberships() {
             {memberships.data.memberships.map((member) => (
               <tr key={member.id}>
                 <td><strong>{member.displayName}</strong><div className="mv-small mv-muted">{member.email}</div></td>
-                <td>{member.roles.join(", ")}</td>
+                <td>{member.roles.join(", ")}{member.scopeDepartmentName ? <div className="mv-small mv-muted">{member.scopeDepartmentName}{member.scopeUnitName ? ` · ${member.scopeUnitName}` : ""}</div> : null}</td>
                 <td><Badge tone={member.mfaEnrolledAt ? "success" : "warning"}>{member.mfaEnrolledAt ? "enrolled" : "not enrolled"}</Badge></td>
                 <td><Badge tone={member.status === "active" ? "success" : "neutral"}>{member.status}</Badge></td>
                 <td>{member.status === "active" ? <Button variant="danger" size="sm" onClick={() => void remove(member.id)}>Remove</Button> : null}</td>
@@ -223,13 +251,53 @@ function Memberships() {
   );
 }
 
+interface VerificationResult { outcome: "passed" | "failed"; checks: Array<{ name: string; passed: boolean; detail: string; durationMs: number }> }
+
 function Integrations() {
   const integrations = useQuery<IntegrationResponse>("/admin/integrations");
+  const { me } = useAuth();
+  const operator = me?.platformRoles.includes("platform_operator") ?? false;
+  const [sampleUid, setSampleUid] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [verification, setVerification] = useState<VerificationResult | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   if (integrations.loading) return <LoadingState />;
   if (integrations.error) return <ErrorState message={integrations.error} onRetry={integrations.reload} />;
+  const dicomweb = integrations.data?.integrations.find((integration) => integration.id === "dicomweb");
+
+  async function verify(event: FormEvent) {
+    event.preventDefault();
+    setVerifying(true);
+    setVerifyError(null);
+    try {
+      setVerification(await api<VerificationResult>("/admin/integrations/dicomweb/verify", { method: "POST", body: sampleUid.trim() ? { sampleStudyInstanceUid: sampleUid.trim() } : {} }));
+      integrations.reload();
+    } catch (cause) {
+      setVerifyError(errorMessage(cause));
+    } finally {
+      setVerifying(false);
+    }
+  }
+
   return (
     <div className="mv-stack">
       <Notice tone="warning" title="No simulated successes">{integrations.data?.terminology.label}. Unavailable integrations are explicitly disabled.</Notice>
+      {operator && dicomweb?.requested ? (
+        <Card title="DICOMweb conformance run" description="Runs QIDO-RS and WADO-RS checks against the configured PACS from this runtime. Only a passing run makes the PACS available.">
+          <form className="mv-row" onSubmit={verify}>
+            <Field label="Sample Study Instance UID (optional)" htmlFor="dicomweb-sample"><Input id="dicomweb-sample" value={sampleUid} onChange={(event) => setSampleUid(event.target.value)} maxLength={64} /></Field>
+            <Button type="submit" disabled={verifying}>{verifying ? "Verifying…" : "Run verification"}</Button>
+          </form>
+          {verifyError ? <ErrorState message={verifyError} /> : null}
+          {verification ? (
+            <Table head={["Check", "Result", "Detail"]} caption={`Verification ${verification.outcome}`}>
+              {verification.checks.map((check) => (
+                <tr key={check.name}><td>{check.name}</td><td><Badge tone={check.passed ? "success" : "danger"}>{check.passed ? "passed" : "failed"}</Badge></td><td className="mv-small">{check.detail}</td></tr>
+              ))}
+            </Table>
+          ) : null}
+        </Card>
+      ) : null}
       <Card title="External adapters">
         <Table head={["Integration", "State", "Reason and effect", "Missing prerequisites", "Last verification", "Operator action"]} caption="Server-reported integration availability">
           {integrations.data?.integrations.map((integration) => (

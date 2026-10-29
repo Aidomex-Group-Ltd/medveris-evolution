@@ -21,6 +21,7 @@ import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import { enforceRateLimit } from "../lib/rate-limit.js";
 import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
+import { resolveAttribution } from "../lib/scope.js";
 import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
 import type { AppEnv } from "../types.js";
 
@@ -501,10 +502,11 @@ receptionRoutes.post("/encounters", async (c) => {
       }
       const existing = await openEncounter(tx);
       if (existing) throw openConflict(existing);
+      const attribution = await resolveAttribution(tx, c, body.departmentId, body.unitId);
       await tx`
-        insert into encounters (id, tenant_id, patient_id, appointment_id, queue_entry_id, type, state, reason, created_by, clinician_user_id, idempotency_key)
+        insert into encounters (id, tenant_id, patient_id, appointment_id, queue_entry_id, type, state, reason, created_by, clinician_user_id, idempotency_key, department_id, unit_id)
         values (${id}, ${tenantId}, ${body.patientId}, ${body.appointmentId ?? null}, ${body.queueEntryId ?? null},
-          ${body.type}, 'arrived', ${body.reason}, ${auth.user.id}, ${null}, ${key})
+          ${body.type}, 'arrived', ${body.reason}, ${auth.user.id}, ${null}, ${key}, ${attribution.departmentId}, ${attribution.unitId})
       `;
       if (body.queueEntryId) {
         await tx`update queue_entries set encounter_id = ${id}, status = 'waiting', updated_at = now() where id = ${body.queueEntryId} and tenant_id = ${tenantId}`;

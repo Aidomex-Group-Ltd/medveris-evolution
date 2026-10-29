@@ -11,7 +11,11 @@ export const meRoutes = new Hono<AppEnv>();
 
 meRoutes.get("/me", async (c) => {
   const auth = requireAuth(c);
+  const organizations = await withContext(c.get("deps").sql, { userId: auth.user.id, actorKind: "staff" }, async (tx) => tx`
+    select o.id, o.name, m.role from organization_memberships m join organizations o on o.id = m.organization_id
+     where m.user_id = ${auth.user.id} and m.status = 'active' and o.status = 'active' order by o.name`);
   return c.json({
+    organizations: organizations.map((row) => ({ id: row.id, name: row.name, role: row.role })),
     user: {
       id: auth.user.id,
       email: auth.user.email,
@@ -22,7 +26,7 @@ meRoutes.get("/me", async (c) => {
       mfaEnrolled: Boolean(auth.user.mfaEnrolledAt),
       mfaVerified: auth.mfaVerified,
     },
-    memberships: auth.memberships.map((m) => ({ id: m.id, tenantId: m.tenantId, tenantName: m.tenantName, tenantSlug: m.tenantSlug, roles: m.roles })),
+    memberships: auth.memberships.map((m) => ({ id: m.id, tenantId: m.tenantId, tenantName: m.tenantName, tenantSlug: m.tenantSlug, roles: m.roles, scope: m.scope ?? null })),
     activeTenant: auth.activeTenant,
     patientId: auth.patientId,
     platformRoles: auth.platformRoles,

@@ -13,6 +13,7 @@ import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
+import { resolveAttribution } from "../lib/scope.js";
 import type { AppEnv } from "../types.js";
 
 export const financeRoutes = new Hono<AppEnv>();
@@ -72,7 +73,7 @@ financeRoutes.get("/invoices", async (c) => {
   const auth = c.get("auth")!;
   const status = c.req.query("status");
   const rows = await withStaffActor(c, async (tx) => tx`
-    select i.id, i.number, i.patient_id, i.encounter_id, i.currency, i.status, i.notes, i.created_at,
+    select i.id, i.number, i.patient_id, i.encounter_id, i.currency, i.status, i.notes, i.created_at, i.department_id, i.unit_id,
            p.public_id, p.given_name, p.family_name,
            coalesce((select sum(ii.amount) from invoice_items ii where ii.invoice_id = i.id), 0) as total,
            coalesce((select sum(p.amount) from payments p where p.invoice_id = i.id and p.reversed_at is null), 0) as paid
@@ -95,10 +96,15 @@ financeRoutes.post("/invoices", async (c) => {
   await withStaffActor(c, async (tx) => {
     const linked = await tx`select 1 from tenant_patient_links where tenant_id = ${auth.activeTenant!.id} and patient_id = ${body.patientId}`;
     if (!linked[0]) throw new ValidationError("Patient is not linked to this facility");
+    let encounterAttribution: { departmentId: string | null; unitId: string | null } | null = null;
     if (body.encounterId) {
-      const encounter = await tx`select 1 from encounters where id = ${body.encounterId} and patient_id = ${body.patientId} and tenant_id = ${auth.activeTenant!.id}`;
+      const encounter = await tx`select department_id, unit_id from encounters where id = ${body.encounterId} and patient_id = ${body.patientId} and tenant_id = ${auth.activeTenant!.id}`;
       if (!encounter[0]) throw new ValidationError("Encounter does not belong to the selected patient");
+      encounterAttribution = { departmentId: encounter[0].departmentId ?? null, unitId: encounter[0].unitId ?? null };
     }
+    const attribution = !body.departmentId && !body.unitId && encounterAttribution?.departmentId
+      ? encounterAttribution
+      : await resolveAttribution(tx, c, body.departmentId, body.unitId);
     const prepared = [];
     for (const item of body.items) {
       let unitPrice = item.unitPrice;
@@ -118,8 +124,9 @@ financeRoutes.post("/invoices", async (c) => {
     const currency = prepared[0]?.currency ?? "UGX";
     if (prepared.some((item) => item.currency !== currency)) throw new ValidationError("All invoice lines must use the same currency");
     await tx`
-      insert into invoices (id, tenant_id, patient_id, encounter_id, number, currency, notes, issued_by)
-      values (${invoiceId}, ${auth.activeTenant!.id}, ${body.patientId}, ${body.encounterId ?? null}, ${number}, ${currency}, ${body.notes || null}, ${auth.user.id})
+      insert into invoices (id, tenant_id, patient_id, encounter_id, number, currency, notes, issued_by, department_id, unit_id)
+      values (${invoiceId}, ${auth.activeTenant!.id}, ${body.patientId}, ${body.encounterId ?? null}, ${number}, ${currency}, ${body.notes || null}, ${auth.user.id},
+        ${attribution.departmentId}, ${attribution.unitId})
     `;
     for (const item of prepared) {
       await tx`

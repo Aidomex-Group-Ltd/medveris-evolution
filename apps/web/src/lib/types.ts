@@ -34,7 +34,12 @@ export type Role =
   | "research"
   | "content_editor"
   | "content_reviewer"
-  | "opportunity_moderator";
+  | "opportunity_moderator"
+  | "owner"
+  | "department_admin"
+  | "unit_lead"
+  | "staff"
+  | "report_viewer";
 
 export interface SessionUser {
   id: string;
@@ -53,6 +58,14 @@ export interface Membership {
   tenantName: string;
   tenantSlug: string;
   roles: Role[];
+  /** Department or unit a scoped role (department_admin, unit_lead) is limited to. */
+  scope?: { departmentId: string | null; unitId: string | null } | null;
+}
+
+export interface OrganizationMembership {
+  id: string;
+  name: string;
+  role: "organization_owner" | "organization_admin" | "organization_reporting";
 }
 
 export interface ActiveTenant {
@@ -65,6 +78,7 @@ export interface ActiveTenant {
 
 export interface MeResponse {
   user: SessionUser;
+  organizations?: OrganizationMembership[];
   memberships: Membership[];
   activeTenant: ActiveTenant | null;
   patientId: string | null;

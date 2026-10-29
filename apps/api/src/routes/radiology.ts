@@ -13,6 +13,10 @@ import {
   radiologyStudySchema,
   radiologyTemplateApprovalSchema,
   radiologyWorklistSchema,
+  pacsFrameQuerySchema,
+  pacsLinkSchema,
+  pacsStudySearchSchema,
+  pacsUnlinkSchema,
   uuidSchema,
 } from "@medveris/contracts";
 import { assertDiagnostics, permissionsForRoles, type Permission } from "@medveris/authz";
@@ -33,10 +37,13 @@ import {
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
-import { ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import { ensureMatch, parseJson, parseQuery } from "../lib/http.js";
 import { uniqueViolation } from "../lib/idempotency.js";
-import { integrationStatus } from "../integrations/registry.js";
+import { enforceRateLimit } from "../lib/rate-limit.js";
+import { IntegrationUnavailableError, integrationStatus, type IntegrationStatus } from "../integrations/registry.js";
+import { compareIdentity, dicomwebClientFor, isDicomUid, type DicomwebClient } from "../integrations/dicomweb.js";
+import { loadVerifications } from "../integrations/verification.js";
 import type { AppEnv } from "../types.js";
 
 export const radiologyRoutes = new Hono<AppEnv>();
@@ -70,9 +77,22 @@ function contentProblems(definition: RadiologyTemplateDefinition, content: Radio
   }
 }
 
-function imagesState(c: C) {
-  const status = integrationStatus(c.get("deps").config, "dicomweb");
-  return { state: status.state, reason: status.reason, available: status.state === "available" };
+async function pacsStatus(c: C): Promise<IntegrationStatus> {
+  const deps = c.get("deps");
+  const verifications = await loadVerifications(deps.sql, deps.config);
+  return integrationStatus(deps.config, "dicomweb", verifications.dicomweb);
+}
+
+async function imagesState(c: C) {
+  const status = await pacsStatus(c);
+  return { state: status.state, reason: status.reason, available: status.state === "available", verifiedAt: status.lastSuccessfulVerificationAt };
+}
+
+async function requirePacs(c: C, operation: string, outcome: string): Promise<DicomwebClient> {
+  const status = await pacsStatus(c);
+  const client = status.state === "available" ? dicomwebClientFor(c.get("deps").config, c.get("deps").dicomweb) : null;
+  if (!client) throw new IntegrationUnavailableError(status, operation, outcome);
+  return client;
 }
 
 async function lockReport(tx: Tx, tenantId: string, id: string) {
@@ -153,6 +173,7 @@ radiologyRoutes.post("/radiology/studies", async (c) => {
   const body = await parseJson(c, radiologyStudySchema);
   const id = crypto.randomUUID();
   const scheduled = Boolean(body.scheduledAt && new Date(body.scheduledAt).getTime() > Date.now());
+  const pacsState = (await pacsStatus(c)).state === "available" ? "pending" : "not-configured";
   let accession = "";
   for (let attempt = 0; attempt < 3; attempt += 1) {
     accession = radiologyAccession(auth.activeTenant!.slug);
@@ -169,7 +190,7 @@ radiologyRoutes.post("/radiology/studies", async (c) => {
         await tx`
           insert into imaging_studies (id, tenant_id, order_item_id, modality, body_site, accession, pacs_state, acquisition_status,
             scheduled_at, protocol, preparation_notes, created_by)
-          values (${id}, ${tenantId}, ${body.orderItemId}, ${body.modality}, ${body.bodySite}, ${accession}, 'not-configured',
+          values (${id}, ${tenantId}, ${body.orderItemId}, ${body.modality}, ${body.bodySite}, ${accession}, ${pacsState},
             ${scheduled ? "scheduled" : "registered"}, ${body.scheduledAt ? new Date(body.scheduledAt) : null},
             ${body.protocol || null}, ${body.preparationNotes || null}, ${auth.user.id})
         `;
@@ -234,7 +255,7 @@ radiologyRoutes.get("/radiology/worklist", async (c) => {
     with items as (
       select i.id as order_item_id, i.name as examination, o.id as order_id, o.priority, o.created_at as ordered_at,
              o.clinical_note, o.patient_id, p.public_id, p.given_name, p.family_name,
-             s.id as study_id, s.accession, s.modality, s.body_site, s.acquisition_status, s.scheduled_at, s.acquired_at, s.version as study_version,
+             s.id as study_id, s.accession, s.modality, s.body_site, s.acquisition_status, s.scheduled_at, s.acquired_at, s.version as study_version, s.pacs_state,
              r.id as report_id, r.status as report_status, r.urgency, r.draft_version, r.signed_at, r.released_at,
              r.reporting_radiologist_id, ru.display_name as radiologist_name,
              case
@@ -310,7 +331,7 @@ radiologyRoutes.get("/radiology/reports/:id", async (c) => {
   const data = await withStaffActor(c, async (tx) => {
     const report = await requireRows(await tx`
       select r.*, t.definition, t.name as template_name, t.version as template_version, t.code as template_code,
-             s.accession, s.modality, s.body_site, s.acquisition_status, s.acquired_at, s.scheduled_at, s.protocol, s.pacs_state,
+             s.accession, s.modality, s.body_site, s.acquisition_status, s.acquired_at, s.scheduled_at, s.protocol, s.pacs_state, s.version as study_version,
              o.priority, o.clinical_note, o.created_at as ordered_at, i.name as examination,
              p.public_id, p.given_name, p.family_name, to_char(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth, p.sex,
              ru.display_name as radiologist_name, cu.display_name as created_by_name
@@ -356,7 +377,7 @@ radiologyRoutes.get("/radiology/reports/:id", async (c) => {
   });
   return c.json({
     ...data,
-    images: imagesState(c),
+    images: await imagesState(c),
     permissions: { draft: can(c, "radiology.report.draft"), sign: can(c, "radiology.report.sign"), addend: can(c, "radiology.report.addend") },
     criticalAcknowledgementMinutes: config.radiologyCriticalAckMinutes,
   });
@@ -667,5 +688,244 @@ radiologyRoutes.get("/radiology/orders/:orderItemId/report", async (c) => {
     }));
     return { report, latest, addenda };
   });
-  return c.json({ signedReport: data, images: imagesState(c) });
+  return c.json({ signedReport: data, images: await imagesState(c) });
+});
+
+// ---------------------------------------------------------------- PACS images
+
+radiologyRoutes.get("/radiology/images/status", async (c) => {
+  staff(c);
+  return c.json({ images: await imagesState(c) });
+});
+
+interface StudyRow {
+  id: string;
+  accession: string | null;
+  modality: string;
+  bodySite: string;
+  acquisitionStatus: string;
+  pacsState: string;
+  studyInstanceUid: string | null;
+  pacsLinkedAt: Date | null;
+  pacsIdentity: unknown;
+  version: number;
+  patientId: string;
+  publicId: string;
+  givenName: string;
+  familyName: string;
+  dateOfBirth: string | null;
+  sex: string | null;
+  examination: string;
+  linkedByName: string | null;
+  reportId: string | null;
+}
+
+async function loadStudy(tx: Tx, tenantId: string, id: string, lock = false): Promise<StudyRow> {
+  const rows = lock
+    ? await tx`
+      select s.id, s.accession, s.modality, s.body_site, s.acquisition_status, s.pacs_state, s.study_instance_uid, s.pacs_linked_at,
+             s.pacs_identity, s.version, o.patient_id
+        from imaging_studies s join service_order_items i on i.id = s.order_item_id join service_orders o on o.id = i.order_id
+       where s.id = ${id} and s.tenant_id = ${tenantId} for update of s`
+    : await tx`
+      select s.id, s.accession, s.modality, s.body_site, s.acquisition_status, s.pacs_state, s.study_instance_uid, s.pacs_linked_at,
+             s.pacs_identity, s.version, o.patient_id, p.public_id, p.given_name, p.family_name,
+             to_char(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth, p.sex, i.name as examination, lu.display_name as linked_by_name,
+             (select r.id from radiology_reports r where r.study_id = s.id and r.status <> 'cancelled' limit 1) as report_id
+        from imaging_studies s join service_order_items i on i.id = s.order_item_id join service_orders o on o.id = i.order_id
+        join patients p on p.id = o.patient_id left join users lu on lu.id = s.pacs_linked_by
+       where s.id = ${id} and s.tenant_id = ${tenantId}`;
+  return requireRows(rows, "Imaging study not found") as unknown as StudyRow;
+}
+
+async function patientIdentity(tx: Tx, patientId: string) {
+  const [patient] = await tx`
+    select given_name, family_name, to_char(date_of_birth, 'YYYY-MM-DD') as date_of_birth, sex from patients where id = ${patientId}
+  `;
+  if (!patient) throw new NotFoundError("Patient not found");
+  return { givenName: String(patient.givenName), familyName: String(patient.familyName), dateOfBirth: patient.dateOfBirth as string | null, sex: patient.sex as string | null };
+}
+
+function requireImageAccess(c: C): void {
+  requirePermission(c, "radiology.images.view", "Viewing images requires clinical or radiology staff");
+}
+
+radiologyRoutes.get("/radiology/studies/:id", async (c) => {
+  const { tenantId } = staff(c);
+  const id = uuidSchema.parse(c.req.param("id"));
+  const study = await withStaffActor(c, async (tx) => loadStudy(tx, tenantId, id));
+  return c.json({
+    study,
+    images: await imagesState(c),
+    permissions: { link: can(c, "radiology.study.register"), view: can(c, "radiology.images.view") },
+  });
+});
+
+radiologyRoutes.get("/radiology/studies/:id/pacs-candidates", async (c) => {
+  const { auth, tenantId, config } = staff(c);
+  requirePermission(c, "radiology.study.register", "Searching the PACS requires a radiographer or radiologist");
+  const id = uuidSchema.parse(c.req.param("id"));
+  const query = parseQuery(c, pacsStudySearchSchema);
+  await enforceRateLimit(c, "pacs.search", auth.user.id);
+  const client = await requirePacs(c, "radiology.pacs.search", "the PACS was not searched");
+  const { study, patient } = await withStaffActor(c, async (tx) => {
+    const row = await loadStudy(tx, tenantId, id);
+    return { study: row, patient: await patientIdentity(tx, row.patientId) };
+  });
+  const criteria = { ...query };
+  if (!criteria.accession && !criteria.patientId && !criteria.fromDate && !criteria.toDate) criteria.accession = study.accession ?? undefined;
+  if (!criteria.accession && !criteria.patientId && !criteria.fromDate && !criteria.toDate) {
+    throw new ValidationError("Give an accession number, PACS patient ID or study date range to search the PACS");
+  }
+  const studies = await client.searchStudies({ ...criteria, limit: 25 });
+  await withStaffActor(c, async (tx) => writeAudit(tx, config, requestAudit(c, "radiology.pacs.search", {
+    subjectPatientId: study.patientId, resourceType: "ImagingStudy", resourceId: id,
+    metadata: { criteria: Object.keys(criteria).filter((key) => criteria[key as keyof typeof criteria]), results: studies.length },
+  })));
+  return c.json({
+    criteria,
+    candidates: studies.map((candidate) => ({
+      ...candidate,
+      accessionMatches: Boolean(study.accession && candidate.accession === study.accession),
+      identity: compareIdentity(candidate.patient, patient),
+    })),
+  });
+});
+
+radiologyRoutes.post("/radiology/studies/:id/pacs-link", async (c) => {
+  const { auth, tenantId, config } = staff(c);
+  requirePermission(c, "radiology.study.register", "Linking a PACS study requires a radiographer or radiologist");
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, pacsLinkSchema);
+  const client = await requirePacs(c, "radiology.pacs.link", "the study was not linked");
+  const pacs = await client.findStudy(body.studyInstanceUid);
+  if (!pacs) throw new NotFoundError("The PACS has no study with this Study Instance UID");
+  try {
+    const result = await withStaffActor(c, async (tx) => {
+      const study = await loadStudy(tx, tenantId, id, true);
+      ensureMatch(body.expectedVersion, Number(study.version));
+      if (study.acquisitionStatus === "cancelled") throw new ConflictError("The study was cancelled");
+      if (study.pacsState === "reconciled") throw new ConflictError("This study is already linked to a PACS study; unlink it first");
+      const identity = compareIdentity(pacs.patient, await patientIdentity(tx, study.patientId));
+      if (!identity.confirmed && !body.identityOverrideReason) {
+        throw new ConflictError("The PACS family name or date of birth does not match this patient. Check the study; to link anyway, record why.", { identity });
+      }
+      const snapshot = {
+        patient: pacs.patient,
+        accession: pacs.accession,
+        studyDate: pacs.studyDate,
+        description: pacs.description,
+        modalities: pacs.modalities,
+        identity,
+        overrideReason: body.identityOverrideReason ?? null,
+      };
+      await tx`
+        update imaging_studies set study_instance_uid = ${pacs.studyInstanceUid}, pacs_state = 'reconciled', pacs_linked_at = now(),
+          pacs_linked_by = ${auth.user.id}, pacs_identity = ${tx.json(snapshot as never)}, version = version + 1, updated_at = now(),
+          reconciliation_note = ${body.identityOverrideReason ?? null}
+         where id = ${id}
+      `;
+      await writeAudit(tx, config, requestAudit(c, "radiology.pacs.link", {
+        subjectPatientId: study.patientId, resourceType: "ImagingStudy", resourceId: id,
+        metadata: {
+          accessionMatches: Boolean(study.accession && pacs.accession === study.accession),
+          identity, identityOverride: Boolean(body.identityOverrideReason),
+        },
+      }));
+      return { version: Number(study.version) + 1, identity };
+    });
+    return c.json({ ok: true, ...result });
+  } catch (error) {
+    if (uniqueViolation(error) === "imaging_studies_pacs_study") throw new ConflictError("This PACS study is already linked to another imaging study at this facility");
+    throw error;
+  }
+});
+
+radiologyRoutes.post("/radiology/studies/:id/pacs-unlink", async (c) => {
+  const { tenantId, config } = staff(c);
+  requirePermission(c, "radiology.study.register", "Unlinking a PACS study requires a radiographer or radiologist");
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, pacsUnlinkSchema);
+  const version = await withStaffActor(c, async (tx) => {
+    const study = await loadStudy(tx, tenantId, id, true);
+    ensureMatch(body.expectedVersion, Number(study.version));
+    if (study.pacsState !== "reconciled") throw new ConflictError("This study is not linked to a PACS study");
+    await tx`
+      update imaging_studies set study_instance_uid = null, pacs_state = 'pending', pacs_linked_at = null, pacs_linked_by = null,
+        pacs_identity = null, reconciliation_note = ${body.reason}, version = version + 1, updated_at = now()
+       where id = ${id}
+    `;
+    await writeAudit(tx, config, requestAudit(c, "radiology.pacs.unlink", {
+      subjectPatientId: study.patientId, resourceType: "ImagingStudy", resourceId: id,
+      metadata: { reason: body.reason },
+    }));
+    return Number(study.version) + 1;
+  });
+  return c.json({ ok: true, version });
+});
+
+async function linkedStudyUid(c: C, tenantId: string, id: string): Promise<{ uid: string; patientId: string }> {
+  return withStaffActor(c, async (tx) => {
+    const [row] = await tx`
+      select s.study_instance_uid, s.pacs_state, o.patient_id
+        from imaging_studies s join service_order_items i on i.id = s.order_item_id join service_orders o on o.id = i.order_id
+       where s.id = ${id} and s.tenant_id = ${tenantId}
+    `;
+    if (!row) throw new NotFoundError("Imaging study not found");
+    if (row.pacsState !== "reconciled" || !isDicomUid(row.studyInstanceUid)) throw new ConflictError("This study is not linked to a PACS study");
+    return { uid: String(row.studyInstanceUid), patientId: String(row.patientId) };
+  });
+}
+
+function seriesParam(c: C, name: string): string {
+  const value = c.req.param(name);
+  if (!isDicomUid(value)) throw new ValidationError(`Invalid ${name}`);
+  return value;
+}
+
+radiologyRoutes.get("/radiology/studies/:id/images", async (c) => {
+  const { tenantId, config } = staff(c);
+  requireImageAccess(c);
+  const id = uuidSchema.parse(c.req.param("id"));
+  const client = await requirePacs(c, "radiology.images.view", "no images were retrieved");
+  const linked = await linkedStudyUid(c, tenantId, id);
+  const [study, series] = await Promise.all([client.findStudy(linked.uid), client.searchSeries(linked.uid)]);
+  if (!study) throw new NotFoundError("The linked study is no longer in the PACS; unlink it and check the PACS");
+  await withStaffActor(c, async (tx) => writeAudit(tx, config, requestAudit(c, "radiology.images.view", {
+    subjectPatientId: linked.patientId, resourceType: "ImagingStudy", resourceId: id,
+    metadata: { series: series.length },
+  })));
+  return c.json({ study, series, notice: "Rendered review images from the PACS. Not a validated diagnostic viewer; confirm findings on a diagnostic workstation." });
+});
+
+radiologyRoutes.get("/radiology/studies/:id/images/series/:seriesUid", async (c) => {
+  const { tenantId } = staff(c);
+  requireImageAccess(c);
+  const id = uuidSchema.parse(c.req.param("id"));
+  const seriesUid = seriesParam(c, "seriesUid");
+  const client = await requirePacs(c, "radiology.images.view", "no images were retrieved");
+  const linked = await linkedStudyUid(c, tenantId, id);
+  const instances = await client.searchInstances(linked.uid, seriesUid);
+  return c.json({ instances });
+});
+
+radiologyRoutes.get("/radiology/studies/:id/images/series/:seriesUid/instances/:instanceUid/frames/:frame", async (c) => {
+  const { auth, tenantId } = staff(c);
+  requireImageAccess(c);
+  await enforceRateLimit(c, "pacs.frame", auth.user.id);
+  const id = uuidSchema.parse(c.req.param("id"));
+  const seriesUid = seriesParam(c, "seriesUid");
+  const instanceUid = seriesParam(c, "instanceUid");
+  const frame = Number(c.req.param("frame"));
+  const query = parseQuery(c, pacsFrameQuerySchema);
+  const client = await requirePacs(c, "radiology.images.view", "no image was retrieved");
+  const linked = await linkedStudyUid(c, tenantId, id);
+  const image = await client.renderFrame(linked.uid, seriesUid, instanceUid, frame, {
+    viewport: query.size === "thumb" ? 160 : undefined,
+    window: query.windowCenter !== undefined && query.windowWidth !== undefined ? { center: query.windowCenter, width: query.windowWidth } : undefined,
+  });
+  return new Response(image.body, {
+    status: 200,
+    headers: { "content-type": image.contentType, "cache-control": "no-store, private", "x-content-type-options": "nosniff" },
+  });
 });

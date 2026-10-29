@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Badge, Button, Card, DataList, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Textarea } from "@medveris/ui";
 import { ApiError, api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { PacsImagesPanel } from "../components/PacsImagesPanel";
 import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
 
@@ -13,7 +14,7 @@ interface Content { fields: Record<string, string>; measurements: Measurement[] 
 
 interface ReportResponse {
   report: {
-    id: string; status: string; urgency: string; content: Content; draftVersion: number; signedVersion: number;
+    id: string; studyId: string; status: string; urgency: string; content: Content; draftVersion: number; signedVersion: number;
     definition: Definition; templateName: string; templateVersion: number; accession: string; modality: string; bodySite: string;
     acquisitionStatus: string; acquiredAt: string | null; protocol: string | null; priority: string; clinicalNote: string; orderedAt: string;
     examination: string; publicId: string; givenName: string; familyName: string; dateOfBirth: string; sex: string;
@@ -54,7 +55,7 @@ function ReportWorkspace({ data, reload }: { data: ReportResponse; reload: () =>
       <PageHeader eyebrow="Radiology report" title={`${report.examination} — ${report.givenName} ${report.familyName}`}
         description={`${report.templateName} template v${report.templateVersion} · accession ${report.accession}`}
         actions={<div className="mv-row"><Link to="/radiology">Back to worklist</Link><Button variant="secondary" onClick={() => window.print()}>Print</Button></div>} />
-      <Notice tone="warning" title={`Images: DICOMweb ${data.images.state.replace("_", " ")}`}>{data.images.reason}. No images are shown or attached to this report.</Notice>
+      <PacsImagesPanel studyId={report.studyId} />
       <Card title="Examination">
         <DataList items={[
           { label: "Patient", value: <span>{report.givenName} {report.familyName} · <span className="mv-id">{report.publicId}</span> · DOB {report.dateOfBirth} · {report.sex}</span> },

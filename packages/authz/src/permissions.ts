@@ -40,6 +40,7 @@ export const PERMISSIONS = [
   "radiology.report.sign",
   "radiology.report.addend",
   "radiology.template.manage",
+  "radiology.images.view",
 
   "ward.bed.manage",
   "privacy.access.review",
@@ -99,6 +100,14 @@ export const PERMISSIONS = [
   "inventory.asset.read",
   "inventory.asset.manage",
   "inventory.report.read",
+  "inventory.procurement.manage",
+  "inventory.procurement.approve",
+
+  "workspace.profile.manage",
+  "organization.link.manage",
+  "hmis.report.prepare",
+  "hmis.report.submit",
+  "hmis.integration.manage",
 
   "directory.read",
   "directory.manage",
@@ -238,6 +247,21 @@ const adminCore: Permission[] = [
   "content.opportunity.moderate",
   "content.source.manage",
   "dashboard.administration.read",
+  "inventory.procurement.manage",
+  "inventory.procurement.approve",
+  "workspace.profile.manage",
+  "organization.link.manage",
+  "hmis.report.prepare",
+  "hmis.report.submit",
+  "hmis.integration.manage",
+];
+
+const inventoryOperate: Permission[] = [
+  ...inventoryRead,
+  "inventory.stock.receive",
+  "inventory.stock.issue",
+  "inventory.transfer.manage",
+  "inventory.count.manage",
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
@@ -258,9 +282,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "content.read",
     "dashboard.operations.read",
   ],
-  nurse: nursingCore,
+  nurse: [...nursingCore, "radiology.images.view"],
   midwife: [...nursingCore, "clinical.note.sign"],
-  clinician: [...clinicalCore, "clinical.note.sign", "clinical.note.amend", "emergency.access.activate", "diagnostic.result.validate"],
+  clinician: [...clinicalCore, "clinical.note.sign", "clinical.note.amend", "emergency.access.activate", "diagnostic.result.validate", "radiology.images.view"],
   specialist_clinician: [
     ...clinicalCore,
     "clinical.note.sign",
@@ -278,6 +302,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "inventory.transfer.manage",
     "inventory.count.manage",
     "inventory.recall.manage",
+    "inventory.procurement.manage",
     "clinical.record.read_authorized",
     "medication.dispense",
     "content.read",
@@ -286,8 +311,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   theatre: [...inventoryRead, "inventory.stock.issue", "clinical.worklist.read_assigned", "ward.assignment.read", "content.read", "dashboard.operations.read"],
   laboratory: [...diagnosticCore, "diagnostic.report.sign", "diagnostic.report.correct"],
   lab_validator: [...diagnosticCore, "diagnostic.result.validate"],
-  radiology: [...diagnosticCore, "radiology.study.register", "radiology.report.draft"],
-  radiographer: [...diagnosticCore, "radiology.study.register", "radiology.report.draft"],
+  radiology: [...diagnosticCore, "radiology.study.register", "radiology.report.draft", "radiology.images.view"],
+  radiographer: [...diagnosticCore, "radiology.study.register", "radiology.report.draft", "radiology.images.view"],
   radiologist: [
     ...diagnosticCore,
     "diagnostic.report.sign",
@@ -297,6 +322,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "radiology.report.sign",
     "radiology.report.addend",
     "radiology.template.manage",
+    "radiology.images.view",
   ],
   ward_manager: [...nursingCore, "ward.bed.manage", "dashboard.operations.read"],
   privacy_officer: ["audit.read", "privacy.access.review", "care_team.read", "content.read", "dashboard.administration.read"],
@@ -360,6 +386,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   public_health: [
     "public_health.aggregate.read",
     "public_health.disclosure.authorize",
+    "hmis.report.prepare",
     "content.read",
     "content.draft",
     "content.review",
@@ -382,6 +409,22 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "content.opportunity.moderate",
     "dashboard.operations.read",
   ],
+  owner: adminCore,
+  department_admin: [
+    ...inventoryOperate,
+    "organization.membership.manage",
+    "inventory.catalogue.manage",
+    "inventory.stock.adjust",
+    "inventory.recall.manage",
+    "inventory.procurement.manage",
+    "inventory.procurement.approve",
+    "onboarding.self.read",
+    "content.read",
+    "dashboard.administration.read",
+  ],
+  unit_lead: [...inventoryOperate, "inventory.procurement.manage", "onboarding.self.read", "content.read", "dashboard.operations.read"],
+  staff: ["inventory.catalogue.read", "inventory.stock.read", "onboarding.self.read", "content.read", "dashboard.operations.read"],
+  report_viewer: [...inventoryRead, "content.read", "dashboard.administration.read"],
 };
 
 export function permissionsForRoles(roles: readonly Role[]): Set<Permission> {

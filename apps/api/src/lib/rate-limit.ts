@@ -46,6 +46,9 @@ export const RATE_LIMIT_POLICIES = {
   "integration.token": { limit: 20, windowSeconds: 60, distributed: true, failureMode: "local-strict", progressive: { cooldownSeconds: 60, maxCooldownSeconds: 900 } },
   "integration.request": { limit: 120, windowSeconds: 60, distributed: true, failureMode: "local" },
   "realtime.connect": { limit: 10, windowSeconds: 60, distributed: true, failureMode: "local-strict" },
+  "pacs.search": { limit: 60, windowSeconds: 60, distributed: true, failureMode: "local-strict" },
+  /** Scrolling a CT series requests one rendered frame per slice; counted instead of api.authenticated. */
+  "pacs.frame": { limit: 3000, windowSeconds: 60, distributed: false, failureMode: "local" },
   /** Coarse per-isolate guards; edge WAF rules are the global control for raw request volume. */
   "api.authenticated": { limit: 600, windowSeconds: 60, distributed: false, failureMode: "local" },
   "api.public": { limit: 300, windowSeconds: 60, distributed: false, failureMode: "local" },

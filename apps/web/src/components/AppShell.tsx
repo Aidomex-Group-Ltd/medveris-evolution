@@ -4,14 +4,17 @@ import { Badge, Button } from "@medveris/ui";
 import { BrandMark } from "./BrandMark";
 import { useAuth } from "../lib/auth";
 import type { Role } from "../lib/types";
+import { INVENTORY_ROLES, PROCUREMENT_ROLES } from "../lib/roles";
 
 interface NavItem {
   to: string;
   label: string;
-  roles?: Role[];
+  roles?: readonly Role[];
   patientOnly?: boolean;
   staffOnly?: boolean;
   platform?: boolean;
+  /** Members of an organization, or workspace administrators who may create one. */
+  organization?: boolean;
 }
 
 const groups: { label: string; items: NavItem[] }[] = [
@@ -29,7 +32,8 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/wards", label: "Wards and beds", roles: ["nurse", "clinician", "ward_manager", "facility_admin"] },
       { to: "/maternity", label: "Maternity", roles: ["nurse", "clinician", "facility_admin"] },
       { to: "/operations", label: "Hospital operations", roles: ["nurse", "clinician", "facility_admin", "housekeeping", "porter", "mortuary", "cssd", "biomedical", "auditor"] },
-      { to: "/inventory", label: "Inventory and assets", roles: ["nurse", "midwife", "clinician", "specialist_clinician", "diagnostic_practitioner", "department_lead", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist", "ward_manager", "pharmacist", "theatre", "facility_admin", "hr", "records", "quality", "finance", "auditor", "housekeeping", "porter", "mortuary", "cssd", "biomedical"] },
+      { to: "/inventory", label: "Inventory and assets", roles: INVENTORY_ROLES },
+      { to: "/procurement", label: "Purchasing", roles: PROCUREMENT_ROLES },
       { to: "/theatre", label: "Theatre", roles: ["nurse", "clinician", "facility_admin"] },
       { to: "/diagnostics", label: "Diagnostics", roles: ["nurse", "clinician", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"] },
       { to: "/radiology", label: "Radiology reporting", roles: ["nurse", "clinician", "radiology", "radiographer", "radiologist"] },
@@ -42,6 +46,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/onboarding-workflow", label: "Onboarding" },
       { to: "/finance", label: "Finance", roles: ["finance", "facility_admin"] },
       { to: "/public-health", label: "Public health", roles: ["public_health", "facility_admin"] },
+      { to: "/ehmis", label: "eHMIS reporting", roles: ["public_health", "facility_admin"] },
       { to: "/provider-directory", label: "Provider directory", roles: ["facility_admin"] },
       { to: "/promotions", label: "Sponsorship", roles: ["facility_admin"] },
     ],
@@ -63,7 +68,9 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/documents", label: "Documentation", roles: ["clinician", "nurse", "records", "receptionist", "facility_admin", "hr", "quality"] },
       { to: "/workforce", label: "Workforce", roles: ["hr", "facility_admin"] },
       { to: "/caregiver-requests", label: "Caregiver requests", roles: ["facility_admin", "records"] },
-      { to: "/admin", label: "Facility administration", roles: ["facility_admin"] },
+      { to: "/workspace", label: "Workspace profile", staffOnly: true },
+      { to: "/organizations", label: "Organizations", organization: true },
+      { to: "/admin", label: "Facility administration", roles: ["facility_admin", "department_admin"] },
       { to: "/patient-merges", label: "Patient merges", roles: ["facility_admin", "records"] },
       { to: "/reports", label: "Reports" },
       { to: "/catalogue-editor", label: "Catalogue editor", roles: ["facility_admin"] },
@@ -130,6 +137,7 @@ export function AppShell() {
     if (item.patientOnly) return Boolean(me.patientId);
     if (item.staffOnly) return Boolean(me.activeTenant);
     if (item.platform) return me.platformRoles.length > 0;
+    if (item.organization) return Boolean(me.organizations?.length) || roles.includes("facility_admin");
     if (item.roles) return item.roles.some((role) => roles.includes(role));
     return true;
   };

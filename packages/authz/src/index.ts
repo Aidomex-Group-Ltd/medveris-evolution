@@ -35,6 +35,11 @@ export const ROLES = [
   "content_editor",
   "content_reviewer",
   "opportunity_moderator",
+  "owner",
+  "department_admin",
+  "unit_lead",
+  "staff",
+  "report_viewer",
 ] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -49,7 +54,12 @@ export const IMPLIED_ROLES: Readonly<Partial<Record<Role, readonly Role[]>>> = O
   radiologist: ["radiology"],
   lab_validator: ["laboratory"],
   ward_manager: ["nurse"],
+  // The primary owner of a workspace administers it; ownership adds protection against removal.
+  owner: ["facility_admin"],
 });
+
+/** Roles whose authority is limited to the department or unit recorded on their membership. */
+export const SCOPED_ROLES: readonly Role[] = ["department_admin", "unit_lead"];
 
 export function withImpliedRoles(roles: readonly Role[]): Role[] {
   const out = new Set<Role>(roles);

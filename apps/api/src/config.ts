@@ -56,6 +56,10 @@ export interface AppConfig {
     tokenTtlMinutes: number;
   };
   features: Record<string, boolean>;
+  /** PACS connection; problems are reported through the integration registry, never at startup. */
+  dicomweb: DicomwebConfig;
+  /** Deployment-level gate for the facility-scoped eHMIS/DHIS2 connector. */
+  ehmis: EhmisConfig;
   database: {
     /** Replica reads need an explicit opt-in plus a HYPERDRIVE_REPLICA binding. */
     replicaEnabled: boolean;
@@ -91,6 +95,35 @@ export interface AppConfig {
     relayBatchSize: number;
     perTenantBatchLimit: number;
   };
+}
+
+export interface DicomwebConfig {
+  /** DICOMweb service root (QIDO-RS and WADO-RS), without a trailing slash. */
+  baseUrl: string | null;
+  auth: "none" | "basic" | "bearer";
+  username: string | null;
+  password: string | null;
+  bearerToken: string | null;
+  timeoutMs: number;
+  /** Largest rendered image relayed to a browser. */
+  maxImageBytes: number;
+  /** A successful conformance run older than this no longer makes the PACS available. */
+  verificationMaxAgeDays: number;
+}
+
+export interface EhmisConfig {
+  /** FEATURE_EHMIS: the operator asks for live DHIS2 submission in this deployment. */
+  requested: boolean;
+  /**
+   * Reference to the Ministry of Health authorization or certification under which this deployment may
+   * submit to eHMIS/DHIS2, as recorded by the operator. Without it, live submission is refused.
+   */
+  deploymentAuthorizationReference: string | null;
+  /** Server-side key that encrypts per-facility DHIS2 credentials at rest. */
+  credentialsKey: string | null;
+  /** Hosts a facility may point its DHIS2 base URL at; empty refuses live connections outside development and tests. */
+  allowedHosts: string[];
+  timeoutMs: number;
 }
 
 export interface RateLimitOverride {
@@ -303,6 +336,25 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
       payments: bool(env.FEATURE_PAYMENTS, false),
       publicHealth: bool(env.FEATURE_PUBLIC_HEALTH, false),
       ledgerAnchoring: bool(env.FEATURE_LEDGER_ANCHORING, false),
+      ehmis: bool(env.FEATURE_EHMIS, false),
+      nhfr: bool(env.FEATURE_NHFR, false),
+    },
+    ehmis: {
+      requested: bool(env.FEATURE_EHMIS, false),
+      deploymentAuthorizationReference: (env.EHMIS_DEPLOYMENT_AUTHORIZATION_REF ?? "").trim() || null,
+      credentialsKey: env.EHMIS_CREDENTIALS_KEY && env.EHMIS_CREDENTIALS_KEY.length >= 32 ? env.EHMIS_CREDENTIALS_KEY : null,
+      allowedHosts: (env.EHMIS_ALLOWED_HOSTS ?? "").split(",").map((host) => host.trim().toLowerCase()).filter(Boolean),
+      timeoutMs: Math.max(1_000, Math.min(integer(env.EHMIS_TIMEOUT_MS, 20_000), 60_000)),
+    },
+    dicomweb: {
+      baseUrl: (env.DICOMWEB_BASE_URL ?? "").trim().replace(/\/+$/, "") || null,
+      auth: env.DICOMWEB_AUTH === "basic" || env.DICOMWEB_AUTH === "bearer" ? env.DICOMWEB_AUTH : "none",
+      username: env.DICOMWEB_USERNAME || null,
+      password: env.DICOMWEB_PASSWORD || null,
+      bearerToken: env.DICOMWEB_BEARER_TOKEN || null,
+      timeoutMs: Math.max(1_000, Math.min(integer(env.DICOMWEB_TIMEOUT_MS, 15_000), 60_000)),
+      maxImageBytes: Math.max(256 * 1024, Math.min(integer(env.DICOMWEB_MAX_IMAGE_BYTES, 20 * 1024 * 1024), 64 * 1024 * 1024)),
+      verificationMaxAgeDays: Math.max(1, Math.min(integer(env.DICOMWEB_VERIFICATION_MAX_AGE_DAYS, 30), 365)),
     },
     database: {
       replicaEnabled: bool(env.DB_REPLICA_ENABLED, false),

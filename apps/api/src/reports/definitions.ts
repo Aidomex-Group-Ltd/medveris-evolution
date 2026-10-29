@@ -2,6 +2,7 @@ import type { Role } from "@medveris/authz";
 import type { Tx } from "@medveris/db";
 import type { AppConfig } from "../config.js";
 import { integrationStatus, listIntegrations } from "../integrations/registry.js";
+import { loadVerifications } from "../integrations/verification.js";
 
 export interface ReportWindow {
   tenantId: string;
@@ -12,6 +13,9 @@ export interface ReportWindow {
   startAt: Date;
   endAt: Date;
   params: Record<string, string>;
+  /** Limits department-attributable reports to one department; forced for department-scoped roles. */
+  departmentId: string | null;
+  roles: readonly string[];
 }
 
 export interface ReportResult {
@@ -26,7 +30,7 @@ export interface ReportDefinition {
   id: string;
   title: string;
   description: string;
-  category: "reception" | "clinical" | "laboratory" | "radiology" | "pharmacy" | "inpatient" | "maternity" | "workforce" | "finance" | "governance";
+  category: "reception" | "clinical" | "laboratory" | "radiology" | "pharmacy" | "inpatient" | "maternity" | "workforce" | "finance" | "governance" | "operations";
   /** Roles that may run the report. These mirror the RLS policies of its source tables, so no role sees false zeros. */
   roles: readonly Role[];
   sensitive: boolean;
@@ -437,6 +441,77 @@ export const REPORTS: readonly ReportDefinition[] = [
     },
   },
   {
+    id: "department-operations",
+    title: "Department operations",
+    description: "Activity, stock and billing for each department and unit, or for one department.",
+    category: "operations",
+    roles: ["facility_admin", "department_admin", "unit_lead", "report_viewer", "auditor", "finance", "pharmacist"],
+    sensitive: false,
+    columns: [
+      { key: "department", label: "Department" }, { key: "unit", label: "Unit" }, { key: "serviceCategory", label: "Service category" },
+      { key: "stockLocations", label: "Stock locations" }, { key: "receipts", label: "Receipts" }, { key: "issues", label: "Issues and consumption" },
+      { key: "transfers", label: "Transfers" }, { key: "adjustments", label: "Adjustments" }, { key: "belowMinimum", label: "Lines below minimum (now)" },
+      { key: "expiringLots", label: "Lots expiring in 90 days (now)" }, { key: "purchaseOrders", label: "Purchase orders raised" },
+      { key: "encounters", label: "Encounters attributed" }, { key: "amountBilled", label: "Amount billed" },
+    ],
+    definitions: [
+      "Stock activity is attributed to the department and unit that own the inventory location; transfers count both directions.",
+      "Encounters and invoices count only where a department was recorded on them.",
+      "Amount billed is shown to finance and facility administrators; other roles see it as not available, never as zero.",
+      "Current values (below minimum, expiring lots) are at generation time; other columns use the report period.",
+    ],
+    async run(tx, w) {
+      const billing = w.roles.includes("finance") || w.roles.includes("facility_admin");
+      const rows = await tx`
+        with scopes as (
+          select d.id as department_id, u.id as unit_id, d.name as department, u.name as unit,
+                 coalesce(u.service_category, d.service_category) as service_category, d.sort_order
+            from departments d left join units u on u.department_id = d.id and u.enabled
+           where d.tenant_id = ${w.tenantId} and d.enabled and (${w.departmentId}::uuid is null or d.id = ${w.departmentId}::uuid)
+          union all
+          select d.id, null, d.name, null, d.service_category, d.sort_order
+            from departments d
+           where d.tenant_id = ${w.tenantId} and d.enabled and (${w.departmentId}::uuid is null or d.id = ${w.departmentId}::uuid)
+             and exists (select 1 from units u where u.department_id = d.id and u.enabled)
+        ),
+        locs as (
+          select s.department_id, s.unit_id, l.id from scopes s
+            join inventory_locations l on l.tenant_id = ${w.tenantId} and l.department_id = s.department_id
+             and l.unit_id is not distinct from s.unit_id
+        ),
+        moves as (
+          select lc.department_id, lc.unit_id, m.movement_type, count(*)::int as n
+            from locs lc join inventory_movements m on m.tenant_id = ${w.tenantId}
+             and (m.source_location_id = lc.id or m.destination_location_id = lc.id)
+             and m.occurred_at >= ${w.startAt} and m.occurred_at < ${w.endAt}
+           group by lc.department_id, lc.unit_id, m.movement_type
+        )
+        select s.department, s.unit, s.service_category,
+          (select count(*)::int from locs lc where lc.department_id = s.department_id and lc.unit_id is not distinct from s.unit_id) as stock_locations,
+          coalesce((select sum(n) from moves mv where mv.department_id = s.department_id and mv.unit_id is not distinct from s.unit_id and mv.movement_type in ('receipt','opening','return')), 0)::int as receipts,
+          coalesce((select sum(n) from moves mv where mv.department_id = s.department_id and mv.unit_id is not distinct from s.unit_id and mv.movement_type in ('issue','consumption','write-off')), 0)::int as issues,
+          coalesce((select sum(n) from moves mv where mv.department_id = s.department_id and mv.unit_id is not distinct from s.unit_id and mv.movement_type in ('transfer-out','transfer-in')), 0)::int as transfers,
+          coalesce((select sum(n) from moves mv where mv.department_id = s.department_id and mv.unit_id is not distinct from s.unit_id and mv.movement_type in ('adjustment','count-adjustment','reversal')), 0)::int as adjustments,
+          (select count(*)::int from inventory_location_policies p join locs lc on lc.id = p.location_id
+            where lc.department_id = s.department_id and lc.unit_id is not distinct from s.unit_id
+              and p.minimum_quantity > coalesce((select sum(b.on_hand - b.reserved - b.quarantined) from inventory_balances b where b.location_id = p.location_id and b.item_id = p.item_id), 0)) as below_minimum,
+          (select count(distinct b.lot_id)::int from inventory_balances b join locs lc on lc.id = b.location_id join inventory_lots lot on lot.id = b.lot_id
+            where lc.department_id = s.department_id and lc.unit_id is not distinct from s.unit_id and b.on_hand > 0
+              and lot.expires_on is not null and lot.expires_on < current_date + 90) as expiring_lots,
+          (select count(*)::int from purchase_orders po where po.tenant_id = ${w.tenantId} and po.department_id = s.department_id
+              and po.unit_id is not distinct from s.unit_id and po.created_at >= ${w.startAt} and po.created_at < ${w.endAt}) as purchase_orders,
+          (select count(*)::int from encounters e where e.tenant_id = ${w.tenantId} and e.department_id = s.department_id
+              and e.unit_id is not distinct from s.unit_id and e.opened_at >= ${w.startAt} and e.opened_at < ${w.endAt}) as encounters,
+          case when ${billing} then (select coalesce(sum(ii.amount), 0) from invoices i join invoice_items ii on ii.invoice_id = i.id
+              where i.tenant_id = ${w.tenantId} and i.department_id = s.department_id and i.unit_id is not distinct from s.unit_id
+                and i.status <> 'void' and i.created_at >= ${w.startAt} and i.created_at < ${w.endAt}) end as amount_billed
+          from scopes s order by s.sort_order, s.department, s.unit nulls first
+      `;
+      return ok(rows.map((row) => ({ ...row, unit: row.unit ?? (rows.some((other) => other.department === row.department && other.unit) ? "(department level)" : "—"), amountBilled: billing ? row.amountBilled : "not available for your role" })),
+        [], w.departmentId ? ["Limited to one department"] : []);
+    },
+  },
+  {
     id: "integration-health",
     title: "Integration health",
     description: "Server-reported availability of every external integration.",
@@ -448,8 +523,8 @@ export const REPORTS: readonly ReportDefinition[] = [
       { key: "lastVerificationOutcome", label: "Last verification" }, { key: "missingPrerequisites", label: "Missing prerequisites" },
     ],
     definitions: ["States come from the integration registry at generation time. No integration operations are recorded yet, so failed-operation counts are not available."],
-    async run(_tx, _w, config) {
-      return ok(listIntegrations(config).map((item) => ({
+    async run(tx, _w, config) {
+      return ok(listIntegrations(config, await loadVerifications(tx, config)).map((item) => ({
         name: item.name, state: item.state, reason: item.reason, lastVerificationOutcome: item.lastVerificationOutcome,
         missingPrerequisites: item.missingPrerequisites.join("; "),
       })));

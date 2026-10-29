@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, Notice, PageHeader, Table } from "@medveris/ui";
 import { api, errorMessage } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { useQuery } from "../lib/useQuery";
+import { EhmisEligibilityReview } from "./EhmisPage";
 
 interface ReviewRow {
   id: string;
@@ -23,6 +25,7 @@ interface ReviewRow {
 }
 
 export function ReviewerPage() {
+  const { me } = useAuth();
   const queue = useQuery<{ queue: ReviewRow[]; independenceRule: string }>("/credentials/queue");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -64,6 +67,7 @@ export function ReviewerPage() {
           </Table>
         )}
       </Card>
+      {me?.platformRoles.includes("platform_operator") ? <EhmisEligibilityReview /> : null}
     </div>
   );
 }

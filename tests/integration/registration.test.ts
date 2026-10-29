@@ -57,7 +57,7 @@ async function registerFacilityAdmin(): Promise<string> {
 }
 
 describe("self-service registration", () => {
-  it("registers a facility and makes the registrant its facility administrator", async () => {
+  it("registers a facility and makes the registrant its owner and facility administrator", async () => {
     const email = `facility.${crypto.randomUUID()}@example.test`;
     const response = await post("/api/v1/auth/register/facility", {
       email,
@@ -80,7 +80,7 @@ describe("self-service registration", () => {
 
     const cookie = (login.headers.getSetCookie?.() ?? []).find((value) => value.startsWith("mv_session="))!.split(";")[0]!;
     const me = await (await app.fetch(new Request("http://localhost/api/v1/auth/session", { headers: { cookie } }))).json() as any;
-    expect(me.memberships).toEqual([expect.objectContaining({ tenantId: body.facility.id, roles: ["facility_admin"] })]);
+    expect(me.memberships).toEqual([expect.objectContaining({ tenantId: body.facility.id, roles: ["owner", "facility_admin"] })]);
   });
 
   it("rejects a duplicate facility registrant email without creating a second facility", async () => {

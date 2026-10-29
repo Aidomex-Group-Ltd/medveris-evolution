@@ -7,6 +7,7 @@ import { writeAudit } from "../lib/audit.js";
 import { ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import { parseQuery } from "../lib/http.js";
 import { REPORTS, reportById, type ReportDefinition } from "../reports/definitions.js";
+import { actorScope } from "../lib/scope.js";
 import type { AppEnv } from "../types.js";
 
 export const reportRoutes = new Hono<AppEnv>();
@@ -65,6 +66,11 @@ reportRoutes.get("/reports/:id", async (c) => {
   // Reports tolerate bounded staleness, so they may read from a healthy replica. The access is
   // audited on the primary afterwards and before any rows leave the server.
   const { value: result, route } = await withStaleTolerantRead(c, { maxStalenessMs: REPORT_MAX_STALENESS_MS }, async (tx) => {
+    const scope = await actorScope(tx, c);
+    const departmentId = scope.kind === "workspace" ? query.departmentId ?? null : scope.departmentId;
+    if (scope.kind !== "workspace" && query.departmentId && query.departmentId !== scope.departmentId) {
+      throw new ForbiddenError("You can only run reports for your own department");
+    }
     const [range] = await tx`
       select ((${query.from}::date)::timestamp at time zone ${query.timeZone}) as start_at,
              ((${query.to}::date + 1)::timestamp at time zone ${query.timeZone}) as end_at
@@ -73,6 +79,7 @@ reportRoutes.get("/reports/:id", async (c) => {
       tenantId: auth.activeTenant!.id, from: query.from, to: query.to, timeZone: query.timeZone,
       startAt: range!.startAt as Date, endAt: range!.endAt as Date,
       params: query.expiryWindowDays ? { expiryWindowDays: query.expiryWindowDays } : {},
+      departmentId, roles,
     }, config);
   });
   if (report.sensitive || query.format === "csv") {

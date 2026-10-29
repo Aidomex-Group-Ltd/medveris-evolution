@@ -80,7 +80,7 @@ export function RadiologyPage() {
   return (
     <div className="mv-stack">
       <PageHeader eyebrow="Radiology" title="Imaging worklist and structured reporting" description="Orders, studies, structured reports, sign-off and critical findings. Turnaround is calculated from recorded timestamps." />
-      <Notice tone="warning" title="PACS / DICOMweb unavailable">No images are retrieved, displayed or transferred. Studies hold metadata only, and reports are written from images reviewed outside Medveris.</Notice>
+      <PacsStatusNotice />
       <Tabs label="Radiology sections" value={tab} onChange={setTab} options={[
         { value: "worklist", label: "Worklist" },
         { value: "templates", label: "Templates" },
@@ -89,6 +89,15 @@ export function RadiologyPage() {
       {tab === "worklist" ? <Worklist /> : tab === "templates" ? <Templates /> : <CriticalFindings />}
     </div>
   );
+}
+
+function PacsStatusNotice() {
+  const status = useQuery<{ images: { state: string; reason: string; available: boolean } }>("/radiology/images/status");
+  if (!status.data) return null;
+  if (status.data.images.available) {
+    return <Notice tone="info" title="PACS connected">Linked studies show rendered review images from the verified PACS. Medveris is not a diagnostic viewer; report from a diagnostic workstation.</Notice>;
+  }
+  return <Notice tone="warning" title="PACS / DICOMweb unavailable">{status.data.images.reason}. No images are retrieved, displayed or transferred. Studies hold metadata only, and reports are written from images reviewed outside Medveris.</Notice>;
 }
 
 function Worklist() {

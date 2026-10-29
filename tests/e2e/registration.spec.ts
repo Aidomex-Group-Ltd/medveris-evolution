@@ -65,23 +65,25 @@ test("a reset link without a token offers to request a new one", async ({ page }
   await expect(page.getByRole("link", { name: "Request a new reset link" })).toBeVisible();
 });
 
-test("a visitor registers a facility without API errors", async ({ page }) => {
+test("a visitor sets up an independent drug shop workspace without API errors", async ({ page }) => {
   const failures: string[] = [];
   page.on("response", (response) => {
     if (response.url().includes("/api/") && response.status() >= 400) failures.push(`${response.status()} ${new URL(response.url()).pathname}`);
   });
 
   await page.goto("/register?type=facility");
-  await expect(page.getByRole("heading", { name: "Register your facility." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Set up your facility or service." })).toBeVisible();
   await page.getByLabel("Given name").fill("Synthetic");
   await page.getByLabel("Family name").fill("Registrant");
   await page.getByLabel("Email").fill(`facility.${Date.now()}@example.test`);
   await page.getByLabel("Password").fill("Synthetic-Registration-2026!");
-  await page.getByLabel("Facility name").fill("Synthetic E2E Clinic");
-  await page.getByLabel("City").fill("Kampala");
-  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Synthetic E2E Drug Shop");
+  await page.getByLabel("Facility or service category").selectOption("drug-shop");
+  await expect(page.getByText("A standalone drug shop is not placed in an HC tier", { exact: false })).toBeVisible();
+  await page.getByLabel("Town or city").fill("Kampala");
+  await page.getByRole("button", { name: "Create workspace", exact: true }).click();
 
-  await expect(page.getByText("Facility registered")).toBeVisible();
+  await expect(page.getByText("Workspace created")).toBeVisible();
   expect(failures).toEqual([]);
 });
 

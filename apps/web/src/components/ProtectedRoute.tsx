@@ -4,7 +4,16 @@ import { EmptyState, ErrorState, LoadingState } from "@medveris/ui";
 import { useAuth } from "../lib/auth";
 import type { Role } from "../lib/types";
 
-export function ProtectedRoute({ children, roles, platform, patient }: { children: ReactNode; roles?: Role[]; platform?: boolean; patient?: boolean }) {
+export function ProtectedRoute({ children, roles, platform, patient, staff, organization }: {
+  children: ReactNode;
+  roles?: readonly Role[];
+  platform?: boolean;
+  patient?: boolean;
+  /** Needs an active facility context, whatever the role. */
+  staff?: boolean;
+  /** Organization pages work without an active facility but need verified MFA. */
+  organization?: boolean;
+}) {
   const { me, loading, error, refresh, signedOut } = useAuth();
   const location = useLocation();
   if (loading) return <LoadingState label="Restoring session" variant="page" />;
@@ -14,6 +23,13 @@ export function ProtectedRoute({ children, roles, platform, patient }: { childre
   if (staffContext && !(me.user.mfaEnrolled && me.user.mfaVerified)) return <Navigate to="/mfa-setup" replace />;
   if (patient && !me.patientId) return <EmptyState title="Patient account required" description="This area is available only to a verified patient account." />;
   if (platform && me.platformRoles.length === 0) return <EmptyState title="Access denied" description="Independent credential reviewer permission is required." />;
+  if (organization) {
+    if (!(me.user.mfaEnrolled && me.user.mfaVerified)) return <Navigate to="/mfa-setup" replace />;
+    return <>{children}</>;
+  }
+  if (staff && !me.activeTenant) {
+    return <EmptyState title="Choose a facility" description="Open a workspace you are a member of to see its profile." action={<Link to="/facility-staff">Choose a facility</Link>} />;
+  }
   if (roles && !roles.some((role) => me.activeTenant?.roles.includes(role))) {
     return <EmptyState title="Access denied" description="Your active facility role does not include this workspace. Facility administration does not grant clinical access." />;
   }

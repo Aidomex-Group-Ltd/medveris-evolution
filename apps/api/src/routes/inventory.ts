@@ -29,6 +29,7 @@ import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { ensureMatch, parseJson, requireIdempotency } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
+import { assertLocationInScope } from "../lib/scope.js";
 import type { AppEnv } from "../types.js";
 
 export const inventoryRoutes = new Hono<AppEnv>();
@@ -95,6 +96,8 @@ async function locationScope(tx: Tx, c: HandlerContext, tenantId: string, userId
     return { all: true, ids: [] };
   }
   const departments = await userDepartmentIds(tx, tenantId, userId);
+  const scope = c.get("auth")?.activeTenant?.scope;
+  if (scope?.departmentId) departments.push(scope.departmentId);
   const rows = await tx`
     select id from inventory_locations
      where tenant_id = ${tenantId}
@@ -102,12 +105,13 @@ async function locationScope(tx: Tx, c: HandlerContext, tenantId: string, userId
          location_type = 'central-store'
          or custodian_user_id = ${userId}
          or department_id = any(${tx.array(departments)}::uuid[])
+         or (${scope?.unitId ?? null}::uuid is not null and unit_id = ${scope?.unitId ?? null}::uuid)
        )
   `;
   return { all: false, ids: rows.map((row) => String(row.id)) };
 }
 
-async function locationRow(tx: Tx, tenantId: string, locationId: string) {
+export async function locationRow(tx: Tx, tenantId: string, locationId: string) {
   const rows = await tx`
     select id, code, name, location_type, department_id, parent_id, status
       from inventory_locations where id = ${locationId} and tenant_id = ${tenantId}
@@ -115,7 +119,7 @@ async function locationRow(tx: Tx, tenantId: string, locationId: string) {
   return requireRows(rows, "Inventory location not found");
 }
 
-async function itemRow(tx: Tx, tenantId: string, itemId: string) {
+export async function itemRow(tx: Tx, tenantId: string, itemId: string) {
   const rows = await tx`
     select id, item_code, name, classification, base_unit, lot_tracked, expiry_tracked, serial_tracked, medicine_id
       from inventory_items where id = ${itemId} and tenant_id = ${tenantId}
@@ -123,7 +127,7 @@ async function itemRow(tx: Tx, tenantId: string, itemId: string) {
   return requireRows(rows, "Inventory item not found");
 }
 
-async function unitFactor(tx: Tx, tenantId: string, itemId: string, unit: string): Promise<number> {
+export async function unitFactor(tx: Tx, tenantId: string, itemId: string, unit: string): Promise<number> {
   const rows = await tx`
     select conversion_factor from inventory_item_units
      where tenant_id = ${tenantId} and item_id = ${itemId} and unit = ${unit}
@@ -203,7 +207,7 @@ interface MovementInput {
   serialNumber?: string | null;
 }
 
-async function postMovement(tx: Tx, tenantId: string, actorId: string, input: MovementInput): Promise<PostedMovement> {
+export async function postMovement(tx: Tx, tenantId: string, actorId: string, input: MovementInput): Promise<PostedMovement> {
   if (input.idempotencyKey) {
     const existing = await tx`
       select * from inventory_movements
@@ -687,6 +691,7 @@ inventoryRoutes.post("/inventory/receipts", async (c) => {
   const result = await withStaffActor(c, async (tx) => {
     const item = await itemRow(tx, auth.activeTenant!.id, body.itemId);
     await locationRow(tx, auth.activeTenant!.id, body.locationId);
+    await assertLocationInScope(tx, c, body.locationId);
     if (Boolean(item.lotTracked) && !body.lotNumber) throw new ValidationError("A lot number is required for lot-tracked items");
     if (Boolean(item.expiryTracked) && !body.expiresOn) throw new ValidationError("An expiry date is required for expiry-tracked items");
     let lotId: string | null = null;
@@ -743,6 +748,7 @@ inventoryRoutes.post("/inventory/issues", async (c) => {
   const result = await withStaffActor(c, async (tx) => {
     const item = await itemRow(tx, auth.activeTenant!.id, body.itemId);
     await locationRow(tx, auth.activeTenant!.id, body.locationId);
+    await assertLocationInScope(tx, c, body.locationId);
     if (body.destinationLocationId) await locationRow(tx, auth.activeTenant!.id, body.destinationLocationId);
     const factor = await unitFactor(tx, auth.activeTenant!.id, body.itemId, body.unit);
     const baseQuantity = round4(body.quantity * factor);
@@ -1160,6 +1166,7 @@ inventoryRoutes.post("/inventory/transfers", async (c) => {
   const result = await withStaffActor(c, async (tx) => {
     await locationRow(tx, auth.activeTenant!.id, body.sourceLocationId);
     await locationRow(tx, auth.activeTenant!.id, body.destinationLocationId);
+    await assertLocationInScope(tx, c, body.sourceLocationId);
     for (const line of body.lines) {
       await itemRow(tx, auth.activeTenant!.id, line.itemId);
       await unitFactor(tx, auth.activeTenant!.id, line.itemId, line.unit);
@@ -1318,6 +1325,7 @@ inventoryRoutes.post("/inventory/counts", async (c) => {
   const id = crypto.randomUUID();
   const result = await withStaffActor(c, async (tx) => {
     await locationRow(tx, auth.activeTenant!.id, body.locationId);
+    await assertLocationInScope(tx, c, body.locationId);
     const seen = new Set<string>();
     const countNumber = await nextReference(tx, auth.activeTenant!.id, "count");
     await tx`
@@ -1444,6 +1452,7 @@ inventoryRoutes.post("/inventory/adjustments", async (c) => {
   const id = crypto.randomUUID();
   const result = await withStaffActor(c, async (tx) => {
     await locationRow(tx, auth.activeTenant!.id, body.locationId);
+    await assertLocationInScope(tx, c, body.locationId);
     await itemRow(tx, auth.activeTenant!.id, body.itemId);
     await unitFactor(tx, auth.activeTenant!.id, body.itemId, body.unit);
     const adjustmentNumber = await nextReference(tx, auth.activeTenant!.id, "adjustment");

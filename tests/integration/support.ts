@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 import { createSql } from "@medveris/db";
 import { createApp } from "../../apps/api/src/app.js";
-import { loadConfig } from "../../apps/api/src/config.js";
+import { loadConfig, type AppConfig } from "../../apps/api/src/config.js";
 import { LocalMailSink } from "../../apps/api/src/lib/local-email.js";
 import { LocalStorage } from "../../apps/api/src/lib/local-storage.js";
 import type { AppDeps } from "../../apps/api/src/types.js";
@@ -26,12 +26,19 @@ export async function chooseFacility(app: { fetch(request: Request): Response | 
   expect(switched.status).toBe(200);
 }
 
+export interface HarnessOptions {
+  /** Extra environment for loadConfig, e.g. integration settings. */
+  env?: Record<string, string>;
+  /** Dependencies built from the loaded config, e.g. a PACS client with a fake transport. */
+  deps?: (config: AppConfig) => Partial<AppDeps>;
+}
+
 /** One app instance per test file against the local test database, with dev TOTP enabled. */
-export function createHarness(label: string) {
+export function createHarness(label: string, options: HarnessOptions = {}) {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error(`DATABASE_URL is required for ${label} tests`);
   const sql = createSql(url, { max: 8 });
-  const config = loadConfig({ ...process.env, APP_ENV: "test", APP_ORIGIN: "http://localhost:5173", DEV_SHOW_TOTP_SECRETS: "true" });
+  const config = loadConfig({ ...process.env, APP_ENV: "test", APP_ORIGIN: "http://localhost:5173", DEV_SHOW_TOTP_SECRETS: "true", ...options.env });
   config.terminologyMode = "synthetic";
   const tmp = process.env.TMPDIR ?? "/tmp";
   const mailDir = `${tmp}/medveris-${label}-mail-${crypto.randomUUID()}`;
@@ -40,6 +47,7 @@ export function createHarness(label: string) {
     config,
     email: new LocalMailSink(mailDir),
     storage: new LocalStorage(`${tmp}/medveris-${label}-storage-${crypto.randomUUID()}`),
+    ...options.deps?.(config),
   };
   const app = createApp(deps);
 

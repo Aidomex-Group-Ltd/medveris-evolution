@@ -26,8 +26,13 @@ details > summary:hover { text-decoration: underline; }
 .mv-grid-2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .mv-row--between { justify-content: space-between; width: 100%; }
 .mv-wrap { flex-wrap: wrap; }
+.mv-thumb { padding: 0; border: 1px solid #d9e3de; border-radius: 6px; background: #000; cursor: pointer; line-height: 0; }
+.mv-thumb img { object-fit: contain; }
 @media (max-width: 900px) {
   .mv-directory-layout { grid-template-columns: 1fr; }
   .mv-map__canvas { height: 340px; }
   .mv-public__main { padding: 16px; }
 }
+.mv-auth__card--wide { width: min(680px, 100%); }
+.mv-form-grid > *, .mv-auth__card select { min-width: 0; max-width: 100%; }
+.mv-level-badge .mv-badge { text-transform: none; }

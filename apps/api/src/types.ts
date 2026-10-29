@@ -1,6 +1,8 @@
 import type { DatabaseRouter, ShardAssignment, ShardRouter, Sql } from "@medveris/db";
 import type { Role } from "@medveris/authz";
 import type { AppConfig } from "./config.js";
+import type { DicomwebClient } from "./integrations/dicomweb.js";
+import type { FetchLike } from "./integrations/dhis2.js";
 import type { EmailAdapter } from "./lib/email.js";
 import type { StorageAdapter } from "./lib/storage.js";
 import type { RequestAnnotations } from "./lib/observability.js";
@@ -39,6 +41,13 @@ export interface MembershipRecord {
   status: string;
   /** Shard directory entry for this facility; null when the directory has no row for it. */
   shard?: ShardAssignment | null;
+  /** Department or unit that scoped roles on this membership are limited to. */
+  scope?: MembershipScope;
+}
+
+export interface MembershipScope {
+  departmentId: string | null;
+  unitId: string | null;
 }
 
 export interface AuthContext {
@@ -52,6 +61,7 @@ export interface AuthContext {
     roles: Role[];
     membershipId: string;
     shard?: ShardAssignment | null;
+    scope?: MembershipScope;
   } | null;
   patientId: string | null;
   platformRoles: string[];
@@ -69,6 +79,10 @@ export interface AppDeps {
   config: AppConfig;
   email: EmailAdapter;
   storage: StorageAdapter;
+  /** PACS client; absent means one is built from `config.dicomweb` when it is fully configured. */
+  dicomweb?: DicomwebClient | null;
+  /** Transport for facility DHIS2 connections; tests inject a fake server. */
+  dhis2Transport?: FetchLike;
 }
 
 export interface AppVariables {

@@ -149,12 +149,17 @@ try {
   }
   await sql.begin(async (tx) => {
     await tx`
-      insert into tenants (id, name, slug, facility_type, city, country, email, phone, status, public_listing)
+      insert into tenants (id, name, slug, facility_type, city, country, email, phone, status, public_listing,
+        service_category, service_subtype, ownership, level_status, equivalent_level, district)
       values (${tenantA}, 'Kampala Community Clinic (synthetic)', 'kampala-community', 'outpatient', 'Kampala', 'Uganda',
-        'hello@kampala.example', '+256-000-000-001', 'active', true),
+        'hello@kampala.example', '+256-000-000-001', 'active', true, 'clinic', 'general-outpatient', 'private-for-profit',
+        'medveris-equivalent', 'hc2', 'Kampala'),
         (${tenantB}, 'Entebbe Family Health Centre (synthetic)', 'entebbe-family', 'outpatient', 'Entebbe', 'Uganda',
-        'hello@entebbe.example', '+256-000-000-002', 'active', true)
-      on conflict (id) do update set name = excluded.name, city = excluded.city, status = 'active', public_listing = true
+        'hello@entebbe.example', '+256-000-000-002', 'active', true, 'clinic', 'general-outpatient', 'private-not-for-profit',
+        'not-yet-assigned', null, 'Wakiso')
+      on conflict (id) do update set name = excluded.name, city = excluded.city, status = 'active', public_listing = true,
+        service_category = excluded.service_category, service_subtype = excluded.service_subtype, ownership = excluded.ownership,
+        level_status = excluded.level_status, equivalent_level = excluded.equivalent_level, district = excluded.district
     `;
 
     await person(tx, users.admin, "admin@medveris.local", "Amina Administrator", "Amina", "Administrator", true);
@@ -417,13 +422,26 @@ try {
 
     await context(tx, tenantA, users.admin, ["facility_admin"], null);
     await tx`
-      insert into organizations (id, name, legal_name, registration_ref, country)
-      values (${organizationA}, 'Medveris Synthetic Health Group', 'Medveris Synthetic Health Group Ltd', 'SYNTH-ORG-001', 'Uganda')
-      on conflict (id) do update set name = excluded.name
+      insert into organizations (id, name, legal_name, registration_ref, country, kind, ownership, created_by)
+      values (${organizationA}, 'Medveris Synthetic Health Group', 'Medveris Synthetic Health Group Ltd', 'SYNTH-ORG-001', 'Uganda',
+        'facility-group', 'private-for-profit', ${users.admin})
+      on conflict (id) do nothing
     `;
-    await tx`update tenants set organization_id = ${organizationA} where id = ${tenantA}`;
-    await context(tx, tenantB, users.admin, ["facility_admin"], null);
-    await tx`update tenants set organization_id = ${organizationA} where id = ${tenantB}`;
+    await tx`
+      insert into organization_memberships (id, organization_id, user_id, role)
+      values (${hashId("om-admin")}, ${organizationA}, ${users.admin}, 'organization_owner')
+      on conflict do nothing
+    `;
+    for (const tenant of [tenantA, tenantB]) {
+      await context(tx, tenant, users.admin, ["facility_admin"], null);
+      await tx`update tenants set organization_id = ${organizationA} where id = ${tenant}`;
+      await tx`
+        insert into organization_links (id, organization_id, tenant_id, status, origin, decided_at, history_visibility, visible_from, decision_note)
+        values (${hashId(`org-link-${tenant}`)}, ${organizationA}, ${tenant}, 'active', 'backfill', now(), 'full-history', null,
+          'Synthetic seed site of the demonstration group')
+        on conflict do nothing
+      `;
+    }
 
     await context(tx, tenantA, users.admin, ["facility_admin"], null);
     for (const [index, department] of DEFAULT_DEPARTMENTS.entries()) {

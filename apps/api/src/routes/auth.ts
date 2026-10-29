@@ -22,9 +22,10 @@ import {
   passwordResetSchema,
   registerFacilitySchema,
   registerPatientSchema,
+  registerWorkspaceSchema,
   verifyEmailSchema,
 } from "@medveris/contracts";
-import { randomPatientPublicId } from "@medveris/domain";
+import { categoryFromLegacyType, defaultLevelStatus, randomPatientPublicId } from "@medveris/domain";
 import { setLocalContext, withAnonymous, withContext, withRegistration } from "@medveris/db";
 import { AppError, ConflictError, DependencyError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "../lib/errors.js";
 import { auditMeta, parseJson, requestMeta } from "../lib/http.js";
@@ -32,16 +33,12 @@ import { enforceRateLimit, peekRateLimit, recordRateLimitHit, requestAddress } f
 import { writeAudit } from "../lib/audit.js";
 import { requireAuth, setSessionCookie, revokeCurrentSession } from "../auth/middleware.js";
 import { acceptInvitation, declineInvitation, describeInvitation, maskEmail, registerInvitee } from "../services/invitations.js";
+import { createWorkspace, duplicateFindings, levelFrom, recordLinkEvent } from "../services/workspaces.js";
 import { createSession, loadAuthContext, SESSION_COOKIE } from "../auth/session.js";
 import type { Tx } from "@medveris/db";
 import type { AppEnv } from "../types.js";
 
 export const authRoutes = new Hono<AppEnv>();
-
-function slugify(name: string): string {
-  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
-  return `${base || "facility"}-${randomToken(3).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5)}`;
-}
 
 /** The facility a sign-in opens: only an unambiguous single active assignment; several require a choice. */
 async function defaultTenantId(sql: Parameters<typeof withRegistration>[0], userId: string): Promise<string | null> {
@@ -128,44 +125,30 @@ authRoutes.post("/register/patient", async (c) => {
   }, 201);
 });
 
+/** Earlier single-facility signup; creates an independent clinic-style workspace with an unassigned level. */
 authRoutes.post("/register/facility", async (c) => {
   const deps = c.get("deps");
   await enforceRateLimit(c, "auth.facility-register", requestAddress(c));
   const body = await parseJson(c, registerFacilitySchema);
   const userId = crypto.randomUUID();
-  const tenantId = crypto.randomUUID();
-  const membershipId = crypto.randomUUID();
   const passwordHash = await hashPassword(body.password);
-  const meta = requestMeta(c);
-  const emailToken = await withRegistration(deps.sql, async (tx) => {
+  const category = categoryFromLegacyType(body.facilityType);
+  const { emailToken, tenantId } = await withRegistration(deps.sql, async (tx) => {
     const existing = await tx`select id from users where email = ${body.email} limit 1`;
     if (existing.length) throw new ConflictError("An account with this email already exists");
     await tx`
       insert into users (id, email, password_hash, display_name, given_name, family_name)
       values (${userId}, ${body.email}, ${passwordHash}, ${`${body.givenName} ${body.familyName}`}, ${body.givenName}, ${body.familyName})
     `;
-    await tx`
-      insert into tenants (id, name, slug, facility_type, city, country, email)
-      values (${tenantId}, ${body.facilityName}, ${slugify(body.facilityName)}, ${body.facilityType},
-        ${body.city || null}, ${body.country}, ${body.email})
-    `;
-    // memberships RLS only accepts rows for the current tenant; scope the rest of this transaction to the new one.
-    await setLocalContext(tx, { actorKind: "registration", tenantId, userId });
-    await tx`
-      insert into memberships (id, tenant_id, user_id, roles) values (${membershipId}, ${tenantId}, ${userId}, ${["facility_admin"]})
-    `;
-    const token = await createEmailToken(tx, userId, "verify-email");
-    await writeAudit(tx, deps.config, {
-      tenantId,
-      actorKind: "registration",
-      actorUserId: userId,
-      action: "facility.register",
-      resourceType: "Organization",
-      resourceId: tenantId,
-      ...meta,
-      metadata: { facilityName: body.facilityName },
+    const workspace = await createWorkspace(tx, deps.config, {
+      details: {
+        name: body.facilityName, workspaceKind: "facility", serviceCategory: category, ownership: "private-for-profit",
+        city: body.city, country: body.country, registrations: [], levelStatus: defaultLevelStatus(category),
+      },
+      ownerUserId: userId, actorKind: "registration", meta: auditMeta(c),
     });
-    return token;
+    await tx`update tenants set facility_type = ${body.facilityType}, email = ${body.email} where id = ${workspace.tenantId}`;
+    return { emailToken: await createEmailToken(tx, userId, "verify-email"), tenantId: workspace.tenantId };
   });
   const delivery = await deliver(
     c,
@@ -178,6 +161,105 @@ authRoutes.post("/register/facility", async (c) => {
   return c.json({
     ok: true,
     facility: { id: tenantId, name: body.facilityName },
+    verificationEmail: { delivered: delivery.delivered, detail: delivery.detail },
+  }, 201);
+});
+
+/**
+ * Onboarding for a standalone workspace, a new organization with its first site, or a workspace joining an
+ * existing organization with a join code. The first account is the workspace's primary owner. A join
+ * request stays pending until an organization administrator approves it; until then the workspace runs
+ * independently and the organization sees nothing.
+ */
+authRoutes.post("/register/workspace", async (c) => {
+  const deps = c.get("deps");
+  await enforceRateLimit(c, "auth.facility-register", requestAddress(c));
+  const body = await parseJson(c, registerWorkspaceSchema);
+  levelFrom(body.workspace);
+  const { owner, workspace } = body;
+  const userId = crypto.randomUUID();
+  const passwordHash = await hashPassword(owner.password);
+  const meta = auditMeta(c);
+  const result = await withRegistration(deps.sql, async (tx) => {
+    const existing = await tx`select id from users where email = ${owner.email} limit 1`;
+    if (existing.length) throw new ConflictError("An account with this email already exists");
+    await tx`
+      insert into users (id, email, password_hash, display_name, given_name, family_name)
+      values (${userId}, ${owner.email}, ${passwordHash}, ${`${owner.givenName} ${owner.familyName}`}, ${owner.givenName}, ${owner.familyName})
+    `;
+    await setLocalContext(tx, { actorKind: "registration", userId });
+
+    let organization: { id: string; name: string } | null = null;
+    let joinCode: { id: string; organizationId: string; organizationName: string } | null = null;
+    if (body.path === "organization") {
+      const organizationId = crypto.randomUUID();
+      await tx`
+        insert into organizations (id, name, legal_name, registration_ref, country, kind, ownership, contact_email, created_by)
+        values (${organizationId}, ${body.organization.name}, ${body.organization.legalName || null}, ${body.organization.registrationRef || null},
+          ${workspace.country}, ${body.organization.kind}, ${body.organization.ownership}, ${body.organization.contactEmail || owner.email}, ${userId})
+      `;
+      await tx`
+        insert into organization_memberships (id, organization_id, user_id, role)
+        values (${crypto.randomUUID()}, ${organizationId}, ${userId}, 'organization_owner')
+      `;
+      organization = { id: organizationId, name: body.organization.name };
+    } else if (body.path === "join") {
+      const codeHash = await sha256Hex(`org-join:${body.joinCode}`);
+      await tx`select set_config('app.invitation_token_hash', ${codeHash}, true)`;
+      const [code] = await tx`
+        select c.id, c.organization_id, c.max_uses, c.uses, c.expires_at, c.revoked_at, o.name, o.status
+          from organization_join_codes c join organizations o on o.id = c.organization_id
+         where c.code_hash = ${codeHash} for update of c`;
+      if (!code || code.revokedAt || (code.expiresAt as Date).getTime() <= Date.now() || Number(code.uses) >= Number(code.maxUses) || code.status !== "active") {
+        throw new AppError(404, "join_code_invalid", "This organization join code is not valid, has expired or has been used");
+      }
+      joinCode = { id: String(code.id), organizationId: String(code.organizationId), organizationName: String(code.name) };
+    }
+
+    const created = await createWorkspace(tx, deps.config, { details: workspace, ownerUserId: userId, actorKind: "registration", meta });
+    await tx`update tenants set email = ${owner.email} where id = ${created.tenantId}`;
+    if (organization) {
+      await setLocalContext(tx, { actorKind: "registration", tenantId: created.tenantId, userId, roles: ["owner", "facility_admin"] });
+      const linkId = crypto.randomUUID();
+      await tx`
+        insert into organization_links (id, organization_id, tenant_id, status, origin, requested_by, decided_by, decided_at, history_visibility, visible_from)
+        values (${linkId}, ${organization.id}, ${created.tenantId}, 'active', 'created-by-organization', ${userId}, ${userId}, now(), 'full-history', null)
+      `;
+      await tx`update tenants set organization_id = ${organization.id} where id = ${created.tenantId}`;
+      await recordLinkEvent(tx, { linkId, organizationId: organization.id, tenantId: created.tenantId, event: "site-created", actorUserId: userId });
+    }
+    let link: { status: string; organizationName: string } | null = null;
+    if (joinCode) {
+      await tx`select set_config('app.invitation_token_hash', ${await sha256Hex(`org-join:${body.path === "join" ? body.joinCode : ""}`)}, true)`;
+      await tx`update organization_join_codes set uses = uses + 1 where id = ${joinCode.id}`;
+      const findings = await duplicateFindings(tx, joinCode.organizationId, created.tenantId);
+      const full = body.path === "join" && body.historyVisibility === "full-history";
+      const linkId = crypto.randomUUID();
+      await tx`
+        insert into organization_links (id, organization_id, tenant_id, status, origin, join_code_id, requested_by, duplicate_findings,
+          history_visibility, history_granted_by, history_granted_at)
+        values (${linkId}, ${joinCode.organizationId}, ${created.tenantId}, 'pending', 'join-request', ${joinCode.id}, ${userId},
+          ${tx.json(findings as never)}, ${full ? "full-history" : "from-link-date"}, ${full ? userId : null}, ${full ? new Date() : null})
+      `;
+      await recordLinkEvent(tx, { linkId, organizationId: joinCode.organizationId, tenantId: created.tenantId, event: "requested", actorUserId: userId, detail: { duplicates: findings.length } });
+      link = { status: "pending", organizationName: joinCode.organizationName };
+    }
+    const emailToken = await createEmailToken(tx, userId, "verify-email");
+    return { tenantId: created.tenantId, organization, link, emailToken };
+  });
+  const delivery = await deliver(
+    c,
+    owner.email,
+    "Verify your Medveris workspace email",
+    `Your Medveris workspace "${workspace.name}" is ready. Verify your email: ${deps.config.origin}/verify-email?token=${result.emailToken.token}`,
+    result.emailToken.id,
+    userId,
+  );
+  return c.json({
+    ok: true,
+    workspace: { id: result.tenantId, name: workspace.name },
+    organization: result.organization,
+    link: result.link,
     verificationEmail: { delivered: delivery.delivered, detail: delivery.detail },
   }, 201);
 });

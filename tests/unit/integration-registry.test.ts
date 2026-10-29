@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../../apps/api/src/config.js";
 import {
+  IMPLEMENTED_ADAPTERS,
   IntegrationUnavailableError,
   assertIntegrationAvailable,
   integrationStatus,
@@ -14,7 +15,8 @@ describe("integration availability registry", () => {
     const states = Object.fromEntries(listIntegrations(loadConfig(base)).map((integration) => [integration.id, integration.state]));
     expect(states).toEqual({
       dicomweb: "unavailable", lab: "unavailable", pharmacy: "unavailable", telemedicine: "unavailable", devices: "unavailable",
-      ai: "unavailable", payments: "unavailable", publicHealth: "unavailable", ledgerAnchoring: "not_requested",
+      ai: "unavailable", payments: "unavailable", publicHealth: "unavailable", ehmis: "not_requested", nhfr: "unavailable",
+      ledgerAnchoring: "not_requested",
     });
   });
 
@@ -33,11 +35,23 @@ describe("integration availability registry", () => {
     for (const status of listIntegrations(loadConfig(base))) {
       expect(status.lastSuccessfulVerificationAt).toBeNull();
       expect(status.lastVerificationOutcome).toBe("never-verified");
-      expect(status.adapterImplemented).toBe(false);
+      expect(status.adapterImplemented).toBe(IMPLEMENTED_ADAPTERS.has(status.id) || status.id === "ehmis");
       expect(status.missingPrerequisites.length).toBeGreaterThan(0);
       expect(status.remediation.length).toBeGreaterThan(20);
       expect(status.capabilities.every((capability) => capability.status === status.state)).toBe(true);
     }
+  });
+
+  it("keeps the eHMIS connector misconfigured until the deployment authorization is recorded", () => {
+    const missing = integrationStatus(loadConfig({ ...base, FEATURE_EHMIS: "true" }), "ehmis");
+    expect(missing.state).toBe("misconfigured");
+    expect(missing.reason).toContain("EHMIS_DEPLOYMENT_AUTHORIZATION_REF");
+    const configured = integrationStatus(loadConfig({
+      ...base, FEATURE_EHMIS: "true", EHMIS_DEPLOYMENT_AUTHORIZATION_REF: "MOH/DHI/EMRS/TEST-0001", EHMIS_CREDENTIALS_KEY: "k".repeat(40),
+    }), "ehmis");
+    expect(configured.state).toBe("available");
+    expect(configured.reason).toContain("Each facility still needs verified eligibility");
+    expect(configured.missingPrerequisites).toContain("per-facility connection test");
   });
 
   it("refuses operations with a typed, non-retryable unavailable error", () => {

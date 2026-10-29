@@ -3,6 +3,8 @@ export { DomainError } from "./errors.js";
 export * from "./catalog.js";
 export * from "./onboarding-catalogue.js";
 export * from "./radiology.js";
+export * from "./facility-classification.js";
+export * from "./hmis.js";
 export type EncounterState =
   | "planned"
   | "arrived"

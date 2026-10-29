@@ -1,4 +1,16 @@
 import { z } from "zod";
+import {
+  CARE_LEVEL_CODES,
+  HMIS_AGE_BANDS,
+  HMIS_METRICS,
+  LEVEL_STATUSES,
+  MODULE_CODES,
+  OFFICIAL_LEVEL_SOURCES,
+  OWNERSHIP_TYPES,
+  REGISTRATION_KINDS,
+  SERVICE_CATEGORY_CODES,
+  WORKSPACE_KINDS,
+} from "@medveris/domain";
 
 export const uuidSchema = z.string().uuid();
 export const emailSchema = z.string().trim().toLowerCase().email().max(254);
@@ -58,7 +70,14 @@ export const roleSchema = z.enum([
   "content_editor",
   "content_reviewer",
   "opportunity_moderator",
+  "owner",
+  "department_admin",
+  "unit_lead",
+  "staff",
+  "report_viewer",
 ]);
+
+export const serviceCategorySchema = z.enum(SERVICE_CATEGORY_CODES as [string, ...string[]]);
 
 export const codingSchema = z.object({
   system: z.string().url().max(500),
@@ -120,10 +139,20 @@ export const invitationRegisterSchema = invitationTokenSchema.extend({
   familyName: z.string().trim().min(1).max(120),
 });
 
+export const membershipScopeSchema = z.object({
+  /** Limits department_admin, unit_lead and other scoped roles to one department or unit. */
+  scopeDepartmentId: uuidSchema.nullable().optional(),
+  scopeUnitId: uuidSchema.nullable().optional(),
+});
+
 export const createInvitationSchema = z.object({
   email: emailSchema,
   roles: z.array(roleSchema).min(1),
-});
+}).merge(membershipScopeSchema);
+
+export const updateMembershipSchema = z.object({
+  roles: z.array(roleSchema).min(1),
+}).merge(membershipScopeSchema);
 
 export const createPatientByStaffSchema = z.object({
   givenName: z.string().trim().min(1).max(120),
@@ -183,6 +212,8 @@ export const createEncounterSchema = z.object({
   queueEntryId: uuidSchema.optional().nullable(),
   type: z.enum(["walk-in", "scheduled", "follow-up", "emergency", "inpatient", "theatre", "telehealth"]).default("walk-in"),
   reason: z.string().trim().min(1).max(2000),
+  departmentId: uuidSchema.nullable().optional(),
+  unitId: uuidSchema.nullable().optional(),
 });
 
 export const transitionEncounterSchema = z.object({
@@ -715,6 +746,8 @@ export const invoiceSchema = z.object({
     unitPrice: z.number().min(0).max(100000000).optional(),
   })).min(1).max(100),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  departmentId: uuidSchema.nullable().optional(),
+  unitId: uuidSchema.nullable().optional(),
 });
 
 export const paymentSchema = z.object({
@@ -926,6 +959,8 @@ export const departmentSchema = z.object({
   description: z.string().trim().max(2000).optional().or(z.literal("")),
   parentDepartmentId: uuidSchema.optional().nullable(),
   enabled: z.boolean().default(true),
+  /** Service category of a service unit inside the facility, e.g. pharmacy or dental; it inherits the host level. */
+  serviceCategory: serviceCategorySchema.nullable().optional(),
 });
 
 export const unitSchema = z.object({
@@ -2031,6 +2066,41 @@ export const radiologyAcquisitionSchema = z.object({
   note: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 
+const dicomUidSchema = z.string().trim().max(64).regex(/^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))+$/, "Must be a DICOM UID");
+const dicomMatchSchema = z.string().trim().min(1).max(64).regex(/^[^*?\\]+$/, "Wildcards are not allowed");
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
+
+/** With no criteria, the PACS is searched for the study's Medveris accession number. */
+export const pacsStudySearchSchema = z.object({
+  accession: dicomMatchSchema.optional(),
+  patientId: dicomMatchSchema.optional(),
+  fromDate: isoDateSchema.optional(),
+  toDate: isoDateSchema.optional(),
+  modality: z.string().trim().regex(/^[A-Z]{2,4}$/, "Use a DICOM modality code such as CT").optional(),
+});
+
+export const pacsLinkSchema = z.object({
+  studyInstanceUid: dicomUidSchema,
+  expectedVersion: z.number().int().min(1),
+  /** Required when the PACS family name or date of birth does not match the Medveris patient. */
+  identityOverrideReason: z.string().trim().min(10).max(1000).optional(),
+});
+
+export const pacsUnlinkSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  reason: z.string().trim().min(10).max(1000),
+});
+
+export const pacsFrameQuerySchema = z.object({
+  size: z.enum(["thumb", "full"]).default("full"),
+  windowCenter: z.coerce.number().min(-100_000).max(100_000).optional(),
+  windowWidth: z.coerce.number().min(1).max(200_000).optional(),
+}).refine((value) => (value.windowCenter === undefined) === (value.windowWidth === undefined), "Give both window centre and width, or neither");
+
+export const dicomwebVerifySchema = z.object({
+  sampleStudyInstanceUid: dicomUidSchema.optional(),
+});
+
 export const radiologyReportCreateSchema = z.object({
   studyId: uuidSchema,
   templateId: uuidSchema,
@@ -2112,4 +2182,286 @@ export const reportQuerySchema = z.object({
   timeZone: z.string().trim().min(1).max(64).default("Africa/Kampala"),
   format: z.enum(["json", "csv"]).default("json"),
   expiryWindowDays: z.string().regex(/^\d{1,3}$/).optional(),
+  departmentId: uuidSchema.optional(),
 });
+
+// ---------------------------------------------------------------- workspaces and organizations
+
+const optionalText = (max: number) => z.string().trim().max(max).optional().or(z.literal(""));
+const dhis2UidSchema = z.string().trim().regex(/^[A-Za-z][A-Za-z0-9]{10}$/, "Must be an 11-character DHIS2 UID");
+
+export const levelSelectionSchema = z.object({
+  levelStatus: z.enum(LEVEL_STATUSES),
+  officialLevel: z.enum(CARE_LEVEL_CODES).nullable().optional(),
+  officialLevelSource: z.enum(OFFICIAL_LEVEL_SOURCES).nullable().optional(),
+  officialLevelReference: z.string().trim().max(200).nullable().optional(),
+  equivalentLevel: z.enum(CARE_LEVEL_CODES).nullable().optional(),
+  equivalentJustification: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const facilityRegistrationSchema = z.object({
+  kind: z.enum(REGISTRATION_KINDS.map((kind) => kind.code) as [string, ...string[]]),
+  issuer: optionalText(200),
+  identifier: z.string().trim().min(1).max(120),
+  validFrom: z.string().date().optional().or(z.literal("")),
+  validUntil: z.string().date().optional().or(z.literal("")),
+});
+
+export const workspaceDetailsSchema = z.object({
+  name: z.string().trim().min(2).max(200),
+  workspaceKind: z.enum(WORKSPACE_KINDS).default("facility"),
+  serviceCategory: serviceCategorySchema,
+  serviceSubtype: z.string().trim().regex(/^[a-z][a-z-]{1,39}$/).nullable().optional(),
+  ownership: z.enum(OWNERSHIP_TYPES),
+  city: optionalText(120),
+  district: optionalText(120),
+  region: optionalText(120),
+  address: optionalText(300),
+  country: z.string().trim().max(120).default("Uganda"),
+  registrations: z.array(facilityRegistrationSchema).max(10).default([]),
+  modules: z.array(z.enum(MODULE_CODES)).max(20).optional(),
+}).merge(levelSelectionSchema);
+
+export const workspaceOwnerSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  givenName: z.string().trim().min(1).max(120),
+  familyName: z.string().trim().min(1).max(120),
+});
+
+export const organizationDetailsSchema = z.object({
+  name: z.string().trim().min(2).max(200),
+  legalName: optionalText(200),
+  kind: z.enum(["hospital", "health-system", "facility-group", "faith-based-network", "other"]),
+  ownership: z.enum(OWNERSHIP_TYPES),
+  registrationRef: optionalText(120),
+  contactEmail: emailSchema.optional().or(z.literal("")),
+});
+
+export const joinCodeSchema = z.string().trim().min(12).max(64).regex(/^[A-Za-z0-9_-]+$/);
+
+/** The three onboarding paths: an independent workspace, a new organization with its first site, or joining an organization. */
+export const registerWorkspaceSchema = z.discriminatedUnion("path", [
+  z.object({ path: z.literal("independent"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema }),
+  z.object({ path: z.literal("organization"), owner: workspaceOwnerSchema, organization: organizationDetailsSchema, workspace: workspaceDetailsSchema }),
+  z.object({
+    path: z.literal("join"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema, joinCode: joinCodeSchema,
+    historyVisibility: z.enum(["from-link-date", "full-history"]).default("from-link-date"),
+  }),
+]);
+
+export const workspaceProfileSchema = z.object({
+  name: z.string().trim().min(2).max(200),
+  serviceCategory: serviceCategorySchema,
+  serviceSubtype: z.string().trim().regex(/^[a-z][a-z-]{1,39}$/).nullable().optional(),
+  ownership: z.enum(OWNERSHIP_TYPES),
+  city: optionalText(120),
+  district: optionalText(120),
+  region: optionalText(120),
+  address: optionalText(300),
+  reason: optionalText(1000),
+}).merge(levelSelectionSchema);
+
+export const workspaceModulesSchema = z.object({ modules: z.array(z.enum(MODULE_CODES)).max(20) });
+
+export const registrationStatusSchema = z.object({ status: z.enum(["withdrawn", "expired"]) });
+
+export const organizationSiteSchema = workspaceDetailsSchema.extend({
+  hostTenantId: uuidSchema.nullable().optional(),
+});
+
+export const organizationJoinCodeCreateSchema = z.object({
+  label: z.string().trim().min(2).max(200),
+  maxUses: z.number().int().min(1).max(100).default(1),
+  expiresInDays: z.number().int().min(1).max(90).default(14),
+});
+
+export const organizationLinkRequestSchema = z.object({
+  joinCode: joinCodeSchema,
+  historyVisibility: z.enum(["from-link-date", "full-history"]).default("from-link-date"),
+});
+
+export const organizationLinkDecisionSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  note: z.string().trim().min(3).max(2000),
+  /** Required to approve when possible duplicate sites were found. */
+  duplicateResolution: z.string().trim().min(10).max(2000).optional(),
+});
+
+export const organizationHistoryGrantSchema = z.object({ reason: z.string().trim().min(10).max(2000) });
+
+export const inventoryModeProposalSchema = z.object({
+  mode: z.enum(["independent", "shared-supply"]),
+  note: z.string().trim().min(3).max(2000),
+});
+
+export const inventoryModeResponseSchema = z.object({
+  accept: z.boolean(),
+  note: z.string().trim().min(3).max(2000),
+});
+
+export const organizationLinkEndSchema = z.object({ reason: z.string().trim().min(10).max(2000) });
+
+export const organizationInvitationCreateSchema = z.object({
+  email: emailSchema,
+  role: z.enum(["organization_admin", "organization_reporting"]),
+});
+
+export const organizationInvitationAcceptSchema = z.object({ token: z.string().trim().min(20).max(200) });
+
+export const organizationReportQuerySchema = z.object({
+  from: z.string().date(),
+  to: z.string().date(),
+  timeZone: z.string().trim().min(1).max(64).default("Africa/Kampala"),
+  format: z.enum(["json", "csv"]).default("json"),
+  /** Comma-separated site (tenant) IDs; empty means every active site. */
+  sites: z.string().trim().max(4000).optional(),
+});
+
+// ---------------------------------------------------------------- procurement and inter-site supply
+
+export const supplierSchema = z.object({
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9-]{1,39}$/),
+  name: z.string().trim().min(2).max(200),
+  contactName: optionalText(160),
+  phone: optionalText(40),
+  email: emailSchema.optional().or(z.literal("")),
+  address: optionalText(300),
+  taxId: optionalText(60),
+  licenceReference: optionalText(120),
+  notes: optionalText(2000),
+});
+
+export const supplierStatusSchema = z.object({ status: z.enum(["active", "inactive"]) });
+
+export const purchaseOrderSchema = z.object({
+  supplierId: uuidSchema,
+  destinationLocationId: uuidSchema,
+  departmentId: uuidSchema.nullable().optional(),
+  unitId: uuidSchema.nullable().optional(),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default("UGX"),
+  expectedOn: z.string().date().optional().or(z.literal("")),
+  notes: optionalText(2000),
+  lines: z.array(z.object({
+    itemId: uuidSchema,
+    unit: z.string().trim().min(1).max(40),
+    quantity: z.number().positive().max(10_000_000),
+    unitPrice: z.number().min(0).max(1_000_000_000).default(0),
+  })).min(1).max(200),
+});
+
+export const purchaseOrderActionSchema = z.object({
+  action: z.enum(["submit", "approve", "cancel"]),
+  expectedVersion: z.number().int().min(1),
+  reason: z.string().trim().min(3).max(2000).optional(),
+});
+
+export const purchaseOrderReceiveSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  reason: z.string().trim().min(3).max(500).default("Purchase order receipt"),
+  lines: z.array(z.object({
+    lineId: uuidSchema,
+    quantity: z.number().positive().max(10_000_000),
+    lotNumber: z.string().trim().max(80).optional().or(z.literal("")),
+    expiresOn: z.string().date().optional().or(z.literal("")),
+    manufactureOn: z.string().date().optional().or(z.literal("")),
+  })).min(1).max(200),
+});
+
+export const interSiteTransferSchema = z.object({
+  destinationTenantId: uuidSchema,
+  sourceLocationId: uuidSchema,
+  itemId: uuidSchema,
+  lotId: uuidSchema.nullable().optional(),
+  quantity: z.number().positive().max(10_000_000),
+  unit: z.string().trim().min(1).max(40),
+  reason: z.string().trim().min(3).max(500),
+});
+
+export const interSiteReceiveSchema = z.object({
+  destinationLocationId: uuidSchema,
+  destinationItemId: uuidSchema,
+  receivedQuantity: z.number().positive().max(10_000_000),
+  discrepancyNote: optionalText(1000),
+});
+
+// ---------------------------------------------------------------- eHMIS / DHIS2
+
+export const hmisSettingsSchema = z.object({
+  nhfrId: z.string().trim().min(2).max(64).nullable().optional(),
+  dhis2BaseUrl: z.string().trim().url().max(300).nullable().optional(),
+  dhis2OrgUnitUid: dhis2UidSchema.nullable().optional(),
+});
+
+export const hmisEligibilityRequestSchema = z.object({
+  authorizationReference: z.string().trim().min(3).max(200),
+  authorizationIssuer: z.string().trim().min(3).max(200),
+  authorizationValidUntil: z.string().date().optional().or(z.literal("")),
+  /** Only routine aggregate HMIS reporting is supported. */
+  scope: z.literal("aggregate").default("aggregate"),
+});
+
+export const hmisEligibilityDecisionSchema = z.object({
+  decision: z.enum(["verified", "rejected", "suspended"]),
+  note: z.string().trim().min(10).max(2000),
+});
+
+export const hmisCredentialsSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("basic"), username: z.string().trim().min(1).max(120), password: z.string().min(1).max(500) }),
+  z.object({ kind: z.literal("personal-access-token"), token: z.string().trim().min(10).max(500) }),
+]);
+
+const hmisMetricCodes = HMIS_METRICS.map((metric) => metric.code) as [string, ...string[]];
+
+export const hmisMappingSchema = z.object({
+  datasetCode: z.string().trim().min(2).max(60),
+  datasetName: z.string().trim().min(2).max(200),
+  dhis2DataSetUid: dhis2UidSchema,
+  periodType: z.enum(["Weekly", "Monthly", "Quarterly"]),
+  attributeOptionComboUid: dhis2UidSchema.nullable().optional(),
+  elements: z.array(z.object({
+    metric: z.enum(hmisMetricCodes),
+    sex: z.enum(["all", "female", "male", "other", "unknown"]).default("all"),
+    ageBand: z.enum(["all", ...HMIS_AGE_BANDS]).default("all"),
+    dataElementUid: dhis2UidSchema,
+    categoryOptionComboUid: dhis2UidSchema,
+    label: optionalText(200),
+  })).min(1).max(500),
+});
+
+export const hmisMappingApproveSchema = z.object({
+  approvalReference: z.string().trim().min(3).max(300),
+  expectedVersion: z.number().int().min(1),
+});
+
+export const hmisPeriodGenerateSchema = z.object({
+  mappingId: uuidSchema,
+  period: z.string().trim().regex(/^[0-9]{4}([0-9]{2}|W[0-9]{1,2}|Q[1-4])$/),
+});
+
+export const hmisPeriodApproveSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  note: optionalText(1000),
+});
+
+export const hmisManualSubmissionSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  reference: z.string().trim().min(3).max(300),
+});
+
+export const hmisPeriodReopenSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  reason: z.string().trim().min(10).max(2000),
+});
+
+export const hmisLiveSubmissionSchema = z.object({ enabled: z.boolean() });
+
+export const hmisReportingRuleSchema = z.object({
+  periodType: z.enum(["Weekly", "Monthly", "Quarterly"]),
+  submissionDueDay: z.number().int().min(1).max(28),
+  validationStartDay: z.number().int().min(1).max(28),
+  validationEndDay: z.number().int().min(1).max(28),
+  lockAfterDay: z.number().int().min(1).max(28),
+  source: z.string().trim().min(5).max(500),
+}).refine((rule) => rule.validationStartDay <= rule.validationEndDay && rule.validationEndDay <= rule.lockAfterDay,
+  "Validation must start before it ends, and end on or before the lock day");

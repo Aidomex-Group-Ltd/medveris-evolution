@@ -25,6 +25,7 @@ import { ensureMatch, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import { assertIntegrationAvailable } from "../integrations/registry.js";
+import { loadVerifications } from "../integrations/verification.js";
 import type { AppEnv } from "../types.js";
 
 export const diagnosticsRoutes = new Hono<AppEnv>();
@@ -406,8 +407,10 @@ diagnosticsRoutes.post("/imaging-studies", async (c) => {
   const auth = c.get("auth")!;
   const body = await parseJson(c, imagingStudySchema);
   if (body.pacsState !== "not-configured") {
-    assertIntegrationAvailable(c.get("deps").config, "dicomweb", "imaging-study.pacs-state",
-      `the study was not recorded; PACS state '${body.pacsState}' requires a verified PACS connection`);
+    const deps = c.get("deps");
+    assertIntegrationAvailable(deps.config, "dicomweb", "imaging-study.pacs-state",
+      `the study was not recorded; PACS state '${body.pacsState}' requires a verified PACS connection`, (await loadVerifications(deps.sql, deps.config)).dicomweb);
+    throw new ConflictError("PACS links are made from the radiology study page, after the PACS study is found and the patient identity is compared");
   }
   const studyId = crypto.randomUUID();
   await withStaffActor(c, async (tx) => {

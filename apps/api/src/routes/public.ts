@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { listIntegrations } from "../integrations/registry.js";
+import { loadVerifications } from "../integrations/verification.js";
 import { UNAVAILABLE_LABEL } from "../terminology/unavailable.js";
 import type { AppEnv } from "../types.js";
 
@@ -35,7 +36,7 @@ publicRoutes.get("/public/config", async (c) => {
         ? "Synthetic development terminology"
         : config.terminologyMode === "unavailable" ? UNAVAILABLE_LABEL : "Production terminology adapter configured",
     },
-    features: Object.fromEntries(listIntegrations(config).map((integration) => [integration.id, integration.state === "available"])),
+    features: Object.fromEntries(listIntegrations(config, await loadVerifications(c.get("deps").sql, config)).map((integration) => [integration.id, integration.state === "available"])),
     release: "M1 outpatient foundation",
   });
 });

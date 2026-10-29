@@ -116,7 +116,7 @@ const staffPermissionPrefixes = [
   "clinical.", "nursing.", "ward.", "medication.", "diagnostic.", "exchange.",
   "organization.", "workforce.", "onboarding.", "role_grant.", "privilege.", "credential.",
   "care_team.", "finance.", "public_health.", "content.", "dashboard.",
-  "inventory.", "directory.", "promotion.", "integration.", "audit.", "platform.",
+  "inventory.", "directory.", "promotion.", "integration.", "audit.", "platform.", "workspace.", "hmis.",
 ];
 
 function isStaffPermission(permission: Permission): boolean {

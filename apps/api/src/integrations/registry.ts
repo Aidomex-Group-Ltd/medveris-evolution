@@ -1,5 +1,6 @@
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
+import { dicomwebConfigProblems } from "./dicomweb.js";
 
 export type IntegrationState =
   | "available"
@@ -10,7 +11,7 @@ export type IntegrationState =
   | "misconfigured"
   | "verification_failed";
 
-export type IntegrationId = "dicomweb" | "lab" | "pharmacy" | "telemedicine" | "devices" | "ai" | "payments" | "publicHealth" | "ledgerAnchoring";
+export type IntegrationId = "dicomweb" | "lab" | "pharmacy" | "telemedicine" | "devices" | "ai" | "payments" | "publicHealth" | "ehmis" | "nhfr" | "ledgerAnchoring";
 
 interface IntegrationDefinition {
   id: IntegrationId;
@@ -24,7 +25,24 @@ interface IntegrationDefinition {
   capabilities: string[];
   effectWhileUnavailable: string;
   remediation: string;
+  /** Present for implemented adapters: what keeps the configured connection from being usable. */
+  configurationProblems?: (config: AppConfig) => string[];
+  /**
+   * The adapter is enabled per deployment but each facility proves its own eligibility, mapping and
+   * connection; `available` here never means that any facility is connected.
+   */
+  facilityScoped?: boolean;
 }
+
+/** Latest conformance run for the configured endpoint, as stored in integration_verifications. */
+export interface VerificationRecord {
+  outcome: "passed" | "failed";
+  finishedAt: string;
+  /** First failed check, when the run failed. */
+  failure: string | null;
+}
+
+export type VerificationLookup = Partial<Record<IntegrationId, VerificationRecord | null>>;
 
 export interface IntegrationStatus {
   id: IntegrationId;
@@ -37,17 +55,17 @@ export interface IntegrationStatus {
   requiredConfiguration: string[];
   missingPrerequisites: string[];
   lastSuccessfulVerificationAt: string | null;
-  lastVerificationOutcome: "never-verified";
+  lastVerificationOutcome: "never-verified" | "passed" | "failed" | "expired";
   capabilities: Array<{ capability: string; status: IntegrationState }>;
   effectWhileUnavailable: string;
   remediation: string;
 }
 
 /**
- * No external adapter is implemented in this release, so no integration can be `available`. An adapter
- * must be added together with a persisted verification record before this list may change.
+ * Integrations with an adapter in this release. Each one is `available` only when it is requested, fully
+ * configured and has a passing, unexpired verification run against the configured endpoint.
  */
-const IMPLEMENTED_ADAPTERS: ReadonlySet<IntegrationId> = new Set();
+export const IMPLEMENTED_ADAPTERS: ReadonlySet<IntegrationId> = new Set(["dicomweb"]);
 
 export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
   {
@@ -55,12 +73,13 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
     name: "DICOMweb / PACS",
     flag: "FEATURE_DICOMWEB",
     baseline: "unavailable",
-    baselineReason: "No PACS endpoint, credentials or DICOMweb conformance testing is configured",
-    requiredConfiguration: ["DICOMweb base URL", "approved credentials", "network access to the PACS"],
-    prerequisites: ["DICOMweb adapter implementation", "QIDO-RS/WADO-RS/STOW-RS conformance tests against an approved test PACS", "authorization review"],
-    capabilities: ["study search", "image retrieval", "study transfer"],
-    effectWhileUnavailable: "Imaging studies can only be recorded with PACS state 'not-configured'; no images are retrieved, displayed or transferred.",
-    remediation: "Provide an approved test PACS, implement and verify the DICOMweb adapter, then record a successful conformance run.",
+    baselineReason: "No PACS is enabled for this environment (FEATURE_DICOMWEB is not set)",
+    requiredConfiguration: ["DICOMWEB_BASE_URL (HTTPS)", "DICOMWEB_AUTH with DICOMWEB_USERNAME/DICOMWEB_PASSWORD or DICOMWEB_BEARER_TOKEN", "network access from the Worker to the PACS"],
+    prerequisites: ["passing QIDO-RS/WADO-RS conformance run against the configured PACS", "authorization review"],
+    capabilities: ["study search", "image retrieval"],
+    effectWhileUnavailable: "Studies hold metadata only; no PACS study is searched, linked, retrieved or displayed.",
+    remediation: "Configure the PACS DICOMweb URL and credentials, set FEATURE_DICOMWEB=true, then run the conformance verification as a platform operator.",
+    configurationProblems: dicomwebConfigProblems,
   },
   {
     id: "lab",
@@ -147,6 +166,36 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
     remediation: "Obtain the authority's interface specification and approval, implement the adapter and verify acknowledgements.",
   },
   {
+    id: "ehmis",
+    name: "eHMIS / DHIS2 aggregate reporting",
+    flag: "FEATURE_EHMIS",
+    baseline: "not_requested",
+    baselineReason: "Live DHIS2 submission is not requested for this deployment (FEATURE_EHMIS is not set); facilities can still prepare, validate and export HMIS reports",
+    requiredConfiguration: [
+      "EHMIS_DEPLOYMENT_AUTHORIZATION_REF (Ministry of Health EMRS certification or written authorization for this deployment)",
+      "EHMIS_CREDENTIALS_KEY (32+ characters, Worker secret)",
+      "EHMIS_ALLOWED_HOSTS (DHIS2 hosts facilities may connect to)",
+    ],
+    prerequisites: ["Ministry of Health authorization for this deployment", "per-facility eligibility verified by a platform operator", "per-facility passing connection test"],
+    capabilities: ["HMIS dataset submission (dataValueSets)", "dry-run validation", "connection test"],
+    effectWhileUnavailable: "HMIS periods can be generated, validated, approved and exported for manual entry; nothing is sent to eHMIS/DHIS2.",
+    remediation: "Obtain Ministry of Health authorization for the deployment, record its reference in EHMIS_DEPLOYMENT_AUTHORIZATION_REF, set the credential key and allowed hosts, then verify each facility.",
+    configurationProblems: ehmisConfigProblems,
+    facilityScoped: true,
+  },
+  {
+    id: "nhfr",
+    name: "National Health Facility Registry",
+    flag: "FEATURE_NHFR",
+    baseline: "unavailable",
+    baselineReason: "No approved NHFR interface specification, endpoint or credentials are configured",
+    requiredConfiguration: ["approved NHFR interface specification", "endpoint", "credentials"],
+    prerequisites: ["NHFR adapter implementation", "Ministry of Health approval", "conformance testing"],
+    capabilities: ["facility identity lookup", "facility record synchronisation"],
+    effectWhileUnavailable: "NHFR IDs are entered manually and shown as recorded, not verified against the registry.",
+    remediation: "Obtain the Ministry's NHFR interface specification and approval, implement and verify the adapter.",
+  },
+  {
     id: "ledgerAnchoring",
     name: "Ledger anchoring",
     flag: "FEATURE_LEDGER_ANCHORING",
@@ -160,29 +209,33 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
   },
 ]);
 
-function statusFor(config: AppConfig, definition: IntegrationDefinition): IntegrationStatus {
+function verificationAge(record: VerificationRecord): number {
+  return Date.now() - Date.parse(record.finishedAt);
+}
+
+export function ehmisConfigProblems(config: AppConfig): string[] {
+  const problems: string[] = [];
+  if (!config.ehmis.deploymentAuthorizationReference) problems.push("EHMIS_DEPLOYMENT_AUTHORIZATION_REF is not set, so no Ministry of Health authorization is recorded for this deployment");
+  if (!config.ehmis.credentialsKey) problems.push("EHMIS_CREDENTIALS_KEY is not set (32+ characters), so facility credentials cannot be stored");
+  if (!config.ehmis.allowedHosts.length && !["development", "test"].includes(config.appEnv)) problems.push("EHMIS_ALLOWED_HOSTS is empty");
+  return problems;
+}
+
+function facilityScopedStatus(config: AppConfig, definition: IntegrationDefinition): IntegrationStatus {
   const requested = Boolean(config.features[definition.id]);
-  const adapterImplemented = IMPLEMENTED_ADAPTERS.has(definition.id);
-  let state: IntegrationState = definition.baseline;
-  let reason = definition.baselineReason;
-  const missingPrerequisites = adapterImplemented ? ["successful verification run"] : [...definition.prerequisites];
-  if (requested && !adapterImplemented) {
-    state = "misconfigured";
-    reason = `${definition.flag} is set, but no ${definition.name} adapter exists in this release; the flag is ignored`;
-  } else if (requested && adapterImplemented) {
-    state = "verification_failed";
-    reason = "The adapter has never been verified against its configured endpoint";
-  }
+  const problems = requested ? definition.configurationProblems?.(config) ?? [] : [];
+  const state: IntegrationState = !requested ? definition.baseline : problems.length ? "misconfigured" : "available";
+  const reason = !requested
+    ? definition.baselineReason
+    : problems.length
+      ? problems.join("; ")
+      : `Connector enabled for this deployment under the operator-recorded authorization "${config.ehmis.deploymentAuthorizationReference}". Each facility still needs verified eligibility and a passing connection test before it can submit.`;
   return {
-    id: definition.id,
-    name: definition.name,
-    state,
-    reason,
-    requested,
-    enabledForEnvironment: false,
-    adapterImplemented,
+    id: definition.id, name: definition.name, state, reason, requested,
+    enabledForEnvironment: state === "available",
+    adapterImplemented: true,
     requiredConfiguration: definition.requiredConfiguration,
-    missingPrerequisites,
+    missingPrerequisites: state === "available" ? ["per-facility eligibility verification", "per-facility connection test"] : [...definition.prerequisites],
     lastSuccessfulVerificationAt: null,
     lastVerificationOutcome: "never-verified",
     capabilities: definition.capabilities.map((capability) => ({ capability, status: state })),
@@ -191,18 +244,76 @@ function statusFor(config: AppConfig, definition: IntegrationDefinition): Integr
   };
 }
 
-export function listIntegrations(config: AppConfig): IntegrationStatus[] {
-  return INTEGRATIONS.map((definition) => statusFor(config, definition));
+function statusFor(config: AppConfig, definition: IntegrationDefinition, verification: VerificationRecord | null | undefined): IntegrationStatus {
+  if (definition.facilityScoped) return facilityScopedStatus(config, definition);
+  const requested = Boolean(config.features[definition.id]);
+  const adapterImplemented = IMPLEMENTED_ADAPTERS.has(definition.id);
+  let state: IntegrationState = definition.baseline;
+  let reason = definition.baselineReason;
+  let missingPrerequisites = adapterImplemented ? ["successful verification run"] : [...definition.prerequisites];
+  let lastVerificationOutcome: IntegrationStatus["lastVerificationOutcome"] = "never-verified";
+  let lastSuccessfulVerificationAt: string | null = null;
+  if (requested && !adapterImplemented) {
+    state = "misconfigured";
+    reason = `${definition.flag} is set, but no ${definition.name} adapter exists in this release; the flag is ignored`;
+  } else if (requested && adapterImplemented) {
+    const problems = definition.configurationProblems?.(config) ?? [];
+    const maxAgeMs = config.dicomweb.verificationMaxAgeDays * 86_400_000;
+    if (problems.length) {
+      state = "misconfigured";
+      reason = problems.join("; ");
+      missingPrerequisites = ["complete configuration", "successful verification run"];
+    } else if (!verification) {
+      state = "verification_failed";
+      reason = "The adapter has never been verified against its configured endpoint";
+    } else if (verification.outcome === "failed") {
+      state = "verification_failed";
+      lastVerificationOutcome = "failed";
+      reason = `The last verification (${verification.finishedAt}) failed: ${verification.failure ?? "see the verification record"}`;
+    } else if (verificationAge(verification) > maxAgeMs) {
+      state = "verification_failed";
+      lastVerificationOutcome = "expired";
+      lastSuccessfulVerificationAt = verification.finishedAt;
+      reason = `The last successful verification (${verification.finishedAt}) is older than ${config.dicomweb.verificationMaxAgeDays} days`;
+    } else {
+      state = "available";
+      lastVerificationOutcome = "passed";
+      lastSuccessfulVerificationAt = verification.finishedAt;
+      reason = `Verified against the configured endpoint at ${verification.finishedAt}`;
+      missingPrerequisites = [];
+    }
+  }
+  return {
+    id: definition.id,
+    name: definition.name,
+    state,
+    reason,
+    requested,
+    enabledForEnvironment: state === "available",
+    adapterImplemented,
+    requiredConfiguration: definition.requiredConfiguration,
+    missingPrerequisites,
+    lastSuccessfulVerificationAt,
+    lastVerificationOutcome,
+    capabilities: definition.capabilities.map((capability) => ({ capability, status: state })),
+    effectWhileUnavailable: definition.effectWhileUnavailable,
+    remediation: definition.remediation,
+  };
 }
 
-export function integrationStatus(config: AppConfig, id: IntegrationId): IntegrationStatus {
+/** Without `verifications`, an implemented adapter is reported as never verified and is not available. */
+export function listIntegrations(config: AppConfig, verifications: VerificationLookup = {}): IntegrationStatus[] {
+  return INTEGRATIONS.map((definition) => statusFor(config, definition, verifications[definition.id]));
+}
+
+export function integrationStatus(config: AppConfig, id: IntegrationId, verification?: VerificationRecord | null): IntegrationStatus {
   const definition = INTEGRATIONS.find((candidate) => candidate.id === id);
   if (!definition) throw new Error(`Unknown integration ${id}`);
-  return statusFor(config, definition);
+  return statusFor(config, definition, verification);
 }
 
-export function isIntegrationAvailable(config: AppConfig, id: IntegrationId): boolean {
-  return integrationStatus(config, id).state === "available";
+export function isIntegrationAvailable(config: AppConfig, id: IntegrationId, verification?: VerificationRecord | null): boolean {
+  return integrationStatus(config, id, verification).state === "available";
 }
 
 /** Typed refusal returned whenever an operation needs an integration that is not available. */
@@ -219,7 +330,7 @@ export class IntegrationUnavailableError extends AppError {
   }
 }
 
-export function assertIntegrationAvailable(config: AppConfig, id: IntegrationId, operation: string, outcome: string): void {
-  const status = integrationStatus(config, id);
+export function assertIntegrationAvailable(config: AppConfig, id: IntegrationId, operation: string, outcome: string, verification?: VerificationRecord | null): void {
+  const status = integrationStatus(config, id, verification);
   if (status.state !== "available") throw new IntegrationUnavailableError(status, operation, outcome);
 }

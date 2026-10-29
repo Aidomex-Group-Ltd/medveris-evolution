@@ -49,6 +49,10 @@ import { patientMergeRoutes } from "./routes/patient-merge.js";
 import { reportRoutes } from "./routes/reports.js";
 import { realtimeRoutes } from "./routes/realtime.js";
 import { opsRoutes } from "./routes/ops.js";
+import { workspaceRoutes } from "./routes/workspace.js";
+import { organizationsRoutes } from "./routes/organizations.js";
+import { procurementRoutes } from "./routes/procurement.js";
+import { ehmisRoutes } from "./routes/ehmis.js";
 
 function isFhirPath(path: string): boolean {
   return path.startsWith("/fhir/") || path.startsWith("/terminology/fhir/");
@@ -108,9 +112,12 @@ function tenantWriteGuard(): MiddlewareHandler<AppEnv> {
  * Coarse per-isolate request-volume guard (no coordination round trip). Endpoint policies such
  * as sign-in, recovery and search are enforced globally where they are handled.
  */
+const PACS_FRAME_PATH = /^\/api\/v1\/radiology\/studies\/[0-9a-f-]{36}\/images\/series\/[0-9.]+\/instances\/[0-9.]+\/frames\/\d+$/;
+
 function requestVolumeGuard(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     if (c.req.path === "/api/v1/health/live") return next();
+    if (c.get("auth") && c.req.method === "GET" && PACS_FRAME_PATH.test(c.req.path)) return next();
     const auth = c.get("auth");
     if (auth) await enforceRateLimit(c, "api.authenticated", auth.user.id);
     else await enforceRateLimit(c, "api.public", requestAddress(c));
@@ -176,6 +183,10 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", emergencyRoutes);
   app.route("/api/v1", careRoutes);
   app.route("/api/v1", organizationRoutes);
+  app.route("/api/v1", workspaceRoutes);
+  app.route("/api/v1", organizationsRoutes);
+  app.route("/api/v1", procurementRoutes);
+  app.route("/api/v1", ehmisRoutes);
   app.route("/api/v1", onboardingRoutes);
   app.route("/api/v1", documentRoutes);
   app.route("/api/v1", maternityRoutes);

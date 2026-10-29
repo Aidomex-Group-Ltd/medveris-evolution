@@ -5,6 +5,7 @@ import { AppShell } from "./components/AppShell";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
+import { INVENTORY_ROLES, PROCUREMENT_ROLES } from "./lib/roles";
 
 function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K): ComponentType {
   const Page = lazy(async () => {
@@ -80,6 +81,10 @@ const CatalogueEditorPage = lazyPage(() => import("./pages/CatalogueEditorPage")
 const CaregiversPage = lazyPage(() => import("./pages/CaregiversPage"), "CaregiversPage");
 const InvitationPage = lazyPage(() => import("./pages/InvitationPage"), "InvitationPage");
 const FacilityStaffPage = lazyPage(() => import("./pages/FacilityStaffPage"), "FacilityStaffPage");
+const WorkspacePage = lazyPage(() => import("./pages/WorkspacePage"), "WorkspacePage");
+const OrganizationsPage = lazyPage(() => import("./pages/OrganizationsPage"), "OrganizationsPage");
+const ProcurementPage = lazyPage(() => import("./pages/ProcurementPage"), "ProcurementPage");
+const EhmisPage = lazyPage(() => import("./pages/EhmisPage"), "EhmisPage");
 
 function NotFoundPage() {
   return (
@@ -119,7 +124,11 @@ export function App() {
         <Route path="wards/admissions/:id" element={<ProtectedRoute roles={["nurse", "clinician", "ward_manager"]}><AdmissionDetailPage /></ProtectedRoute>} />
         <Route path="maternity" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin"]}><MaternityPage /></ProtectedRoute>} />
         <Route path="operations" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin", "housekeeping", "porter", "mortuary", "cssd", "biomedical", "auditor"]}><OperationsPage /></ProtectedRoute>} />
-        <Route path="inventory" element={<ProtectedRoute roles={["nurse", "midwife", "clinician", "specialist_clinician", "diagnostic_practitioner", "department_lead", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist", "ward_manager", "pharmacist", "theatre", "facility_admin", "hr", "records", "quality", "finance", "auditor", "housekeeping", "porter", "mortuary", "cssd", "biomedical"]}><InventoryPage /></ProtectedRoute>} />
+        <Route path="inventory" element={<ProtectedRoute roles={INVENTORY_ROLES}><InventoryPage /></ProtectedRoute>} />
+        <Route path="procurement" element={<ProtectedRoute roles={PROCUREMENT_ROLES}><ProcurementPage /></ProtectedRoute>} />
+        <Route path="workspace" element={<ProtectedRoute staff><WorkspacePage /></ProtectedRoute>} />
+        <Route path="organizations" element={<ProtectedRoute organization><OrganizationsPage /></ProtectedRoute>} />
+        <Route path="ehmis" element={<ProtectedRoute roles={["facility_admin", "public_health"]}><EhmisPage /></ProtectedRoute>} />
         <Route path="theatre" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin"]}><TheatrePage /></ProtectedRoute>} />
         <Route path="theatre/:id" element={<ProtectedRoute roles={["nurse", "clinician"]}><TheatreCasePage /></ProtectedRoute>} />
         <Route path="diagnostics" element={<ProtectedRoute roles={["nurse", "clinician", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"]}><DiagnosticsPage /></ProtectedRoute>} />
