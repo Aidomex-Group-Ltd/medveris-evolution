@@ -1,9 +1,12 @@
 import { Link } from "react-router-dom";
-import { Badge, Card, DataList, EmptyState, ErrorState, LoadingState, PageHeader } from "@medveris/ui";
+import { Badge, Card, DataList, EmptyState, ErrorState, LoadingState, PageHeader, Table } from "@medveris/ui";
+import { PriorityBadge, RequestStatusBadge, VisitStateBadge } from "../components/WorkflowBadges";
 import { useAuth } from "../lib/auth";
 import { useAppEnvironment } from "../lib/environment";
+import { CASHIER_ROLES, DEPARTMENT_QUEUE_ROLES, VISIT_ROLES } from "../lib/roles";
 import { useQuery } from "../lib/useQuery";
-import type { Queue, WorklistEncounter } from "../lib/types";
+import { departmentLabel, workspaceProfile } from "../lib/workspace";
+import type { Queue, QueueItem, QueueSummary, VisitBoardEntry, WorkflowDepartment, WorklistEncounter } from "../lib/types";
 
 interface FeedItem { id: string; title: string; summary: string; contentType: string; publicationDate: string | null; sourceOrganization: string | null }
 
@@ -98,8 +101,131 @@ export function DashboardPage() {
 
 function StaffOverview() {
   const { me } = useAuth();
+  const profile = workspaceProfile(me?.activeTenant);
+  if (profile.unitDepartment) return <UnitDashboard department={profile.unitDepartment} />;
+  return <FacilityOverview />;
+}
+
+function age(dateOfBirth: string): string {
+  const born = new Date(dateOfBirth);
+  if (Number.isNaN(born.getTime())) return "";
+  const years = Math.floor((Date.now() - born.getTime()) / (365.25 * 86_400_000));
+  return years >= 1 ? `${years}y` : `${Math.max(0, Math.floor((Date.now() - born.getTime()) / (30.44 * 86_400_000)))}m`;
+}
+
+/** Landing page for a standalone laboratory, imaging centre or pharmacy: its own queue, visits and till first. */
+function UnitDashboard({ department }: { department: WorkflowDepartment }) {
+  const { me } = useAuth();
+  const roles = me?.activeTenant?.roles ?? [];
+  const profile = workspaceProfile(me?.activeTenant);
+  const canWork = (DEPARTMENT_QUEUE_ROLES[department] as readonly string[]).some((role) => roles.includes(role as never));
+  const cashier = CASHIER_ROLES.some((role) => roles.includes(role));
+  const frontDesk = roles.some((role) => ["receptionist", "facility_admin"].includes(role));
+  const summary = useQuery<{ departments: QueueSummary[] }>("/work-queues");
+  const queue = useQuery<{ items: QueueItem[] }>(canWork ? `/work-queues/${department}?limit=6` : null);
+  const visits = useQuery<{ visits: VisitBoardEntry[] }>("/visits/board");
+  const catalogue = useQuery<{ services: Array<{ id: string }> }>("/service-catalog?active=true", { enabled: cashier });
+  const config = useQuery<{ features: Record<string, boolean> }>("/public/config", { enabled: cashier });
+  const counts = summary.data?.departments.find((row) => row.department === department);
+  const openVisits = visits.data?.visits.filter((visit) => ["planned", "arrived", "triaged", "in-progress"].includes(visit.state)) ?? [];
+  const unpaid = visits.data?.visits.filter((visit) => visit.billing.unbilledRequests + visit.billing.unpaidRequests + visit.billing.unbilledSupplies > 0).length;
+  const label = departmentLabel(department);
+
+  return (
+    <div className="mv-stack">
+      <PageHeader
+        eyebrow={profile.categoryLabel ? `${profile.categoryLabel} · independent workspace` : "Independent workspace"}
+        title={me?.activeTenant?.name ?? `${label} dashboard`}
+        description={`Good day, ${me?.user.givenName ?? ""}. Register walk-in patients, work the ${label.toLowerCase()} queue and take payments in one place.`}
+        actions={
+          <div className="mv-row">
+            {frontDesk ? <Link className="mv-button mv-button--secondary mv-button--md" to="/patients">Register or find a patient</Link> : null}
+            {canWork ? <Link className="mv-button mv-button--primary mv-button--md" to={`/work-queues/${department}`}>Open {label.toLowerCase()} queue</Link> : null}
+          </div>
+        }
+      />
+      <section className="mv-grid mv-grid--3" aria-label={`${label} status`}>
+        <div className="mv-stat"><span>Waiting</span><strong>{summary.loading ? "…" : counts ? counts.requested + counts.accepted : 0}</strong><span>{counts?.emergency ? `${counts.emergency} emergency` : counts?.urgent ? `${counts.urgent} urgent` : "Requested or accepted"}</span></div>
+        <div className="mv-stat"><span>In progress</span><strong>{summary.loading ? "…" : counts?.inProgress ?? 0}</strong><span>Completed today: {counts?.completedToday ?? 0}</span></div>
+        <div className="mv-stat"><span>Open visits</span><strong>{visits.loading ? "…" : openVisits.length}</strong><span>{cashier && unpaid != null ? `${unpaid} with charges to collect` : "Registered today and not closed"}</span></div>
+      </section>
+      {summary.error ? <ErrorState message={summary.error} onRetry={summary.reload} /> : null}
+      <div className="mv-grid mv-grid--2">
+        <Card title={`Next in the ${label.toLowerCase()} queue`} description="Emergency and urgent work first.">
+          {!canWork ? <EmptyState title="Queue not assigned to you" description={`Ask the workspace owner to add the ${label.toLowerCase()} role to your account.`} /> : queue.loading ? <LoadingState /> : queue.error ? <ErrorState message={queue.error} onRetry={queue.reload} /> : !queue.data?.items.length ? (
+            <EmptyState title="Queue is clear" description="New requests appear here as soon as reception or a clinician records them." action={frontDesk ? <Link to="/patients">Register a walk-in patient</Link> : undefined} />
+          ) : (
+            <ul className="mv-stack" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {queue.data.items.map((item) => (
+                <li key={item.id} className="mv-spread">
+                  <div>
+                    <strong>{item.description}</strong>
+                    <div className="mv-small mv-muted">{item.patient.givenName} {item.patient.familyName} · {item.patient.sex} {age(item.patient.dateOfBirth)}</div>
+                  </div>
+                  <div className="mv-row"><PriorityBadge priority={item.priority} /><RequestStatusBadge status={item.status} /></div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {canWork ? <div style={{ marginTop: 14 }}><Link to={`/work-queues/${department}`}>Open the full queue</Link></div> : null}
+        </Card>
+        <Card title="Today's visits" description="Progress and billing at a glance.">
+          {visits.loading ? <LoadingState /> : visits.error ? <ErrorState message={visits.error} onRetry={visits.reload} /> : !visits.data?.visits.length ? <EmptyState title="No visits yet today" description="Register a patient and record the visit to start." /> : (
+            <ul className="mv-stack" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {visits.data.visits.slice(0, 6).map((visit) => (
+                <li key={visit.id} className="mv-spread">
+                  <div><strong>{visit.patient.givenName} {visit.patient.familyName}</strong><div className="mv-small mv-muted">{visit.requests.requested + visit.requests.active} open · {visit.requests.completed} done</div></div>
+                  <VisitStateBadge state={visit.state} />
+                </li>
+              ))}
+            </ul>
+          )}
+          <div style={{ marginTop: 14 }}><Link to="/visits">All visits</Link></div>
+        </Card>
+      </div>
+      {cashier ? (
+        <Card title="Set up your unit" description="A few things make the till and queue work smoothly.">
+          <ul className="mv-stack" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            <li className="mv-spread"><span>Price list: {catalogue.loading ? "…" : `${catalogue.data?.services.length ?? 0} active items`}</span><Link to="/price-list">{catalogue.data?.services.length ? "Review prices" : "Add your services and prices"}</Link></li>
+            <li className="mv-spread"><span>Mobile money (Yo!): {config.loading ? "…" : config.data?.features.payments ? <Badge tone="success">available</Badge> : <Badge tone="neutral">not configured; cash only</Badge>}</span><Link to="/pos">Open point of sale</Link></li>
+            <li className="mv-spread"><span>Staff accounts</span><Link to="/admin">Invite staff</Link></li>
+            <li className="mv-spread"><span>Licences, registry IDs and modules</span><Link to="/workspace">Workspace profile</Link></li>
+          </ul>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+/** Work in every department queue: counts only, linked to the queues the caller works. */
+function PatientFlowCard() {
+  const summary = useQuery<{ departments: QueueSummary[] }>("/work-queues");
+  const rows = summary.data?.departments.filter((row) => row.requested + row.accepted + row.inProgress + row.completedToday > 0 || row.canWork) ?? [];
+  if (!summary.loading && !summary.error && !rows.length) return null;
+  return (
+    <Card title="Patient flow" description="Requests from consultations in each department's queue.">
+      {summary.loading ? <LoadingState /> : summary.error ? <ErrorState message={summary.error} onRetry={summary.reload} /> : (
+        <Table head={["Department", "Waiting", "In progress", "Done today", ""]} caption="Department work queues">
+          {rows.map((row) => (
+            <tr key={row.department}>
+              <td><strong>{departmentLabel(row.department)}</strong>{row.emergency ? <> <Badge tone="danger">{row.emergency} emergency</Badge></> : row.urgent ? <> <Badge tone="warning">{row.urgent} urgent</Badge></> : null}</td>
+              <td>{row.requested + row.accepted}</td>
+              <td>{row.inProgress}</td>
+              <td>{row.completedToday}</td>
+              <td>{row.canWork ? <Link to={`/work-queues/${row.department}`}>Open queue</Link> : null}</td>
+            </tr>
+          ))}
+        </Table>
+      )}
+    </Card>
+  );
+}
+
+function FacilityOverview() {
+  const { me } = useAuth();
   const environment = useAppEnvironment();
   const roles = me?.activeTenant?.roles ?? [];
+  const visitRole = VISIT_ROLES.some((role) => roles.includes(role));
   const frontDesk = roles.some((role) => ["receptionist", "nurse", "clinician", "facility_admin"].includes(role));
   const clinical = roles.some((role) => ["nurse", "clinician"].includes(role));
   const admin = roles.includes("facility_admin");
@@ -117,7 +243,7 @@ function StaffOverview() {
       <PageHeader
         eyebrow={me?.activeTenant?.name ?? "Facility workspace"}
         title={`Good day, ${me?.user.givenName ?? ""}`}
-        description="Outpatient reception, triage, signed documentation and patient-controlled exchange. Later departmental modules remain unavailable."
+        description="Reception, consultations with signed notes, department work queues, billing and patient-controlled exchange for this workspace."
         actions={clinical ? <Link className="mv-button mv-button--primary mv-button--md" to="/worklist">Open clinical worklist</Link> : frontDesk ? <Link className="mv-button mv-button--primary mv-button--md" to="/patients">Register or find a patient</Link> : null}
       />
 
@@ -147,6 +273,8 @@ function StaffOverview() {
           )}
         </Card>
       </div>
+
+      {visitRole ? <PatientFlowCard /> : null}
 
       {clinicianScope ? (
         <div className="mv-grid mv-grid--3">

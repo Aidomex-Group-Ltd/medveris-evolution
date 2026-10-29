@@ -5,6 +5,10 @@ export * from "./onboarding-catalogue.js";
 export * from "./radiology.js";
 export * from "./facility-classification.js";
 export * from "./hmis.js";
+export * from "./workflow.js";
+export * from "./integrity.js";
+export * from "./billing.js";
+export * from "./currency.js";
 export type EncounterState =
   | "planned"
   | "arrived"

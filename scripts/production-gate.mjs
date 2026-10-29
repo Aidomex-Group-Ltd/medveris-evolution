@@ -33,11 +33,14 @@ const REQUIRED_VARS = Object.freeze({
   FHIR_BULK_EXPORT_ENABLED: "false",
 });
 
-/** Flags that request an external integration; none has an implemented, verified adapter yet. */
+/** Flags that request an external integration with no implemented, verified adapter yet. */
 const INTEGRATION_FLAGS = Object.freeze([
   "FEATURE_DICOMWEB", "FEATURE_LAB", "FEATURE_PHARMACY", "FEATURE_TELEMEDICINE", "FEATURE_DEVICES",
-  "FEATURE_AI", "FEATURE_PAYMENTS", "FEATURE_PUBLIC_HEALTH", "FEATURE_LEDGER_ANCHORING",
+  "FEATURE_AI", "FEATURE_PUBLIC_HEALTH", "FEATURE_LEDGER_ANCHORING",
 ]);
+
+/** Secrets Yo! mobile money needs once FEATURE_PAYMENTS is on; YO_PUBLIC_KEY is public but kept as a secret so it is not edited inline. */
+export const YO_SECRETS = Object.freeze(["YO_API_USERNAME", "YO_API_PASSWORD", "YO_PUBLIC_KEY"]);
 
 const HYPERDRIVE_ROLES = Object.freeze({ HYPERDRIVE: PRODUCTION.runtimeRole, HYPERDRIVE_JOBS: PRODUCTION.jobsRole });
 const SECRET_LIKE_VAR = /(SECRET|PASSWORD|TOKEN|_KEY|CONNECTION_STRING|DATABASE_URL)$/;
@@ -105,6 +108,13 @@ export function checkProductionConfig(config) {
   check(terminologyOk, "TERMINOLOGY_MODE must be unavailable or production (with a provider URL)");
   for (const flag of INTEGRATION_FLAGS) {
     check(vars[flag] === "false", `${flag} must be false until its adapter is implemented and verified`);
+  }
+  check(["false", "true"].includes(String(vars.FEATURE_PAYMENTS ?? "false")), "FEATURE_PAYMENTS must be true or false");
+  check(["disabled", "production", undefined].includes(vars.YO_MODE), "YO_MODE must be disabled or production; the Yo! sandbox is never used in production");
+  if (vars.FEATURE_PAYMENTS === "true") {
+    check(vars.YO_MODE === "production", "FEATURE_PAYMENTS=true requires YO_MODE=production");
+    const declared = production.secrets?.required ?? [];
+    for (const name of YO_SECRETS) check(declared.includes(name), `FEATURE_PAYMENTS=true requires the ${name} secret to be declared`);
   }
   const sender = /<?([^<>\s]+@([^<>\s]+))>?\s*$/.exec(String(vars.EMAIL_FROM ?? ""));
   check(sender?.[2] === PRODUCTION.apex, `EMAIL_FROM must send from the verified ${PRODUCTION.apex} domain`);

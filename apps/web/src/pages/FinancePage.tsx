@@ -6,6 +6,7 @@ import { formatDateTime, formatMoney } from "../lib/format";
 import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
 import { EncounterPicker, PatientPicker } from "../components/Pickers";
+import { CATALOGUE_CATEGORIES } from "@medveris/domain";
 
 interface Service { id: string; code: string; name: string; category: string; price: string | number; currency: string; active: boolean }
 interface Invoice { id: string; number: string; patientId: string; currency: string; status: string; notes: string | null; createdAt: string; publicId: string; givenName: string; familyName: string; total: string | number; paid: string | number }
@@ -17,7 +18,12 @@ export function FinancePage() {
   const [tab, setTab] = useState<"overview" | "invoices" | "catalogue">("overview");
   return (
     <div className="mv-stack">
-      <PageHeader eyebrow="Finance" title="Billing and payments" description="Invoices, payments, reversals and claims are audited. No payment gateway is configured." />
+      <PageHeader
+        eyebrow="Finance"
+        title="Billing and payments"
+        description="Bills, cash and mobile money payments, reversals and claims are audited. Take payments at the point of sale."
+        actions={<div className="mv-row"><Link className="mv-button mv-button--primary mv-button--md" to="/pos">Point of sale</Link><Link className="mv-button mv-button--secondary mv-button--md" to="/price-list">Price list</Link></div>}
+      />
       <Tabs label="Finance sections" value={tab} onChange={setTab} options={[{ value: "overview", label: "Overview" }, { value: "invoices", label: "Invoices" }, { value: "catalogue", label: "Catalogue" }]} />
       {tab === "overview" ? <Overview /> : null}
       {tab === "invoices" ? <Invoices /> : null}
@@ -179,6 +185,7 @@ function Catalogue() {
     <div className="mv-stack">
       {action.error ? <ErrorState message={action.error} /> : null}
       {action.message ? <Notice tone="success">{action.message}</Notice> : null}
+      <Notice tone="info">Procedures, supplies, pharmacy items, departments and price changes are managed on the <Link to="/price-list">price list</Link>.</Notice>
       <Card title="Service catalogue">
         {services.loading ? <LoadingState /> : services.error ? <ErrorState message={services.error} onRetry={services.reload} /> : !services.data?.services.length ? <EmptyState title="No services" description="Add a billable service below." /> : (
           <Table head={["Code", "Service", "Category", "Price", "Status"]} caption="Service catalogue">
@@ -191,7 +198,7 @@ function Catalogue() {
           <div className="mv-form-grid">
             <Field label="Code" htmlFor="service-code"><Input id="service-code" value={code} onChange={(event) => setCode(event.target.value)} required maxLength={50} /></Field>
             <Field label="Name" htmlFor="service-name"><Input id="service-name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} /></Field>
-            <Field label="Category"><Select value={category} onChange={(event) => setCategory(event.target.value)}>{["consultation", "procedure", "laboratory", "imaging", "pharmacy", "bed", "other"].map((value) => <option key={value} value={value}>{value}</option>)}</Select></Field>
+            <Field label="Category"><Select value={category} onChange={(event) => setCategory(event.target.value)}>{CATALOGUE_CATEGORIES.map((value) => <option key={value} value={value}>{value}</option>)}</Select></Field>
             <Field label="Price"><Input type="number" min={0} step="any" value={price} onChange={(event) => setPrice(event.target.value)} required /></Field>
             <Field label="Currency" htmlFor="service-currency"><Input id="service-currency" value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} minLength={3} maxLength={3} required /></Field>
           </div>

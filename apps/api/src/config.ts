@@ -1,4 +1,5 @@
 import { parseShardTopology, type ShardTopology } from "@medveris/db";
+import type { FxConfig } from "./integrations/fx.js";
 
 export interface AppConfig {
   appEnv: string;
@@ -60,6 +61,11 @@ export interface AppConfig {
   dicomweb: DicomwebConfig;
   /** Deployment-level gate for the facility-scoped eHMIS/DHIS2 connector. */
   ehmis: EhmisConfig;
+  /** Yo! Payments mobile money collections for point-of-sale bills. */
+  yo: YoConfig;
+  billing: BillingConfig;
+  /** Exchange rates for converting facility prices; never applied at billing time. */
+  fx: FxConfig;
   database: {
     /** Replica reads need an explicit opt-in plus a HYPERDRIVE_REPLICA binding. */
     replicaEnabled: boolean;
@@ -97,6 +103,17 @@ export interface AppConfig {
   };
 }
 
+export interface BillingConfig {
+  /**
+   * What a subscription that is not in good standing changes. "off": nothing is shown or enforced;
+   * "notify": states, reminders and banners only; "enforce": growth and analytics features pause too.
+   * Patient records and care workflows are never restricted in any mode.
+   */
+  enforcement: "off" | "notify" | "enforce";
+  /** Server-side measurement of API compute time and traffic per workspace. */
+  usageMetering: boolean;
+}
+
 export interface DicomwebConfig {
   /** DICOMweb service root (QIDO-RS and WADO-RS), without a trailing slash. */
   baseUrl: string | null;
@@ -124,6 +141,61 @@ export interface EhmisConfig {
   /** Hosts a facility may point its DHIS2 base URL at; empty refuses live connections outside development and tests. */
   allowedHosts: string[];
   timeoutMs: number;
+}
+
+export interface YoConfig {
+  /** disabled: no request is sent; sandbox: Yo! test system; production: live collections. */
+  mode: "disabled" | "sandbox" | "production";
+  /** Yo! Payments API endpoint (task.php). Defaults to the documented endpoint for the mode. */
+  apiUrl: string | null;
+  /** Secondary production endpoint, used only for idempotent status checks. */
+  backupApiUrl: string | null;
+  username: string | null;
+  password: string | null;
+  /** Yo! public certificate (or its public key) in PEM, used to verify payment notifications. */
+  publicKeyPem: string | null;
+  /** Public origin Yo! posts notifications to. */
+  notificationBaseUrl: string;
+  timeoutMs: number;
+}
+
+/** Documented Yo! Payments API endpoints (Yo! Payments API specification and the YoPaymentsPHP library). */
+export const YO_ENDPOINTS = Object.freeze({
+  sandbox: "https://sandbox.yo.co.ug/services/yopaymentsdev/task.php",
+  production: "https://paymentsapi1.yo.co.ug/ybs/task.php",
+  productionBackup: "https://paymentsapi2.yo.co.ug/ybs/task.php",
+});
+
+function yoConfig(env: EnvLike, appEnv: string, origin: string): YoConfig {
+  const raw = (env.YO_MODE ?? "disabled").trim() || "disabled";
+  if (raw !== "disabled" && raw !== "sandbox" && raw !== "production") throw new Error("YO_MODE must be disabled, sandbox or production");
+  if (raw === "sandbox" && appEnv === "production") throw new Error("YO_MODE=sandbox is not allowed in production; use production or disabled");
+  const https = (name: string, value: string | undefined): string | null => {
+    const trimmed = (value ?? "").trim();
+    if (!trimmed) return null;
+    let url: URL;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      throw new Error(`${name} must be an absolute URL`);
+    }
+    if (url.protocol !== "https:" && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) throw new Error(`${name} must use HTTPS`);
+    return trimmed.replace(/\/+$/, "");
+  };
+  const apiUrl = https("YO_API_URL", env.YO_API_URL) ?? (raw === "sandbox" ? YO_ENDPOINTS.sandbox : raw === "production" ? YO_ENDPOINTS.production : null);
+  const backupApiUrl = https("YO_BACKUP_API_URL", env.YO_BACKUP_API_URL) ?? (raw === "production" && !env.YO_API_URL ? YO_ENDPOINTS.productionBackup : null);
+  const notificationBaseUrl = https("YO_NOTIFICATION_BASE_URL", env.YO_NOTIFICATION_BASE_URL) ?? origin;
+  const pem = (env.YO_PUBLIC_KEY ?? "").replace(/\\n/g, "\n").trim();
+  return {
+    mode: raw,
+    apiUrl,
+    backupApiUrl,
+    username: env.YO_API_USERNAME?.trim() || null,
+    password: env.YO_API_PASSWORD || null,
+    publicKeyPem: pem || null,
+    notificationBaseUrl,
+    timeoutMs: Math.max(5_000, Math.min(integer(env.YO_TIMEOUT_MS, 30_000), 120_000)),
+  };
 }
 
 export interface RateLimitOverride {
@@ -345,6 +417,17 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
       credentialsKey: env.EHMIS_CREDENTIALS_KEY && env.EHMIS_CREDENTIALS_KEY.length >= 32 ? env.EHMIS_CREDENTIALS_KEY : null,
       allowedHosts: (env.EHMIS_ALLOWED_HOSTS ?? "").split(",").map((host) => host.trim().toLowerCase()).filter(Boolean),
       timeoutMs: Math.max(1_000, Math.min(integer(env.EHMIS_TIMEOUT_MS, 20_000), 60_000)),
+    },
+    yo: yoConfig(env, appEnv, origin),
+    billing: {
+      enforcement: env.BILLING_ENFORCEMENT === "off" || env.BILLING_ENFORCEMENT === "enforce" ? env.BILLING_ENFORCEMENT : "notify",
+      usageMetering: bool(env.USAGE_METERING, true),
+    },
+    fx: {
+      provider: env.FX_PROVIDER === "openexchangerates" ? "openexchangerates" : "none",
+      apiKey: env.FX_API_KEY?.trim() || null,
+      lockMinutes: Math.max(1, Math.min(integer(env.FX_LOCK_MINUTES, 15), 60)),
+      timeoutMs: Math.max(1_000, Math.min(integer(env.FX_TIMEOUT_MS, 8_000), 30_000)),
     },
     dicomweb: {
       baseUrl: (env.DICOMWEB_BASE_URL ?? "").trim().replace(/\/+$/, "") || null,

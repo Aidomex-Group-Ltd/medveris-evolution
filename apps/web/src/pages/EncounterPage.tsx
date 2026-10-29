@@ -8,6 +8,7 @@ import type { Coding, EncounterDetail } from "../lib/types";
 import { ClinicalNotePanel } from "../components/ClinicalNotePanel";
 import { CodingPicker } from "../components/CodingPicker";
 import { TriagePanel } from "../components/TriagePanel";
+import { VisitWorkflowPanel } from "../components/VisitWorkflowPanel";
 
 const UNITS = ["mm[Hg]", "/min", "Cel", "%", "kg", "cm", "mg/dL"];
 
@@ -16,7 +17,7 @@ export function EncounterPage() {
   const { me } = useAuth();
   const navigate = useNavigate();
   const detail = useQuery<EncounterDetail>(id ? `/encounters/${id}` : null);
-  const [tab, setTab] = useState<"summary" | "notes">("summary");
+  const [tab, setTab] = useState<"summary" | "notes" | "requests">("summary");
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,7 @@ export function EncounterPage() {
   const canSign = roles.includes("clinician");
 
   const data = detail.data;
-  const entry = data?.entries.find((row) => row.id === selectedEntry) ?? data?.entries[data.entries.length - 1] ?? null;
+  const entry = selectedEntry === "new" ? null : data?.entries.find((row) => row.id === selectedEntry) ?? data?.entries[data.entries.length - 1] ?? null;
 
   useEffect(() => {
     if (!selectedEntry && data?.entries.length) setSelectedEntry(data.entries[data.entries.length - 1]!.id);
@@ -77,7 +78,11 @@ export function EncounterPage() {
       {error ? <ErrorState message={error} /> : null}
       {message ? <Notice tone="success">{message}</Notice> : null}
 
-      <Tabs label="Chart sections" value={tab} onChange={setTab} options={[{ value: "summary", label: "Summary and triage" }, { value: "notes", label: `Notes (${data.entries.length})` }]} />
+      <Tabs label="Chart sections" value={tab} onChange={setTab} options={[
+        { value: "summary", label: "Summary and triage" },
+        { value: "notes", label: `Notes (${data.entries.length})` },
+        { value: "requests", label: "Recommendations and requests" },
+      ]} />
 
       {tab === "summary" ? (
         <>
@@ -137,11 +142,13 @@ export function EncounterPage() {
             </Card>
           </div>
         </>
+      ) : tab === "requests" ? (
+        <VisitWorkflowPanel encounterId={encounter.id} />
       ) : !clinical ? (
         <EmptyState title="Clinical notes restricted" description="Your role does not permit reading clinical narratives." />
       ) : (
         <div className="mv-grid" style={{ gridTemplateColumns: "minmax(220px, 0.32fr) minmax(0, 1fr)" }}>
-          <Card title="Entries">
+          <Card title="Entries" actions={canSign && ["triaged", "in-progress"].includes(encounter.state) ? <Button size="sm" variant="secondary" onClick={() => setSelectedEntry("new")} aria-pressed={selectedEntry === "new"}>New note</Button> : null}>
             {!data.entries.length ? <p className="mv-small mv-muted">No notes yet.</p> : (
               <div className="mv-stack" style={{ gap: 6 }}>
                 {data.entries.map((row) => (
@@ -153,7 +160,7 @@ export function EncounterPage() {
               </div>
             )}
           </Card>
-          <ClinicalNotePanel encounterId={encounter.id} entry={entry} canSign={canSign} onChanged={detail.reload} />
+          <ClinicalNotePanel encounterId={encounter.id} entry={entry} canSign={canSign} onChanged={() => { if (selectedEntry === "new") setSelectedEntry(null); detail.reload(); }} />
         </div>
       )}
     </div>

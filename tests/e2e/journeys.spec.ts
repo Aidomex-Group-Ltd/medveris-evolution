@@ -266,7 +266,9 @@ test("Journey G — finance: invoice, manual payment, no provider-confirmed paym
   await finance.page.goto(`/finance/invoices/${invoice.invoice.id}`);
   await expect(finance.page.getByText("JRN-G-RECEIPT").first()).toBeVisible();
   await expect(finance.page.getByText(/paid/i).first()).toBeVisible();
-  await expect(finance.page.getByText(/No online payment/).first()).toBeVisible();
+  await expect(finance.page.getByText("Fully paid")).toBeVisible();
+  // A manually recorded payment is shown as received, never as a confirmed mobile money payment.
+  await expect(finance.page.getByRole("table", { name: "Payments" }).getByText(/mobile money/i)).toHaveCount(0);
 
   await finance.page.goto("/reports");
   await finance.page.getByLabel("Report").selectOption({ label: "Billing and payment reconciliation" });

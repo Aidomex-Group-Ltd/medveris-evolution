@@ -3,6 +3,7 @@ import type { Role } from "@medveris/authz";
 import type { AppConfig } from "./config.js";
 import type { DicomwebClient } from "./integrations/dicomweb.js";
 import type { FetchLike } from "./integrations/dhis2.js";
+import type { FxProvider } from "./integrations/fx.js";
 import type { EmailAdapter } from "./lib/email.js";
 import type { StorageAdapter } from "./lib/storage.js";
 import type { RequestAnnotations } from "./lib/observability.js";
@@ -43,11 +44,22 @@ export interface MembershipRecord {
   shard?: ShardAssignment | null;
   /** Department or unit that scoped roles on this membership are limited to. */
   scope?: MembershipScope;
+  workspace?: WorkspaceSummary;
 }
 
 export interface MembershipScope {
   departmentId: string | null;
   unitId: string | null;
+}
+
+/** What kind of workspace this is, so navigation and the landing dashboard fit the unit. */
+export interface WorkspaceSummary {
+  workspaceKind: string;
+  serviceCategory: string | null;
+  /** Empty for workspaces created before module selection existed: every module is shown. */
+  enabledModules: string[];
+  /** Set only while an organization link is active. */
+  organizationId: string | null;
 }
 
 export interface AuthContext {
@@ -62,6 +74,7 @@ export interface AuthContext {
     membershipId: string;
     shard?: ShardAssignment | null;
     scope?: MembershipScope;
+    workspace?: WorkspaceSummary;
   } | null;
   patientId: string | null;
   platformRoles: string[];
@@ -83,6 +96,10 @@ export interface AppDeps {
   dicomweb?: DicomwebClient | null;
   /** Transport for facility DHIS2 connections; tests inject a fake server. */
   dhis2Transport?: FetchLike;
+  /** Transport for Yo! Payments; tests inject a fake gateway. */
+  yoTransport?: FetchLike;
+  /** Exchange-rate provider; absent means one is built from `config.fx`. Tests inject a test double. */
+  fxProvider?: FxProvider | null;
 }
 
 export interface AppVariables {

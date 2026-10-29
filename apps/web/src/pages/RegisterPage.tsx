@@ -53,7 +53,7 @@ export function RegisterPage() {
           <h1>{type === "facility" ? "Set up your facility or service." : "Create your patient identity."}</h1>
           <p style={{ marginTop: 16 }}>
             {type === "facility"
-              ? "For private clinics, hospitals, pharmacies, drug shops, laboratories, imaging, dental and eye-care services. Each workspace runs on its own and can join a larger organization later. Registration does not verify licences or credentials; clinical features require staff MFA enrolment and role assignment."
+              ? "For laboratories, imaging centres, pharmacies, clinics and hospitals. An independent unit runs on its own from the first sign-in and can join a larger organization later. Registration does not verify licences or credentials; staff access requires two-step verification."
               : "Your public patient ID locates your identity but never authorizes record access by itself. Only released records and explicit sharing appear in your portal."}
           </p>
         </div>
@@ -62,7 +62,7 @@ export function RegisterPage() {
       <section className="mv-auth__panel">
         <div className={`mv-auth__card mv-stack${type === "facility" ? " mv-auth__card--wide" : ""}`}>
           {type === "facility" ? (
-            <Card title="Workspace signup" description="Choose how your facility, department or service unit starts. The first account becomes the workspace owner.">
+            <Card title="Get started" description="Pick one option. We only ask for what that option needs; everything else can be added later.">
               <WorkspaceSignup />
               <div className="mv-row mv-small" style={{ marginTop: 12 }}>
                 <span className="mv-muted">Already registered?</span>

@@ -72,6 +72,7 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
     const membershipsRaw = await tx`
       select m.id, m.tenant_id, t.name as tenant_name, t.slug as tenant_slug, m.roles, m.status,
              m.scope_department_id, m.scope_unit_id,
+             t.workspace_kind, t.service_category, t.enabled_modules, t.organization_id,
              a.shard_id, a.state as shard_state, a.routing_version
         from memberships m join tenants t on t.id = m.tenant_id
         left join tenant_shard_assignments a on a.tenant_id = m.tenant_id
@@ -100,6 +101,12 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
         ? { tenantId: m.tenantId as string, shardId: m.shardId as string, state: m.shardState as ShardState, routingVersion: Number(m.routingVersion) }
         : null,
       scope: { departmentId: (m.scopeDepartmentId as string | null) ?? null, unitId: (m.scopeUnitId as string | null) ?? null },
+      workspace: {
+        workspaceKind: String(m.workspaceKind ?? "facility"),
+        serviceCategory: (m.serviceCategory as string | null) ?? null,
+        enabledModules: (m.enabledModules as string[] | null) ?? [],
+        organizationId: (m.organizationId as string | null) ?? null,
+      },
     }));
   for (const grant of related.roleGrantRows) {
     const membership = memberships.find((m) => m.tenantId === grant.tenantId);
@@ -128,6 +135,7 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
           membershipId: active.id,
           shard: active.shard,
           scope: active.scope,
+          workspace: active.workspace,
         }
       : null,
     patientId: (patientRows[0]?.patientId as string | undefined) ?? null,

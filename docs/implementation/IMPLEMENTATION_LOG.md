@@ -73,3 +73,36 @@ New: `tests/unit/facility-classification.test.ts` (10), `tests/integration/works
 | `npm run build:web` | 0 | built |
 
 No integration was enabled. eHMIS live submission needs the Ministry authorization and configuration listed in the design document; NHFR has no interface.
+
+## 2026-10-29 — Self-onboarding, unit workspaces, organization patient workflow, price list and point of sale with Yo! mobile money
+
+### Changes
+
+| Change | Files |
+|---|---|
+| Dropdown onboarding (Independent workspace / New organization or hospital / Join an organization) as a stepper with per-step validation, review and recovery; join by organization search or join-code lookup, or hand-off to a staff invitation; the new owner is signed in and sent to two-step verification, then the unit dashboard | `components/WorkspaceSignup.tsx`, `routes/auth.ts` (`/register/workspace`, `/organizations/search`, `/join-codes/lookup`), `services/workspaces.ts` |
+| Standalone laboratory, imaging, pharmacy and drug-shop owners receive the unit's bench role plus reception and cashier; no prescribing, signing or reporting role is self-granted | `services/workspaces.ts` (`unitOwnerRoles`) |
+| Last workspace remembered (`users.last_active_tenant_id`) and reopened at sign-in; `/me` carries the workspace's category, modules and organization link; navigation follows enabled modules and hides organization screens for independent workspaces; unit dashboards | `auth/session.ts`, `routes/me.ts`, `components/AppShell.tsx`, `lib/workspace.ts`, `pages/DashboardPage.tsx` |
+| Recommendations from the consultation routed to laboratory, imaging, theatre, pharmacy or procedure queues; department progress with version checks; supplied items; append-only event trail; reception visit board; role-filtered fields (instructions for clinicians and the receiving department, prices for cashiers, department-only staff see only their own work) | `routes/workflow.ts`, `packages/domain/src/workflow.ts`, `packages/authz`, `components/VisitWorkflowPanel.tsx`, `pages/WorkQueuePage.tsx`, `pages/VisitsPage.tsx`, `pages/EncounterPage.tsx` |
+| Consultation note integrity check: content digests recomputed, audit events located in their signed Merkle checkpoint, root and HMAC signature recomputed, anchoring reported as recorded; entered-in-error from the note panel | `routes/workflow.ts` (`/entries/:id/integrity`), `packages/domain/src/integrity.ts`, `components/ClinicalNotePanel.tsx` |
+| Price list for services, procedures, supplies and pharmacy items with department, price, currency, active flag and versioned edits | `routes/finance.ts` (`/service-catalog`), `pages/PriceListPage.tsx` |
+| Bills built from a visit's recommended, completed and supplied work, each charged once; line removal only while unpaid | `routes/finance.ts` (`/encounters/:id/billable`, `/encounters/:id/bill`, `/invoices/:id/items/:itemId/remove`), `services/billing.ts`, `pages/PointOfSalePage.tsx` |
+| Point of sale: total, paid, balance; cash with change and idempotency; Yo! mobile money prompt with live status, status checks and signature-verified notifications; receipts | `routes/finance.ts` (`/invoices/:id/cash`, `/invoices/:id/mobile-money`, `/mobile-money/:id/check`, `/payments/:id/receipt`), `routes/payment-callbacks.ts`, `integrations/yo.ts`, `services/mobile-money.ts`, `pages/InvoiceDetailPage.tsx`, `pages/ReceiptPage.tsx` |
+| Payments registry entry implemented (available when requested and configured); production gate allows `FEATURE_PAYMENTS=true` only with `YO_MODE=production` and the Yo! secrets declared; reconciliation report counts Yo!-confirmed payments | `integrations/registry.ts`, `scripts/production-gate.mjs`, `reports/definitions.ts`, `wrangler.jsonc`, `.env.example` |
+| Migration `034_workflow_billing_mobile_money.sql` (additive) | `packages/db/migrations` |
+| Login slogan changed to “Independent, affordable & Secure” | `pages/LoginPage.tsx` |
+
+### Tests
+
+New: `tests/unit/yo.test.ts` (7), `tests/integration/workflow-payments.test.ts` (13, fake Yo! gateway and a generated RSA key pair), e2e laboratory-owner landing and onboarding-path tests in `tests/e2e/registration.spec.ts`.
+
+| Command | Exit | Result |
+|---|---|---|
+| `npm run typecheck` | 0 | no errors |
+| `npm run lint` | 0 | no warnings |
+| `npm test` | 0 | 50 files, 461 tests passed after updating the reconciliation CSV header expectation |
+| Fresh database from all 34 migrations | 0 | applied, no schema integrity problems |
+| `npx playwright test` | 1 → 0 | 35 tests; 31 passed on the full run. Journey G and patient lookup were updated (removed "no online payment" text; a row locator matched two tables); the care-coordination and invitation tests failed only under concurrent database load and passed when rerun |
+| `npm run build:web`, `npm run build:api` | 0 | built |
+
+Mobile money stays disabled in every environment until `FEATURE_PAYMENTS`, `YO_MODE` and the Yo! credentials and public certificate are configured.

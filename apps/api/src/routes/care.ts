@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { followUpStatusSchema, referralStatusSchema, uuidSchema } from "@medveris/contracts";
+import { followUpStatusSchema, referralShareRevokeSchema, referralShareSchema, referralStatusSchema, uuidSchema } from "@medveris/contracts";
 import {
   assertClinicalRead,
   assertClinicalWrite,
@@ -15,7 +15,7 @@ import type { Tx } from "@medveris/db";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, ensureMatch, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
-import { ConflictError, NotFoundError, ValidationError } from "../lib/errors.js";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import type { AppEnv } from "../types.js";
 
 export const careRoutes = new Hono<AppEnv>();
@@ -139,10 +139,14 @@ careRoutes.get("/care/referrals", async (c) => {
     select r.id, r.patient_id, r.encounter_id, r.to_facility, r.reason, r.priority, r.status, r.version,
            r.status_note, r.status_changed_at, r.created_at,
            p.public_id, p.given_name, p.family_name,
-           u.display_name as author_name
+           u.display_name as author_name,
+           r.to_tenant_id, rt.name as to_tenant_name, g.id as share_id, g.categories as share_categories, g.expires_at as share_expires_at,
+           g.revoked_at as share_revoked_at
       from referrals r
       join patients p on p.id = r.patient_id
       left join users u on u.id = r.author_id
+      left join tenants rt on rt.id = r.to_tenant_id
+      left join exchange_grants g on g.id = r.share_grant_id
      where r.tenant_id = ${auth.activeTenant!.id}
        and (${status} = 'all' or r.status = ${status})
      order by case r.priority when 'emergency' then 0 when 'urgent' then 1 else 2 end,
@@ -196,4 +200,89 @@ careRoutes.post("/care/referrals/:id/status", async (c) => {
     return { id, status: body.status, version };
   });
   return c.json({ ok: true, referral: result });
+});
+
+// ---------------------------------------------------------------- referral sharing with another workspace
+
+/** Active Medveris workspaces a referral can be shared with: names and towns only. */
+careRoutes.get("/care/referral-recipients", async (c) => {
+  requireStaff(c);
+  assertClinicalWrite(actor(c));
+  const auth = c.get("auth")!;
+  const q = (c.req.query("q") ?? "").trim();
+  if (q.length < 2) throw new ValidationError("Type at least two letters of the facility name");
+  const pattern = `%${q.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
+  const rows = await withStaffActor(c, async (tx) => tx`
+    select id, name, city, district from tenants
+     where status = 'active' and id <> ${auth.activeTenant!.id} and name ilike ${pattern}
+     order by name limit 10`);
+  return c.json({ facilities: rows });
+});
+
+/**
+ * Shares a limited part of the patient's record with the workspace receiving the referral, for at most
+ * 30 days. The recipient reads it through the audited exchange projection; sensitive categories are
+ * excluded, and the share can be revoked at any time. Tenant isolation is otherwise unchanged.
+ */
+careRoutes.post("/care/referrals/:id/share", async (c) => {
+  requireStaff(c);
+  assertClinicalWrite(actor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, referralShareSchema);
+  const share = await withStaffActor(c, async (tx) => {
+    const record = await referralForUpdate(tx, auth.activeTenant!.id, id);
+    let grantId: string;
+    try {
+      await tx`savepoint referral_share`;
+      const [created] = await tx`select app.create_referral_share(${id}, ${body.recipientTenantId}, ${body.categories}, ${body.days}, ${body.purpose}) as grant_id`;
+      grantId = String(created!.grantId);
+    } catch (error) {
+      await tx`rollback to savepoint referral_share`;
+      const message = (error as Error).message;
+      if (message === "referral_share_forbidden") throw new ForbiddenError("Only a clinician can share a referral");
+      if (message === "referral_share_exists") throw new ConflictError("This referral is already shared; revoke the share to change it");
+      if (message === "referral_share_closed") throw new ConflictError("A declined or cancelled referral cannot be shared");
+      if (message === "referral_share_recipient") throw new ValidationError("Choose another active Medveris facility to receive the referral");
+      if (message.startsWith("referral_share_")) throw new ValidationError("The share could not be created with these details");
+      throw error;
+    }
+    const [grant] = await tx`select expires_at from exchange_grants where id = ${grantId}`;
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id, actorKind: "staff", actorUserId: auth.user.id, actorRoles: auth.activeTenant!.roles,
+      action: "referral.share.create", subjectPatientId: String(record.patientId), resourceType: "Referral", resourceId: id, grantId,
+      ...auditMeta(c),
+      metadata: { recipientTenantId: body.recipientTenantId, categories: body.categories, days: body.days, expiresAt: grant?.expiresAt },
+    });
+    return { grantId, expiresAt: grant?.expiresAt ?? null };
+  });
+  return c.json({ ok: true, share }, 201);
+});
+
+careRoutes.post("/care/referrals/:id/share/revoke", async (c) => {
+  requireStaff(c);
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, referralShareRevokeSchema);
+  await withStaffActor(c, async (tx) => {
+    const record = await referralForUpdate(tx, auth.activeTenant!.id, id);
+    let grantId: string;
+    try {
+      await tx`savepoint referral_unshare`;
+      const [revoked] = await tx`select app.revoke_referral_share(${id}, ${body.reason}) as grant_id`;
+      grantId = String(revoked!.grantId);
+    } catch (error) {
+      await tx`rollback to savepoint referral_unshare`;
+      const message = (error as Error).message;
+      if (message === "referral_share_forbidden") throw new ForbiddenError("Only a clinician or administrator can revoke a share");
+      if (message === "referral_share_not_found") throw new NotFoundError("This referral has no share");
+      throw error;
+    }
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id, actorKind: "staff", actorUserId: auth.user.id, actorRoles: auth.activeTenant!.roles,
+      action: "referral.share.revoke", subjectPatientId: String(record.patientId), resourceType: "Referral", resourceId: id, grantId,
+      ...auditMeta(c), metadata: { reason: body.reason },
+    });
+  });
+  return c.json({ ok: true });
 });

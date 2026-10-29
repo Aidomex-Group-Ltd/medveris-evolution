@@ -121,7 +121,7 @@ describe("reports match the records they are derived from", () => {
     expect(csv.status).toBe(200);
     expect(csv.headers.get("content-type")).toContain("text/csv");
     const text = await csv.text();
-    expect(text.split("\r\n")[1]).toBe("Currency,Invoices,Voided,Billed,Recorded payments,Reversed payments,Outstanding,Invoices paid above total");
+    expect(text.split("\r\n")[1]).toBe("Currency,Invoices,Voided,Billed,Net payments,Refunds,Reversed payments,Outstanding,Invoices paid above total,Mobile money confirmed by Yo!");
     const exports = await withContext(h.sql, { tenantId: KAMPALA_TENANT, userId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", actorKind: "staff", roles: ["facility_admin"] },
       async (tx) => tx`select count(*)::int as count from audit_events where action = 'report.export' and metadata->>'report' = 'financial-reconciliation'`);
     expect(exports[0]!.count).toBeGreaterThan(0);

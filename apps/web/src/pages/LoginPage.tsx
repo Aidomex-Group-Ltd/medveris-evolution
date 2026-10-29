@@ -131,7 +131,7 @@ export function LoginPage() {
           <span>Medveris<small style={{ color: "#bcd7ce" }}>{environment.synthetic ? "Synthetic outpatient foundation" : "Connected outpatient care"}</small></span>
         </Link>
         <div>
-          <h1>Care that follows the patient, safely.</h1>
+          <h1>Independent, affordable &amp; Secure</h1>
           <p style={{ marginTop: 16 }}>
             One longitudinal identity across participating facilities, source-owned signed records, and consent-scoped exchange.
             {environment.synthetic ? " This environment uses synthetic patients only." : null}

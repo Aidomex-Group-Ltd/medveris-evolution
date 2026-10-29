@@ -280,6 +280,62 @@ export function canReceiveExchange(actor: ActorContext, recipientTenantId: strin
   return canReadClinical(actor) && actor.tenantId === recipientTenantId && actor.mfaVerified;
 }
 
+// ---------------------------------------------------------------- patient workflow and point of sale
+
+/** Clinicians who may recommend services or procedures from a consultation. */
+export const RECOMMENDING_ROLES: readonly Role[] = ["clinician", "specialist_clinician"];
+
+/** Staff who work each department's queue: accept, start, complete or decline requests and record supplies. */
+export const DEPARTMENT_QUEUE_ROLES: Readonly<Record<"laboratory" | "imaging" | "theatre" | "pharmacy" | "procedure" | "other", readonly Role[]>> = Object.freeze({
+  laboratory: ["laboratory"],
+  imaging: ["radiology"],
+  theatre: ["theatre", "nurse"],
+  pharmacy: ["pharmacist"],
+  procedure: ["nurse", "clinician"],
+  other: ["nurse", "clinician"],
+});
+
+/** Front desk: registers patients and visits and follows each visit's progress, without clinical detail. */
+export const RECEPTION_ROLES: readonly Role[] = ["receptionist", "facility_admin"];
+
+/** Cashiers: build bills from a visit, take cash and mobile money, issue receipts. */
+export const CASHIER_ROLES: readonly Role[] = ["finance", "facility_admin"];
+
+/** Price-list maintenance for services, procedures, supplies and pharmacy items. */
+export const PRICE_LIST_ROLES: readonly Role[] = ["finance", "facility_admin"];
+
+export type QueueDepartment = keyof typeof DEPARTMENT_QUEUE_ROLES;
+
+export function canRecommend(actor: ActorContext): boolean {
+  return hasRole(actor, ...RECOMMENDING_ROLES);
+}
+
+export function canWorkQueue(actor: ActorContext, department: QueueDepartment): boolean {
+  return hasRole(actor, ...DEPARTMENT_QUEUE_ROLES[department]);
+}
+
+/** Departments whose queue this actor works. */
+export function queueDepartmentsFor(actor: ActorContext): QueueDepartment[] {
+  return (Object.keys(DEPARTMENT_QUEUE_ROLES) as QueueDepartment[]).filter((department) => canWorkQueue(actor, department));
+}
+
+/** Clinical instructions on a request are shown to clinicians and to the department doing the work. */
+export function canReadRequestInstructions(actor: ActorContext, department: QueueDepartment): boolean {
+  return canRecommend(actor) || canReadClinical(actor) || canWorkQueue(actor, department);
+}
+
+export function canTakePayments(actor: ActorContext): boolean {
+  return hasRole(actor, ...CASHIER_ROLES);
+}
+
+export function assertCashier(actor: ActorContext): void {
+  if (!canTakePayments(actor)) throw new AuthzError("The finance (cashier) role is required to bill or take payments");
+}
+
+export function assertPriceListManager(actor: ActorContext): void {
+  if (!hasRole(actor, ...PRICE_LIST_ROLES)) throw new AuthzError("The finance role or facility administration is required to change prices");
+}
+
 export class AuthzError extends Error {
   readonly status = 403;
   readonly code = "forbidden";

@@ -3,6 +3,7 @@ import { errorFields, logEvent, metric } from "@medveris/platform";
 import { claimOutboxEvent, failOutboxEvent, outboxMetrics, reclaimStaleOutbox, type OutboxMetrics, type ReclaimResult } from "./outbox.js";
 import { checkpointAllTenants, type CheckpointResult } from "./integrity.js";
 import { handleEvent, relayOutbox, type QueueProducer, type RealtimeSink, type RelayResult } from "./queue.js";
+import { runBillingCycle, type BillingCycleResult } from "./billing.js";
 
 export interface JobsCycleResult {
   processed: number;
@@ -11,6 +12,25 @@ export interface JobsCycleResult {
   backlog: OutboxMetrics[];
   checkpoints: CheckpointResult[];
   checkpointError: string | null;
+  billing: BillingCycleResult | null;
+  billingError: string | null;
+}
+
+/** Subscription lifecycle work is daily or hourly in nature; running it every few minutes is enough. */
+const BILLING_INTERVAL_MS = 10 * 60_000;
+let lastBillingRun = 0;
+
+async function maybeRunBilling(sql: Sql): Promise<{ billing: BillingCycleResult | null; billingError: string | null }> {
+  if (Date.now() - lastBillingRun < BILLING_INTERVAL_MS) return { billing: null, billingError: null };
+  lastBillingRun = Date.now();
+  try {
+    const billing = await runBillingCycle(sql);
+    metric("jobs.billing_cycle", 1, billing as unknown as Record<string, unknown>);
+    return { billing, billingError: null };
+  } catch (error) {
+    logEvent("error", "billing_cycle_failed", errorFields(error, false));
+    return { billing: null, billingError: (error as Error).message };
+  }
 }
 
 export interface JobsCycleOptions {
@@ -68,10 +88,11 @@ export async function runJobsCycle(
   for (const row of backlog) {
     metric("jobs.backlog", row.events, { status: row.status, oldestSeconds: Math.round(row.oldestSeconds), maxAttempts: row.maxAttempts });
   }
+  const billing = await maybeRunBilling(sql);
   try {
     const checkpoints = await checkpointAllTenants(sql, signingKey, keyId);
-    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null };
+    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing };
   } catch (error) {
-    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message };
+    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message, ...billing };
   }
 }

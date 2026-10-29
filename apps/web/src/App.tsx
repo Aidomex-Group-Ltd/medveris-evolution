@@ -5,7 +5,7 @@ import { AppShell } from "./components/AppShell";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
-import { INVENTORY_ROLES, PROCUREMENT_ROLES } from "./lib/roles";
+import { CASHIER_ROLES, INVENTORY_ROLES, PROCUREMENT_ROLES, VISIT_ROLES } from "./lib/roles";
 
 function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K): ComponentType {
   const Page = lazy(async () => {
@@ -85,6 +85,13 @@ const WorkspacePage = lazyPage(() => import("./pages/WorkspacePage"), "Workspace
 const OrganizationsPage = lazyPage(() => import("./pages/OrganizationsPage"), "OrganizationsPage");
 const ProcurementPage = lazyPage(() => import("./pages/ProcurementPage"), "ProcurementPage");
 const EhmisPage = lazyPage(() => import("./pages/EhmisPage"), "EhmisPage");
+const VisitsPage = lazyPage(() => import("./pages/VisitsPage"), "VisitsPage");
+const WorkQueuePage = lazyPage(() => import("./pages/WorkQueuePage"), "WorkQueuePage");
+const PointOfSalePage = lazyPage(() => import("./pages/PointOfSalePage"), "PointOfSalePage");
+const PriceListPage = lazyPage(() => import("./pages/PriceListPage"), "PriceListPage");
+const ReceiptPage = lazyPage(() => import("./pages/ReceiptPage"), "ReceiptPage");
+const SubscriptionPage = lazyPage(() => import("./pages/SubscriptionPage"), "SubscriptionPage");
+const PlatformBillingPage = lazyPage(() => import("./pages/PlatformBillingPage"), "PlatformBillingPage");
 
 function NotFoundPage() {
   return (
@@ -138,6 +145,13 @@ export function App() {
         <Route path="pharmacy" element={<ProtectedRoute roles={["nurse", "clinician", "pharmacist", "facility_admin"]}><PharmacyPage /></ProtectedRoute>} />
         <Route path="finance" element={<ProtectedRoute roles={["finance", "facility_admin"]}><FinancePage /></ProtectedRoute>} />
         <Route path="finance/invoices/:id" element={<ProtectedRoute roles={["finance", "facility_admin"]}><InvoiceDetailPage /></ProtectedRoute>} />
+        <Route path="finance/receipts/:paymentId" element={<ProtectedRoute roles={CASHIER_ROLES}><ReceiptPage /></ProtectedRoute>} />
+        <Route path="pos" element={<ProtectedRoute roles={CASHIER_ROLES}><PointOfSalePage /></ProtectedRoute>} />
+        <Route path="price-list" element={<ProtectedRoute roles={CASHIER_ROLES}><PriceListPage /></ProtectedRoute>} />
+        <Route path="subscription" element={<ProtectedRoute staff><SubscriptionPage /></ProtectedRoute>} />
+        <Route path="platform-billing" element={<ProtectedRoute platform><PlatformBillingPage /></ProtectedRoute>} />
+        <Route path="visits" element={<ProtectedRoute roles={VISIT_ROLES}><VisitsPage /></ProtectedRoute>} />
+        <Route path="work-queues/:department" element={<ProtectedRoute roles={VISIT_ROLES}><WorkQueuePage /></ProtectedRoute>} />
         <Route path="programmes" element={<ProtectedRoute roles={["nurse", "clinician"]}><ProgrammesPage /></ProtectedRoute>} />
         <Route path="public-health" element={<ProtectedRoute roles={["public_health", "facility_admin"]}><PublicHealthPage /></ProtectedRoute>} />
         <Route path="telehealth" element={<ProtectedRoute roles={["nurse", "clinician"]}><TelehealthPage /></ProtectedRoute>} />

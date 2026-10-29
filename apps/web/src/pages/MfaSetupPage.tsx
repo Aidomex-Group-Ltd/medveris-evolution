@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { Button, Card, ErrorState, Field, Input, LoadingState, Notice } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
@@ -22,6 +22,8 @@ function groupSecret(secret: string): string {
 export function MfaSetupPage() {
   const { me, loading, refresh, logout } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const welcome = params.get("welcome") === "1";
   const [enrollment, setEnrollment] = useState<EnrollmentStart | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -114,6 +116,9 @@ export function MfaSetupPage() {
       <section className="mv-auth__panel">
         <div className="mv-auth__card mv-stack">
           <Card title="Set up two-step verification" description={me.user.email}>
+            {welcome && me.activeTenant && !recoveryCodes ? (
+              <Notice tone="success" title={`${me.activeTenant.name} is ready`}>One last step: turn on two-step verification, then you go straight to its dashboard.</Notice>
+            ) : null}
             {error ? <ErrorState message={error} /> : null}
             {recoveryCodes ? (
               <div className="mv-stack">

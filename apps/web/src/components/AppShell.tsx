@@ -3,8 +3,10 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Badge, Button } from "@medveris/ui";
 import { BrandMark } from "./BrandMark";
 import { useAuth } from "../lib/auth";
+import { useQuery } from "../lib/useQuery";
 import type { Role } from "../lib/types";
-import { INVENTORY_ROLES, PROCUREMENT_ROLES } from "../lib/roles";
+import { CASHIER_ROLES, DEPARTMENT_QUEUE_ROLES, INVENTORY_ROLES, PROCUREMENT_ROLES, VISIT_ROLES } from "../lib/roles";
+import { DEPARTMENT_MODULES, hasModule, workspaceProfile } from "../lib/workspace";
 
 interface NavItem {
   to: string;
@@ -13,8 +15,10 @@ interface NavItem {
   patientOnly?: boolean;
   staffOnly?: boolean;
   platform?: boolean;
-  /** Members of an organization, or workspace administrators who may create one. */
+  /** Members of an organization, or administrators of a workspace linked to one. */
   organization?: boolean;
+  /** Shown only when the active workspace has one of these modules enabled. */
+  modules?: readonly string[];
 }
 
 const groups: { label: string; items: NavItem[] }[] = [
@@ -23,32 +27,51 @@ const groups: { label: string; items: NavItem[] }[] = [
     items: [
       { to: "/", label: "Overview" },
       { to: "/patients", label: "Patients", roles: ["receptionist", "nurse", "clinician", "facility_admin"] },
-      { to: "/queues", label: "Queues", roles: ["receptionist", "nurse", "clinician", "facility_admin"] },
-      { to: "/appointments", label: "Appointments", roles: ["receptionist", "nurse", "clinician", "facility_admin"] },
-      { to: "/worklist", label: "Clinical worklist", roles: ["nurse", "clinician"] },
-      { to: "/care", label: "Follow-ups and referrals", roles: ["nurse", "clinician"] },
-      { to: "/emergency", label: "Emergency", roles: ["nurse", "clinician"] },
-      { to: "/exchange", label: "Record exchange", roles: ["nurse", "clinician"] },
-      { to: "/wards", label: "Wards and beds", roles: ["nurse", "clinician", "ward_manager", "facility_admin"] },
-      { to: "/maternity", label: "Maternity", roles: ["nurse", "clinician", "facility_admin"] },
-      { to: "/operations", label: "Hospital operations", roles: ["nurse", "clinician", "facility_admin", "housekeeping", "porter", "mortuary", "cssd", "biomedical", "auditor"] },
-      { to: "/inventory", label: "Inventory and assets", roles: INVENTORY_ROLES },
-      { to: "/procurement", label: "Purchasing", roles: PROCUREMENT_ROLES },
-      { to: "/theatre", label: "Theatre", roles: ["nurse", "clinician", "facility_admin"] },
-      { to: "/diagnostics", label: "Diagnostics", roles: ["nurse", "clinician", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"] },
-      { to: "/radiology", label: "Radiology reporting", roles: ["nurse", "clinician", "radiology", "radiographer", "radiologist"] },
-      { to: "/pharmacy", label: "Pharmacy", roles: ["nurse", "clinician", "pharmacist", "facility_admin"] },
-      { to: "/programmes", label: "Care programmes", roles: ["nurse", "clinician"] },
-      { to: "/telehealth", label: "Telehealth", roles: ["nurse", "clinician"] },
-      { to: "/devices", label: "Devices", roles: ["nurse", "clinician", "facility_admin"] },
-      { to: "/ai", label: "Assistive AI", roles: ["nurse", "clinician"] },
+      { to: "/visits", label: "Visits", roles: VISIT_ROLES },
+      { to: "/queues", label: "Queues", roles: ["receptionist", "nurse", "clinician", "facility_admin"], modules: ["reception", "outpatient"] },
+      { to: "/appointments", label: "Appointments", roles: ["receptionist", "nurse", "clinician", "facility_admin"], modules: ["reception", "outpatient"] },
+      { to: "/worklist", label: "Clinical worklist", roles: ["nurse", "clinician"], modules: ["outpatient", "emergency", "inpatient"] },
+      { to: "/care", label: "Follow-ups and referrals", roles: ["nurse", "clinician"], modules: ["outpatient", "programmes"] },
+      { to: "/emergency", label: "Emergency", roles: ["nurse", "clinician"], modules: ["emergency"] },
+      { to: "/exchange", label: "Record exchange", roles: ["nurse", "clinician"], modules: ["outpatient", "emergency", "inpatient"] },
+      { to: "/wards", label: "Wards and beds", roles: ["nurse", "clinician", "ward_manager", "facility_admin"], modules: ["inpatient"] },
+      { to: "/maternity", label: "Maternity", roles: ["nurse", "clinician", "facility_admin"], modules: ["maternity"] },
+      { to: "/operations", label: "Hospital operations", roles: ["nurse", "clinician", "facility_admin", "housekeeping", "porter", "mortuary", "cssd", "biomedical", "auditor"], modules: ["inpatient"] },
+      { to: "/inventory", label: "Inventory and assets", roles: INVENTORY_ROLES, modules: ["inventory"] },
+      { to: "/procurement", label: "Purchasing", roles: PROCUREMENT_ROLES, modules: ["inventory"] },
+      { to: "/theatre", label: "Theatre", roles: ["nurse", "clinician", "facility_admin"], modules: ["theatre"] },
+      { to: "/diagnostics", label: "Diagnostics", roles: ["nurse", "clinician", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"], modules: ["laboratory", "radiology"] },
+      { to: "/radiology", label: "Radiology reporting", roles: ["nurse", "clinician", "radiology", "radiographer", "radiologist"], modules: ["radiology"] },
+      { to: "/pharmacy", label: "Pharmacy", roles: ["nurse", "clinician", "pharmacist", "facility_admin"], modules: ["pharmacy"] },
+      { to: "/programmes", label: "Care programmes", roles: ["nurse", "clinician"], modules: ["programmes"] },
+      { to: "/telehealth", label: "Telehealth", roles: ["nurse", "clinician"], modules: ["outpatient"] },
+      { to: "/devices", label: "Devices", roles: ["nurse", "clinician", "facility_admin"], modules: ["inpatient", "emergency", "outpatient"] },
+      { to: "/ai", label: "Assistive AI", roles: ["nurse", "clinician"], modules: ["outpatient", "radiology"] },
       { to: "/content", label: "Health library", staffOnly: true },
       { to: "/onboarding-workflow", label: "Onboarding" },
-      { to: "/finance", label: "Finance", roles: ["finance", "facility_admin"] },
-      { to: "/public-health", label: "Public health", roles: ["public_health", "facility_admin"] },
-      { to: "/ehmis", label: "eHMIS reporting", roles: ["public_health", "facility_admin"] },
+      { to: "/finance", label: "Finance", roles: ["finance", "facility_admin"], modules: ["finance"] },
+      { to: "/public-health", label: "Public health", roles: ["public_health", "facility_admin"], modules: ["public-health"] },
+      { to: "/ehmis", label: "eHMIS reporting", roles: ["public_health", "facility_admin"], modules: ["public-health"] },
       { to: "/provider-directory", label: "Provider directory", roles: ["facility_admin"] },
       { to: "/promotions", label: "Sponsorship", roles: ["facility_admin"] },
+    ],
+  },
+  {
+    label: "Departments",
+    items: [
+      { to: "/work-queues/laboratory", label: "Laboratory queue", roles: [...DEPARTMENT_QUEUE_ROLES.laboratory, "clinician"], modules: DEPARTMENT_MODULES.laboratory },
+      { to: "/work-queues/imaging", label: "Imaging queue", roles: [...DEPARTMENT_QUEUE_ROLES.imaging, "clinician"], modules: DEPARTMENT_MODULES.imaging },
+      { to: "/work-queues/theatre", label: "Theatre queue", roles: DEPARTMENT_QUEUE_ROLES.theatre, modules: DEPARTMENT_MODULES.theatre },
+      { to: "/work-queues/pharmacy", label: "Pharmacy queue", roles: [...DEPARTMENT_QUEUE_ROLES.pharmacy, "clinician"], modules: DEPARTMENT_MODULES.pharmacy },
+      { to: "/work-queues/procedure", label: "Procedure room", roles: DEPARTMENT_QUEUE_ROLES.procedure, modules: DEPARTMENT_MODULES.procedure },
+    ],
+  },
+  {
+    label: "Billing",
+    items: [
+      { to: "/pos", label: "Point of sale", roles: CASHIER_ROLES, modules: ["finance"] },
+      { to: "/price-list", label: "Price list", roles: CASHIER_ROLES, modules: ["finance"] },
+      { to: "/subscription", label: "Subscription and usage" },
     ],
   },
   {
@@ -76,10 +99,35 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/catalogue-editor", label: "Catalogue editor", roles: ["facility_admin"] },
       { to: "/directory-governance", label: "Directory governance", platform: true },
       { to: "/reviewer", label: "Credential review", platform: true },
+      { to: "/platform-billing", label: "Platform billing", platform: true },
       { to: "/security", label: "Session security", staffOnly: true },
     ],
   },
 ];
+
+interface BillingStatusView {
+  accessMode: string;
+  restrictedCapabilities: string[];
+  billing: { status: string | null; label: string; trialEndsAt?: string | null; trialDaysRemaining?: number | null; canManage?: boolean };
+}
+
+function SubscriptionBanner() {
+  const { me } = useAuth();
+  const status = useQuery<BillingStatusView>(me?.activeTenant ? "/billing/status" : null);
+  if (!me?.activeTenant || !status.data) return null;
+  const billing = status.data.billing;
+  const restricted = status.data.accessMode === "restricted";
+  const trialSoon = billing.status === "trialing" && (billing.trialDaysRemaining ?? 99) <= 7;
+  if (!restricted && !trialSoon && !["past_due", "trial_expired", "suspended"].includes(billing.status ?? "")) return null;
+  return (
+    <div className={`mv-billing-banner${restricted ? " mv-billing-banner--warning" : ""}`} role="status">
+      <strong>{billing.label}</strong>
+      {restricted ? <span> Some billing-sensitive actions are paused. Clinical records remain available.</span> : null}
+      {trialSoon ? <span> Your free trial ends in {billing.trialDaysRemaining} day{billing.trialDaysRemaining === 1 ? "" : "s"}.</span> : null}
+      {billing.canManage ? <> <NavLink to="/subscription">Review subscription</NavLink></> : null}
+    </div>
+  );
+}
 
 export function AppShell() {
   const { me, logout } = useAuth();
@@ -133,11 +181,14 @@ export function AppShell() {
 
   if (!me) return null;
   const roles = me.activeTenant?.roles ?? [];
+  const profile = workspaceProfile(me.activeTenant);
   const can = (item: NavItem) => {
     if (item.patientOnly) return Boolean(me.patientId);
+    if (item.modules && me.activeTenant && !hasModule(profile, ...item.modules)) return false;
     if (item.staffOnly) return Boolean(me.activeTenant);
     if (item.platform) return me.platformRoles.length > 0;
-    if (item.organization) return Boolean(me.organizations?.length) || roles.includes("facility_admin");
+    // An independent workspace never needs organization screens; it can still ask to join from its workspace profile.
+    if (item.organization) return Boolean(me.organizations?.length) || (roles.includes("facility_admin") && !profile.independent);
     if (item.roles) return item.roles.some((role) => roles.includes(role));
     return true;
   };
@@ -225,6 +276,13 @@ export function AppShell() {
           <div className="context">
             <div className="mv-context">
               <Badge tone={me.activeTenant ? "success" : "info"}>{me.activeTenant ? "Staff session" : me.patientId ? "Patient session" : "Unassigned"}</Badge>
+              {me.activeTenant ? (
+                <span className="mv-small">
+                  <strong>{me.activeTenant.name}</strong>
+                  {profile.categoryLabel ? <span className="mv-muted"> · {profile.categoryLabel}{profile.independent ? " · independent" : ""}</span> : null}
+                  {me.memberships.length > 1 ? <> · <NavLink to="/facility-staff">Switch</NavLink></> : null}
+                </span>
+              ) : null}
               {me.activeTenant ? <span className="mv-small mv-muted">Active: {me.activeTenant.roles.join(", ")}</span> : null}
               {me.user.mfaEnrolled ? <Badge tone="neutral">MFA enrolled</Badge> : null}
             </div>
@@ -234,6 +292,7 @@ export function AppShell() {
             <Button variant="secondary" size="sm" onClick={() => void signOut()}>Sign out</Button>
           </div>
         </header>
+        <SubscriptionBanner />
         <main className="mv-content">
           <Outlet />
         </main>

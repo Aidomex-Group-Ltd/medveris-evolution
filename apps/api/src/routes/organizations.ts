@@ -21,6 +21,7 @@ import { writeAudit } from "../lib/audit.js";
 import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import { enforceRateLimit } from "../lib/rate-limit.js";
 import { createWorkspace, recordLinkEvent } from "../services/workspaces.js";
+import { attachOrganizationSite } from "../services/subscriptions.js";
 import { csvCell } from "./reports.js";
 import type { AppEnv, AuthContext } from "../types.js";
 
@@ -196,6 +197,8 @@ organizationsRoutes.post("/organizations/:id/sites", async (c) => {
     await tx`update tenants set organization_id = ${id} where id = ${created.tenantId}`;
     await recordLinkEvent(tx, { linkId, organizationId: id, tenantId: created.tenantId, event: "site-created", actorUserId: auth.user.id });
     await writeAudit(tx, config, audit(c, "organization.site.create", { organizationId: id, tenantId: created.tenantId, resourceType: "Organization", resourceId: created.tenantId }));
+    const [organization] = await tx`select name from organizations where id = ${id}`;
+    await attachOrganizationSite(tx, config, { organizationId: id, organizationName: String(organization?.name ?? "Organization"), tenantId: created.tenantId, actorUserId: auth.user.id });
     return created.tenantId;
   });
   return c.json({ ok: true, site: { id: tenantId, name: body.name } }, 201);

@@ -103,10 +103,18 @@
         "CONTENT_FEEDS_ENABLED": "true",
         // Live updates are verified on synthetic staging data before any production use.
         "REALTIME_ENABLED": "true",
-        "REQUEST_LOG_SAMPLE_RATE": "1"
+        // Yo! sandbox collections are configured entirely as Worker secrets (FEATURE_PAYMENTS, YO_MODE,
+        // YO_API_USERNAME, YO_API_PASSWORD, YO_PUBLIC_KEY, YO_NOTIFICATION_BASE_URL); none may be a var here.
+        "REQUEST_LOG_SAMPLE_RATE": "1",
+        // Statuses, reminders and banners only; growth features are not paused on staging.
+        "BILLING_ENFORCEMENT": "notify",
+        "USAGE_METERING": "true"
       },
       "secrets": {
-        "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]
+        "required": [
+          "SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY",
+          "FEATURE_PAYMENTS", "YO_MODE", "YO_API_USERNAME", "YO_API_PASSWORD", "YO_PUBLIC_KEY", "YO_NOTIFICATION_BASE_URL"
+        ]
       }
     },
     "production": {
@@ -176,7 +184,10 @@
         "FEATURE_TELEMEDICINE": "false",
         "FEATURE_DEVICES": "false",
         "FEATURE_AI": "false",
+        // Yo! mobile money: set FEATURE_PAYMENTS=true and YO_MODE=production, and add YO_API_USERNAME,
+        // YO_API_PASSWORD and YO_PUBLIC_KEY to secrets.required (wrangler secret put) before enabling.
         "FEATURE_PAYMENTS": "false",
+        "YO_MODE": "disabled",
         "FEATURE_PUBLIC_HEALTH": "false",
         "FEATURE_LEDGER_ANCHORING": "false",
         // Off until staging failover and WebSocket verification are signed off.

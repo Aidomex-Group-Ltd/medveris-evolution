@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table } from "@medveris/ui";
 import { api, errorMessage } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { useQuery } from "../lib/useQuery";
+import { departmentLabel, workspaceProfile } from "../lib/workspace";
 import type { PatientSummary } from "../lib/types";
 
 interface RecentResponse { patients: PatientSummary[] }
@@ -14,12 +16,15 @@ const SEARCH_PAGE_SIZE = 25;
 
 export function PatientsPage() {
   const navigate = useNavigate();
+  const { me } = useAuth();
+  const unitDepartment = workspaceProfile(me?.activeTenant).unitDepartment;
+  const clinical = (me?.activeTenant?.roles ?? []).some((role) => ["clinician", "nurse"].includes(role));
   const recent = useQuery<RecentResponse>("/patients/recent");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [resolved, setResolved] = useState<PatientSummary | null>(null);
-  const [reason, setReason] = useState("Outpatient consultation");
+  const [reason, setReason] = useState(unitDepartment ? `${departmentLabel(unitDepartment)} visit` : "Outpatient consultation");
   const [noMatch, setNoMatch] = useState<string | null>(null);
   // Stable per selected patient and reason, so a double click or retry cannot open two encounters.
   const encounterKey = useRef(crypto.randomUUID());
@@ -114,7 +119,8 @@ export function PatientsPage() {
         body: { patientId: resolved.id, type: "walk-in", reason },
         headers: { "idempotency-key": `walk-in-${resolved.id}-${encounterKey.current}` },
       });
-      navigate(`/encounters/${response.encounterId}`);
+      // A standalone laboratory, imaging centre or pharmacy logs the requested work next; a facility opens the visit chart.
+      navigate(unitDepartment && !clinical ? `/visits?encounter=${response.encounterId}` : `/encounters/${response.encounterId}`);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -124,7 +130,12 @@ export function PatientsPage() {
 
   return (
     <div className="mv-stack">
-      <PageHeader eyebrow="Reception" title="Patients" description="Exact lookup requires the public ID plus identity confirmation. Lists show minimum reception data only." />
+      <PageHeader
+        eyebrow="Reception"
+        title="Patients"
+        description="Register or find a patient, then record the visit. Exact lookup requires the public ID plus identity confirmation; lists show minimum reception data only."
+        actions={<Link className="mv-button mv-button--secondary mv-button--md" to="/visits">Today's visits</Link>}
+      />
       {error ? <ErrorState message={error} /> : null}
       {message ? <Notice tone="success" title="Patient registered">{message}</Notice> : null}
       {noMatch ? (

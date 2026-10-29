@@ -40,7 +40,7 @@ test("reception confirms, misses and searches patients without failed API reques
 
   await page.locator("#search-q").fill(familyName.toLowerCase());
   await page.getByRole("button", { name: "Search", exact: true }).click();
-  const row = page.getByRole("row", { name: new RegExp(familyName) });
+  const row = page.getByRole("table", { name: "Facility patient search results" }).getByRole("row", { name: new RegExp(familyName) });
   await expect(row).toContainText("1990-04-12");
   await row.getByRole("button", { name: "Select" }).click();
   await expect(page.getByText("Patient confirmed")).toBeVisible();

@@ -39,11 +39,15 @@ Four fields are kept apart (`packages/domain/src/facility-classification.ts`, `t
 
 ## Onboarding paths
 
-`POST /api/v1/auth/register/workspace` (`apps/web/src/components/WorkspaceSignup.tsx`):
+`POST /api/v1/auth/register/workspace` (`apps/web/src/components/WorkspaceSignup.tsx`). The user picks one of three options from a dropdown — **Independent workspace**, **New organization or hospital**, **Join an organization** — and a short stepper asks only for that option's fields, with a review step:
 
-1. `independent` — a standalone facility, department or service unit with its primary owner.
-2. `organization` — a new organization (creator is `organization_owner`) and its first site.
-3. `join` — a new workspace plus a pending link to an organization, using a join code. Nothing is visible to the organization until an administrator approves.
+1. `independent` — the unit type (laboratory, imaging/radiology centre, pharmacy, drug shop, clinic, dental, eye care, medical centre, other) and name, then the owner account. No organization is created. The owner of a laboratory, imaging centre, pharmacy or drug shop also receives the unit's bench role (`laboratory`; `radiology` + `radiographer`; `pharmacist`) plus `receptionist` and `finance`, so the unit works from the first sign-in; prescribing, signing and reporting roles (`clinician`, `radiologist`, `lab_validator`) are never self-granted.
+2. `organization` — organization name, type and ownership, the main site type, then its first administrator (`organization_owner` and site `owner`).
+3. `join` — find the organization by name (`GET /auth/organizations/search`, names only, rate-limited) or confirm a join code (`POST /auth/join-codes/lookup`, which does not consume it), then the unit and account; the link stays pending until an organization administrator approves. A person invited as staff pastes the invitation link instead and is taken to the existing acceptance page.
+
+Registration signs the new owner in (session bound to the new workspace) and sends them to two-step verification, then to the unit's dashboard. Errors return to the step that can fix them with the entered values kept: an existing email offers sign-in or password reset; an invalid code or organization returns to the find step; a rate limit says nothing was created.
+
+`users.last_active_tenant_id` remembers the workspace a user last opened (registration, `POST /me/context`); sign-in reopens it while the membership is active, otherwise it opens the only membership or asks the user to choose. Navigation follows the active workspace's `enabled_modules` (empty for older workspaces means every module) and hides organization screens for workspaces with no active organization link. A standalone laboratory, imaging centre or pharmacy lands on a dashboard built around its own work queue, visits and till.
 
 An existing workspace links later from **Workspace profile → Organization** with a join code. The older `POST /auth/register/facility` still works and creates an independent workspace with an unassigned level.
 

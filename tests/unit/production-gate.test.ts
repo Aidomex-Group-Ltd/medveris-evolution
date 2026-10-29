@@ -92,11 +92,25 @@ describe("production configuration rules", () => {
     expect(problems).toEqual(expect.arrayContaining([
       "TERMINOLOGY_MODE must be unavailable or production (with a provider URL)",
       "FHIR_EXTERNAL_WRITES_ENABLED must be false",
-      "FEATURE_PAYMENTS must be false until its adapter is implemented and verified",
+      "FEATURE_PAYMENTS=true requires YO_MODE=production",
+      "FEATURE_PAYMENTS=true requires the YO_API_PASSWORD secret to be declared",
       "DEV_SHOW_TOTP_SECRETS must be false",
       "SESSION_SECRET looks like a secret and must not be a plaintext var",
     ]));
     expect(problems.join("\n")).not.toContain("inline-value");
+  });
+
+  it("accepts Yo! mobile money only in production mode with its secrets declared", () => {
+    const sandbox = readyConfig();
+    Object.assign(sandbox.env.production.vars, { FEATURE_PAYMENTS: "true", YO_MODE: "sandbox" });
+    expect(checkProductionConfig(sandbox)).toEqual(expect.arrayContaining([
+      "YO_MODE must be disabled or production; the Yo! sandbox is never used in production",
+      "FEATURE_PAYMENTS=true requires YO_MODE=production",
+    ]));
+    const live = readyConfig();
+    Object.assign(live.env.production.vars, { FEATURE_PAYMENTS: "true", YO_MODE: "production" });
+    live.env.production.secrets.required.push("YO_API_USERNAME", "YO_API_PASSWORD", "YO_PUBLIC_KEY");
+    expect(checkProductionConfig(live).filter((problem: string) => /YO_|PAYMENTS/.test(problem))).toEqual([]);
   });
 
   it("requires every secret, the cron and version metadata to be declared", () => {

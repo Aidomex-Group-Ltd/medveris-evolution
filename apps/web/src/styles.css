@@ -36,3 +36,57 @@ details > summary:hover { text-decoration: underline; }
 .mv-auth__card--wide { width: min(680px, 100%); }
 .mv-form-grid > *, .mv-auth__card select { min-width: 0; max-width: 100%; }
 .mv-level-badge .mv-badge { text-transform: none; }
+
+/* Onboarding steps */
+.mv-steps { display: grid; gap: 8px; }
+.mv-steps__bar { height: 6px; border-radius: 999px; background: var(--mv-surface-muted); overflow: hidden; }
+.mv-steps__bar > span { display: block; height: 100%; background: var(--mv-brand); transition: width 0.2s ease; }
+.mv-steps__list { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 0.82rem; color: var(--mv-text-muted); counter-reset: step; }
+.mv-steps__item { counter-increment: step; }
+.mv-steps__item::before { content: counter(step) ". "; }
+.mv-steps__item--current { color: var(--mv-brand); font-weight: 650; }
+.mv-steps__item--done { color: var(--mv-success); }
+.mv-choice { padding: 10px 12px; border: 1px solid var(--mv-border); border-radius: var(--mv-radius); cursor: pointer; }
+.mv-choice:has(input:checked) { border-color: var(--mv-brand); background: var(--mv-brand-soft); }
+.mv-review { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 0.92rem; }
+.mv-review dt { color: var(--mv-text-muted); }
+.mv-review dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .mv-review { grid-template-columns: 1fr; }
+  .mv-review dd { margin-bottom: 6px; }
+}
+
+/* Work queues and point of sale */
+.mv-queue-item { border: 1px solid var(--mv-border); border-radius: var(--mv-radius); padding: 12px; display: grid; gap: 8px; background: var(--mv-surface); }
+.mv-queue-item--emergency { border-left: 4px solid var(--mv-danger); }
+.mv-queue-item--urgent { border-left: 4px solid var(--mv-warning); }
+.mv-money { font-variant-numeric: tabular-nums; }
+.mv-pos-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.mv-pos-totals > div { border: 1px solid var(--mv-border); border-radius: var(--mv-radius); padding: 12px; background: var(--mv-surface); }
+.mv-pos-totals strong { display: block; font-size: 1.4rem; }
+.mv-receipt { max-width: 420px; margin: 0 auto; font-size: 0.92rem; }
+.mv-receipt table { width: 100%; border-collapse: collapse; }
+.mv-receipt td { padding: 3px 0; vertical-align: top; }
+.mv-receipt td:last-child { text-align: right; }
+.mv-hash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; overflow-wrap: anywhere; }
+@media print {
+  .mv-sidebar, .mv-topbar, .mv-no-print { display: none !important; }
+  .mv-main, .mv-content { margin: 0 !important; padding: 0 !important; }
+  .mv-receipt { max-width: none; }
+}
+
+.mv-billing-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--mv-info, #2563eb) 30%, transparent);
+  background: color-mix(in srgb, var(--mv-info, #2563eb) 10%, transparent);
+  font-size: 0.9rem;
+}
+.mv-billing-banner a { font-weight: 600; text-decoration: underline; }
+.mv-billing-banner--warning {
+  border-bottom-color: color-mix(in srgb, var(--mv-warning, #b45309) 35%, transparent);
+  background: color-mix(in srgb, var(--mv-warning, #b45309) 12%, transparent);
+}

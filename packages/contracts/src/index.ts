@@ -1,14 +1,20 @@
 import { z } from "zod";
 import {
+  BILLABLE_ITEM_TYPES,
   CARE_LEVEL_CODES,
+  CATALOGUE_CATEGORIES,
+  FACILITY_PRICE_CURRENCIES,
   HMIS_AGE_BANDS,
   HMIS_METRICS,
   LEVEL_STATUSES,
   MODULE_CODES,
   OFFICIAL_LEVEL_SOURCES,
   OWNERSHIP_TYPES,
+  PRICE_STATUSES,
+  RECOMMENDATION_STATUSES,
   REGISTRATION_KINDS,
   SERVICE_CATEGORY_CODES,
+  WORKFLOW_DEPARTMENTS,
   WORKSPACE_KINDS,
 } from "@medveris/domain";
 
@@ -731,9 +737,191 @@ export const stockMovementSchema = z.object({
 export const serviceCatalogSchema = z.object({
   code: z.string().trim().min(1).max(50),
   name: z.string().trim().min(2).max(300),
-  category: z.enum(["consultation", "procedure", "laboratory", "imaging", "pharmacy", "bed", "other"]),
+  category: z.enum(CATALOGUE_CATEGORIES),
+  itemType: z.enum(BILLABLE_ITEM_TYPES).default("service"),
   price: z.number().min(0).max(100000000),
-  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
+  currency: z.enum(FACILITY_PRICE_CURRENCIES),
+  departmentId: uuidSchema.nullable().optional(),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+  unitOfMeasure: z.string().trim().max(40).optional().or(z.literal("")),
+  active: z.boolean().default(true),
+  /** Test prices are for training and set-up; they can never be charged on a bill. */
+  priceStatus: z.enum(PRICE_STATUSES).default("approved"),
+}).strict();
+
+export const serviceCatalogUpdateSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  name: z.string().trim().min(2).max(300).optional(),
+  category: z.enum(CATALOGUE_CATEGORIES).optional(),
+  itemType: z.enum(BILLABLE_ITEM_TYPES).optional(),
+  price: z.number().min(0).max(100000000).optional(),
+  currency: z.enum(FACILITY_PRICE_CURRENCIES).optional(),
+  departmentId: uuidSchema.nullable().optional(),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+  unitOfMeasure: z.string().trim().max(40).optional().or(z.literal("")),
+  active: z.boolean().optional(),
+  priceStatus: z.enum(PRICE_STATUSES).optional(),
+  reason: z.string().trim().max(500).optional().or(z.literal("")),
+  /** Acknowledges a significant price change, approving a price, or deactivating an item in use. */
+  confirm: z.boolean().optional(),
+}).strict();
+
+export const facilityBillingSettingsSchema = z.object({
+  expectedVersion: z.number().int().min(0),
+  allowedCurrencies: z.array(z.enum(FACILITY_PRICE_CURRENCIES)).min(1).max(FACILITY_PRICE_CURRENCIES.length),
+  allowZeroPrices: z.boolean(),
+  allowManualCharges: z.boolean(),
+  significantChangePercent: z.number().min(1).max(100),
+}).strict();
+
+export const priceConversionQuoteSchema = z.object({ targetCurrency: z.enum(FACILITY_PRICE_CURRENCIES) }).strict();
+
+export const priceConversionApplySchema = z.object({
+  lockId: uuidSchema,
+  expectedVersion: z.number().int().min(1),
+  confirm: z.literal(true),
+}).strict();
+
+export const paymentRefundSchema = z.object({
+  amount: z.number().positive().max(100000000),
+  method: z.enum(["cash", "mobile-money", "bank-transfer", "other"]),
+  reference: z.string().trim().max(200).optional().or(z.literal("")),
+  reason: z.string().trim().min(5).max(500),
+}).strict();
+
+export const invoiceVoidSchema = z.object({ reason: z.string().trim().min(5).max(500) }).strict();
+
+export const billingWaiverSchema = z.object({
+  recommendationIds: z.array(uuidSchema).max(200).default([]),
+  supplyUsageIds: z.array(uuidSchema).max(200).default([]),
+  reason: z.string().trim().min(5).max(500),
+}).strict().refine((body) => body.recommendationIds.length + body.supplyUsageIds.length > 0, { message: "Choose at least one item to waive" });
+
+// ---------------------------------------------------------------- platform subscription
+
+export const planQuoteSchema = z.object({ planId: uuidSchema }).strict();
+
+export const planAcceptSchema = z.object({
+  planId: uuidSchema,
+  disclosureDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  accept: z.literal(true),
+}).strict();
+
+export const subscriptionCancelSchema = z.object({ reason: z.string().trim().min(3).max(500) }).strict();
+
+const majorAmount = z.string().trim().regex(/^\d{1,9}(\.\d{1,2})?$/, "Enter an amount such as 15 or 15.50");
+
+export const subscriptionPaymentSchema = z.object({
+  amount: majorAmount,
+  method: z.enum(["bank-transfer", "card", "mobile-money", "cash", "other"]),
+  status: z.enum(["succeeded", "failed"]),
+  reference: z.string().trim().min(2).max(200),
+  failureReason: z.string().trim().min(3).max(500).optional(),
+}).strict().refine((body) => body.status !== "failed" || Boolean(body.failureReason), { message: "A failed payment needs a reason", path: ["failureReason"] });
+
+export const subscriptionRefundSchema = z.object({ amount: majorAmount, reason: z.string().trim().min(5).max(500) }).strict();
+
+export const subscriptionStatusActionSchema = z.object({
+  action: z.enum(["suspend", "reinstate", "grant-trial"]),
+  reason: z.string().trim().min(5).max(500),
+}).strict();
+
+export const usageCorrectionSchema = z.object({
+  correctedQuantity: z.number().min(0).max(1e15),
+  reason: z.string().trim().min(5).max(500),
+}).strict();
+
+export const planDraftSchema = z.object({
+  code: z.enum(["basic", "standard", "advanced", "enterprise"]),
+  name: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(1000).default(""),
+  monthlyPrice: majorAmount,
+  maxMonthlyCharge: majorAmount.optional(),
+  usageOverages: z.boolean(),
+  features: z.array(z.string().trim().regex(/^[a-z][a-z0-9-]{1,40}$/)).max(40),
+  contractRequired: z.boolean().default(false),
+  rules: z.array(z.object({
+    resource: z.string().trim().regex(/^[a-z][a-z0-9_.]+$/),
+    treatment: z.enum(["included", "excluded", "billable"]),
+    includedQuantity: z.number().min(0).nullable(),
+    limitQuantity: z.number().min(0).nullable(),
+    unitRateMinor: z.number().min(0).nullable(),
+    rateUnitQuantity: z.number().positive().default(1),
+  }).strict()).max(20),
+}).strict();
+
+export const planApproveSchema = z.object({ approvalReference: z.string().trim().min(5).max(300) }).strict();
+
+// ---------------------------------------------------------------- referral sharing
+
+export const REFERRAL_SHARE_CATEGORIES = ["encounter", "note", "observation", "condition", "allergy", "referral"] as const;
+
+export const referralShareSchema = z.object({
+  recipientTenantId: uuidSchema,
+  categories: z.array(z.enum(REFERRAL_SHARE_CATEGORIES)).min(1).max(REFERRAL_SHARE_CATEGORIES.length),
+  days: z.number().int().min(1).max(30),
+  purpose: z.string().trim().min(5).max(500),
+}).strict();
+
+export const referralShareRevokeSchema = z.object({ reason: z.string().trim().min(5).max(500) }).strict();
+
+// ---------------------------------------------------------------- patient workflow
+
+export const recommendationCreateSchema = z.object({
+  department: z.enum(WORKFLOW_DEPARTMENTS),
+  catalogItemId: uuidSchema.nullable().optional(),
+  description: z.string().trim().min(2).max(300).optional(),
+  quantity: z.number().positive().max(10000).default(1),
+  priority: z.enum(["routine", "urgent", "emergency"]).default("routine"),
+  instructions: z.string().trim().max(4000).optional().or(z.literal("")),
+  departmentId: uuidSchema.nullable().optional(),
+  /** Named requester when a department accepts a walk-in or an outside referral directly. */
+  externalReferrer: z.string().trim().max(300).optional().or(z.literal("")),
+});
+
+export const recommendationUpdateSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  priority: z.enum(["routine", "urgent", "emergency"]).optional(),
+  quantity: z.number().positive().max(10000).optional(),
+  instructions: z.string().trim().max(4000).optional().or(z.literal("")),
+});
+
+export const recommendationTransitionSchema = z.object({
+  status: z.enum(RECOMMENDATION_STATUSES),
+  expectedVersion: z.number().int().min(1),
+  note: z.string().trim().max(4000).optional().or(z.literal("")),
+});
+
+export const workQueueQuerySchema = z.object({
+  status: z.enum(["open", "completed", "closed", "all"]).default("open"),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
+export const supplyUsageSchema = z.object({
+  catalogItemId: uuidSchema,
+  quantity: z.number().positive().max(10000),
+  recommendationId: uuidSchema.nullable().optional(),
+  note: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+
+export const supplyVoidSchema = z.object({ reason: z.string().trim().min(5).max(1000) });
+
+export const encounterBillSchema = z.object({
+  recommendationIds: z.array(uuidSchema).max(200).default([]),
+  supplyUsageIds: z.array(uuidSchema).max(200).default([]),
+}).refine((value) => value.recommendationIds.length + value.supplyUsageIds.length > 0, { message: "Select at least one item to bill" });
+
+// ---------------------------------------------------------------- point of sale
+
+export const cashPaymentSchema = z.object({
+  amount: z.number().positive().max(100000000),
+  amountTendered: z.number().positive().max(100000000).optional(),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const mobileMoneyRequestSchema = z.object({
+  msisdn: z.string().trim().min(9).max(20),
+  amount: z.number().positive().max(100000000),
 });
 
 export const invoiceSchema = z.object({
@@ -2245,10 +2433,17 @@ export const registerWorkspaceSchema = z.discriminatedUnion("path", [
   z.object({ path: z.literal("independent"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema }),
   z.object({ path: z.literal("organization"), owner: workspaceOwnerSchema, organization: organizationDetailsSchema, workspace: workspaceDetailsSchema }),
   z.object({
-    path: z.literal("join"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema, joinCode: joinCodeSchema,
+    path: z.literal("join"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema,
+    /** A join code from the organization's administrator, or an organization found by name; both need approval. */
+    joinCode: joinCodeSchema.optional(),
+    organizationId: uuidSchema.optional(),
     historyVisibility: z.enum(["from-link-date", "full-history"]).default("from-link-date"),
   }),
 ]);
+
+export const organizationLookupSchema = z.object({ q: z.string().trim().min(3).max(120) });
+
+export const joinCodeLookupSchema = z.object({ joinCode: joinCodeSchema });
 
 export const workspaceProfileSchema = z.object({
   name: z.string().trim().min(2).max(200),

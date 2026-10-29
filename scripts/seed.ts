@@ -15,6 +15,7 @@ import {
 } from "@medveris/domain";
 import { hmacHex } from "@medveris/auth";
 import { loadConfig } from "../apps/api/src/config.js";
+import { attachTenantToAccount, provisionBillingAccount } from "../apps/api/src/services/subscriptions.js";
 import { assertSyntheticEnvironment, loadLocalEnv, requireEnv } from "./lib.js";
 
 loadLocalEnv();
@@ -415,8 +416,9 @@ try {
       values (${theatreA}, ${tenantA}, 'Theatre 1', 'available') on conflict (id) do nothing
     `;
     await tx`
-      insert into service_catalog (id, tenant_id, code, name, category, price, currency, created_by)
-      values (${serviceA}, ${tenantA}, 'CONS-OPD', 'Outpatient consultation', 'consultation', 50000, 'UGX', ${users.admin})
+      insert into service_catalog (id, tenant_id, code, name, category, price, currency, price_status, active, deactivation_reason, created_by)
+      values (${serviceA}, ${tenantA}, 'CONS-OPD', 'Outpatient consultation', 'consultation', 50000, 'UGX', 'test', false,
+        'Synthetic demonstration price; not approved for billing', ${users.admin})
       on conflict (id) do nothing
     `;
 
@@ -442,6 +444,15 @@ try {
         on conflict do nothing
       `;
     }
+
+    // The demonstration group pays for both seed facilities and starts on a free trial; there is no onboarding fee.
+    await setLocalContext(tx, { actorKind: "system", tenantId: tenantA, userId: users.admin });
+    const [seedAccount] = await tx`select id from billing_accounts where owner_organization_id = ${organizationA}`;
+    const billingAccountId = seedAccount ? String(seedAccount.id) : (await provisionBillingAccount(tx, config, {
+      kind: "organization", name: "Medveris Synthetic Health Group", ownerOrganizationId: organizationA, createdBy: users.admin,
+      identity: { ownerEmail: "admin@medveris.local", organizationRegistration: "SYNTH-ORG-001" }, actorKind: "system",
+    })).billingAccountId;
+    for (const tenant of [tenantA, tenantB]) await attachTenantToAccount(tx, tenant, billingAccountId);
 
     await context(tx, tenantA, users.admin, ["facility_admin"], null);
     for (const [index, department] of DEFAULT_DEPARTMENTS.entries()) {

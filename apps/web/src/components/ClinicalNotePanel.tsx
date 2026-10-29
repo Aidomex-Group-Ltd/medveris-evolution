@@ -122,6 +122,28 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
     }
   }
 
+  /** The signed record is never deleted; it is superseded by an entered-in-error version that keeps the original. */
+  async function markEnteredInError() {
+    if (!entry) return;
+    const reason = window.prompt("Why was this note entered in error? (at least 10 characters; the original stays in the history)");
+    if (reason === null) return;
+    if (reason.trim().length < 10) {
+      setError("Give a reason of at least 10 characters.");
+      return;
+    }
+    setBusy("error");
+    setError(null);
+    try {
+      await api(`/entries/${entry.id}/entered-in-error`, { method: "POST", body: { expectedVersion: entry.currentVersion, reason: reason.trim() } });
+      setMessage("Note marked entered in error. The original signed version is preserved in its history.");
+      onChanged();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function loadHistory() {
     if (!entry) return;
     if (history) {
@@ -170,8 +192,10 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
       {signed && !amending ? (
         <div className="mv-row">
           {entry.status !== "entered-in-error" ? (canSign ? <Button onClick={() => setAmending(true)}>Amend signed note</Button> : <span className="mv-small mv-muted">Only a clinician may amend a signed note.</span>) : <span className="mv-small mv-muted">Entered-in-error versions cannot be amended.</span>}
+          {entry.status !== "entered-in-error" && canSign ? <Button variant="ghost" disabled={busy !== null} onClick={() => void markEnteredInError()}>{busy === "error" ? "Saving…" : "Mark entered in error"}</Button> : null}
         </div>
       ) : null}
+      {entry && signed ? <NoteIntegrity entryId={entry.id} version={entry.currentVersion} /> : null}
 
       {showForm && canSign ? (
         <form className="mv-stack" onSubmit={submitHandler}>
@@ -209,5 +233,80 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
       ) : null}
       {!entry ? <EmptyState title="No note selected" description="Create the first draft for this encounter. Drafts remain visibly un-signed." /> : null}
     </Card>
+  );
+}
+
+interface IntegrityReport {
+  versions: Array<{ version: number; status: string; storedDigest: string; contentMatches: boolean; signed: boolean }>;
+  events: Array<{ eventId: string; action: string; occurredAt: string; eventHash: string; previousHash: string | null; checkpointBatch: number | null }>;
+  checkpoints: Array<{ batchNumber: number; eventCount: number; createdAt: string; merkleRoot: string; rootMatches: boolean | null; signatureValid: boolean | null; ledgerState: string; anchor: { network: string | null; state: string; transactionRef: string | null } | null }>;
+  summary: { contentIntact: boolean; eventsCheckpointed: number; eventsAwaitingCheckpoint: number; checkpointsVerified: boolean; externallyAnchored: boolean };
+}
+
+/**
+ * Tamper evidence for a signed note, checked on request: content digests, the hash-chained audit events
+ * about the note, and the signed Merkle checkpoint covering them. External anchoring is shown only as recorded.
+ */
+function NoteIntegrity({ entryId, version }: { entryId: string; version: number }) {
+  const [open, setOpen] = useState(false);
+  const [report, setReport] = useState<IntegrityReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setReport(null);
+    setOpen(false);
+  }, [entryId, version]);
+
+  async function check() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    setLoading(true);
+    setError(null);
+    try {
+      setReport(await api<IntegrityReport>(`/entries/${entryId}/integrity`));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mv-stack" style={{ marginTop: 12 }}>
+      <div><Button size="sm" variant="secondary" onClick={() => void check()}>{open ? "Hide integrity check" : "Verify integrity"}</Button></div>
+      {open && loading ? <LoadingState label="Verifying the note's ledger evidence" /> : null}
+      {open && error ? <ErrorState message={error} /> : null}
+      {open && report ? (
+        <div className="mv-note">
+          <div className="mv-row" style={{ marginBottom: 8 }}>
+            <Badge tone={report.summary.contentIntact ? "success" : "danger"}>{report.summary.contentIntact ? "Content matches its digests" : "Content digest mismatch"}</Badge>
+            <Badge tone={report.summary.checkpointsVerified ? "success" : "danger"}>{report.summary.checkpointsVerified ? "Checkpoints verified" : "Checkpoint mismatch"}</Badge>
+            {report.summary.eventsAwaitingCheckpoint ? <Badge tone="warning">{report.summary.eventsAwaitingCheckpoint} event(s) awaiting the next checkpoint</Badge> : null}
+            <Badge tone={report.summary.externallyAnchored ? "success" : "neutral"}>{report.summary.externallyAnchored ? "Anchored externally" : "Not externally anchored"}</Badge>
+          </div>
+          <p className="mv-small mv-muted" style={{ margin: "0 0 8px" }}>
+            Each change to this note is an append-only audit event chained to the previous event by its hash, then sealed in a signed Merkle checkpoint. Any edit to stored content or events makes these checks fail.
+          </p>
+          <ul className="mv-small" style={{ margin: 0, paddingLeft: 18 }}>
+            {report.events.map((event) => (
+              <li key={event.eventId}>
+                {new Date(event.occurredAt).toLocaleString()} · {event.action} · <span className="mv-hash">{event.eventHash.slice(0, 16)}…</span>
+                {event.checkpointBatch != null ? ` · checkpoint #${event.checkpointBatch}` : " · not yet checkpointed"}
+              </li>
+            ))}
+          </ul>
+          {report.checkpoints.map((checkpoint) => (
+            <div key={checkpoint.batchNumber} className="mv-small" style={{ marginTop: 6 }}>
+              Checkpoint #{checkpoint.batchNumber}: {checkpoint.eventCount} events, root <span className="mv-hash">{checkpoint.merkleRoot.slice(0, 16)}…</span> {checkpoint.rootMatches === null ? "not comparable (events were committed while it was taken)" : checkpoint.rootMatches ? "recomputed ✓" : "does not match ✗"},
+              signature {checkpoint.signatureValid === null ? "made with a retired key" : checkpoint.signatureValid ? "valid ✓" : "invalid ✗"} · ledger {checkpoint.anchor ? `${checkpoint.anchor.state}${checkpoint.anchor.network ? ` on ${checkpoint.anchor.network}` : ""}` : checkpoint.ledgerState}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }

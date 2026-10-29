@@ -384,12 +384,16 @@ export const REPORTS: readonly ReportDefinition[] = [
     sensitive: true,
     columns: [
       { key: "currency", label: "Currency" }, { key: "invoices", label: "Invoices" }, { key: "voided", label: "Voided" },
-      { key: "billed", label: "Billed" }, { key: "paid", label: "Recorded payments" }, { key: "reversed", label: "Reversed payments" },
+      { key: "billed", label: "Billed" }, { key: "paid", label: "Net payments" }, { key: "refunded", label: "Refunds" },
+      { key: "reversed", label: "Reversed payments" },
       { key: "outstanding", label: "Outstanding" }, { key: "overpaidInvoices", label: "Invoices paid above total" },
+      { key: "providerConfirmed", label: "Mobile money confirmed by Yo!" },
     ],
     definitions: [
       "Billed = sum of line amounts on non-void invoices created in the period.",
-      "Recorded payments are manual entries on those invoices, excluding reversed payments. No payment is provider-confirmed.",
+      "Net payments are cash, manual and mobile money payments on those invoices, excluding reversed payments and less refunds.",
+      "Refunds are append-only corrections against a payment; the original payment is kept.",
+      "Mobile money confirmed by Yo! counts only payments posted from a signature-verified Yo! notification or a Yo! status check; cash and manual entries are never provider-confirmed.",
       "Invoices paid above total are reconciliation exceptions to review.",
     ],
     async run(tx, w, config) {
@@ -397,16 +401,21 @@ export const REPORTS: readonly ReportDefinition[] = [
         with inv as (
           select i.id, i.currency, i.status,
                  coalesce((select sum(it.amount) from invoice_items it where it.invoice_id = i.id), 0) as billed,
-                 coalesce((select sum(p.amount) from payments p where p.invoice_id = i.id and p.reversed_at is null), 0) as paid,
-                 coalesce((select sum(p.amount) from payments p where p.invoice_id = i.id and p.reversed_at is not null), 0) as reversed
+                 coalesce((select sum(p.amount) from payments p where p.invoice_id = i.id and p.reversed_at is null), 0)
+                   - coalesce((select sum(r.amount) from payment_refunds r where r.invoice_id = i.id), 0) as paid,
+                 coalesce((select sum(r.amount) from payment_refunds r where r.invoice_id = i.id), 0) as refunded,
+                 coalesce((select sum(p.amount) from payments p where p.invoice_id = i.id and p.reversed_at is not null), 0) as reversed,
+                 coalesce((select sum(p.amount) from payments p where p.invoice_id = i.id and p.reversed_at is null and p.mobile_money_request_id is not null), 0) as provider_confirmed
             from invoices i where i.tenant_id = $1 and i.created_at >= $2 and i.created_at < $3
         )
         select currency, count(*)::int as invoices, count(*) filter (where status = 'void')::int as voided,
                coalesce(sum(billed) filter (where status <> 'void'), 0)::numeric as billed,
                coalesce(sum(paid) filter (where status <> 'void'), 0)::numeric as paid,
+               coalesce(sum(refunded) filter (where status <> 'void'), 0)::numeric as refunded,
                coalesce(sum(reversed), 0)::numeric as reversed,
                coalesce(sum(greatest(billed - paid, 0)) filter (where status <> 'void'), 0)::numeric as outstanding,
-               count(*) filter (where status <> 'void' and paid > billed)::int as overpaid_invoices
+               count(*) filter (where status <> 'void' and paid > billed)::int as overpaid_invoices,
+               coalesce(sum(provider_confirmed) filter (where status <> 'void'), 0)::numeric as provider_confirmed
           from inv group by currency order by currency
       `, [w.tenantId, w.startAt, w.endAt]);
       const payments = integrationStatus(config, "payments");

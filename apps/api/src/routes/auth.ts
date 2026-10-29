@@ -14,10 +14,12 @@ import {
 import {
   invitationRegisterSchema,
   invitationTokenSchema,
+  joinCodeLookupSchema,
   loginSchema,
   mfaEmailCodeSchema,
   mfaEnrollVerifySchema,
   mfaLoginSchema,
+  organizationLookupSchema,
   passwordForgotSchema,
   passwordResetSchema,
   registerFacilitySchema,
@@ -33,19 +35,27 @@ import { enforceRateLimit, peekRateLimit, recordRateLimitHit, requestAddress } f
 import { writeAudit } from "../lib/audit.js";
 import { requireAuth, setSessionCookie, revokeCurrentSession } from "../auth/middleware.js";
 import { acceptInvitation, declineInvitation, describeInvitation, maskEmail, registerInvitee } from "../services/invitations.js";
-import { createWorkspace, duplicateFindings, levelFrom, recordLinkEvent } from "../services/workspaces.js";
+import { createWorkspace, duplicateFindings, levelFrom, OWNER_ROLES, recordLinkEvent, unitOwnerRoles } from "../services/workspaces.js";
+import { attachTenantToAccount, provisionBillingAccount } from "../services/subscriptions.js";
 import { createSession, loadAuthContext, SESSION_COOKIE } from "../auth/session.js";
 import type { Tx } from "@medveris/db";
 import type { AppEnv } from "../types.js";
 
 export const authRoutes = new Hono<AppEnv>();
 
-/** The facility a sign-in opens: only an unambiguous single active assignment; several require a choice. */
+/**
+ * The facility a sign-in opens: the workspace the user last worked in while that assignment is still
+ * active, otherwise an unambiguous single assignment; several without a remembered one require a choice.
+ */
 async function defaultTenantId(sql: Parameters<typeof withRegistration>[0], userId: string): Promise<string | null> {
   return withContext(sql, { userId, actorKind: "staff" }, async (tx) => {
     const rows = await tx`
-      select m.tenant_id from memberships m join tenants t on t.id = m.tenant_id
-       where m.user_id = ${userId} and m.status = 'active' and t.status = 'active' limit 2`;
+      select m.tenant_id, (m.tenant_id = u.last_active_tenant_id) as remembered
+        from memberships m join tenants t on t.id = m.tenant_id join users u on u.id = m.user_id
+       where m.user_id = ${userId} and m.status = 'active' and t.status = 'active'
+       order by (m.tenant_id = u.last_active_tenant_id) desc nulls last
+       limit 2`;
+    if (rows[0]?.remembered) return String(rows[0].tenantId);
     return rows.length === 1 ? String(rows[0]!.tenantId) : null;
   });
 }
@@ -148,6 +158,11 @@ authRoutes.post("/register/facility", async (c) => {
       ownerUserId: userId, actorKind: "registration", meta: auditMeta(c),
     });
     await tx`update tenants set facility_type = ${body.facilityType}, email = ${body.email} where id = ${workspace.tenantId}`;
+    const billing = await provisionBillingAccount(tx, deps.config, {
+      kind: "independent-facility", name: body.facilityName, ownerTenantId: workspace.tenantId, createdBy: userId,
+      identity: { ownerEmail: body.email }, actorKind: "registration",
+    });
+    await attachTenantToAccount(tx, workspace.tenantId, billing.billingAccountId);
     return { emailToken: await createEmailToken(tx, userId, "verify-email"), tenantId: workspace.tenantId };
   });
   const delivery = await deliver(
@@ -175,14 +190,18 @@ authRoutes.post("/register/workspace", async (c) => {
   const deps = c.get("deps");
   await enforceRateLimit(c, "auth.facility-register", requestAddress(c));
   const body = await parseJson(c, registerWorkspaceSchema);
+  if (body.path === "join" && !body.joinCode === !body.organizationId) {
+    throw new ValidationError("Choose the organization to join, or enter the join code its administrator gave you", [{ path: "joinCode", message: "Organization or join code required" }]);
+  }
   levelFrom(body.workspace);
   const { owner, workspace } = body;
   const userId = crypto.randomUUID();
   const passwordHash = await hashPassword(owner.password);
   const meta = auditMeta(c);
+  const ownerRoles = body.path === "organization" ? [...OWNER_ROLES] : unitOwnerRoles(workspace.serviceCategory);
   const result = await withRegistration(deps.sql, async (tx) => {
     const existing = await tx`select id from users where email = ${owner.email} limit 1`;
-    if (existing.length) throw new ConflictError("An account with this email already exists");
+    if (existing.length) throw new AppError(409, "email_exists", "An account with this email already exists. Sign in instead, or reset your password if you have forgotten it.");
     await tx`
       insert into users (id, email, password_hash, display_name, given_name, family_name)
       values (${userId}, ${owner.email}, ${passwordHash}, ${`${owner.givenName} ${owner.familyName}`}, ${owner.givenName}, ${owner.familyName})
@@ -190,7 +209,7 @@ authRoutes.post("/register/workspace", async (c) => {
     await setLocalContext(tx, { actorKind: "registration", userId });
 
     let organization: { id: string; name: string } | null = null;
-    let joinCode: { id: string; organizationId: string; organizationName: string } | null = null;
+    let joinCode: { id: string | null; organizationId: string; organizationName: string } | null = null;
     if (body.path === "organization") {
       const organizationId = crypto.randomUUID();
       await tx`
@@ -203,7 +222,7 @@ authRoutes.post("/register/workspace", async (c) => {
         values (${crypto.randomUUID()}, ${organizationId}, ${userId}, 'organization_owner')
       `;
       organization = { id: organizationId, name: body.organization.name };
-    } else if (body.path === "join") {
+    } else if (body.path === "join" && body.joinCode) {
       const codeHash = await sha256Hex(`org-join:${body.joinCode}`);
       await tx`select set_config('app.invitation_token_hash', ${codeHash}, true)`;
       const [code] = await tx`
@@ -214,9 +233,14 @@ authRoutes.post("/register/workspace", async (c) => {
         throw new AppError(404, "join_code_invalid", "This organization join code is not valid, has expired or has been used");
       }
       joinCode = { id: String(code.id), organizationId: String(code.organizationId), organizationName: String(code.name) };
+    } else if (body.path === "join" && body.organizationId) {
+      const [found] = await tx`select id, name from organizations where id = ${body.organizationId} and status = 'active'`;
+      if (!found) throw new AppError(404, "organization_not_found", "This organization is not accepting requests. Search again or ask its administrator for a join code.");
+      joinCode = { id: null, organizationId: String(found.id), organizationName: String(found.name) };
     }
 
-    const created = await createWorkspace(tx, deps.config, { details: workspace, ownerUserId: userId, actorKind: "registration", meta });
+    const created = await createWorkspace(tx, deps.config, { details: workspace, ownerUserId: userId, ownerRoles, actorKind: "registration", meta });
+    await tx`update users set last_active_tenant_id = ${created.tenantId} where id = ${userId}`;
     await tx`update tenants set email = ${owner.email} where id = ${created.tenantId}`;
     if (organization) {
       await setLocalContext(tx, { actorKind: "registration", tenantId: created.tenantId, userId, roles: ["owner", "facility_admin"] });
@@ -230,8 +254,10 @@ authRoutes.post("/register/workspace", async (c) => {
     }
     let link: { status: string; organizationName: string } | null = null;
     if (joinCode) {
-      await tx`select set_config('app.invitation_token_hash', ${await sha256Hex(`org-join:${body.path === "join" ? body.joinCode : ""}`)}, true)`;
-      await tx`update organization_join_codes set uses = uses + 1 where id = ${joinCode.id}`;
+      if (joinCode.id && body.path === "join" && body.joinCode) {
+        await tx`select set_config('app.invitation_token_hash', ${await sha256Hex(`org-join:${body.joinCode}`)}, true)`;
+        await tx`update organization_join_codes set uses = uses + 1 where id = ${joinCode.id}`;
+      }
       const findings = await duplicateFindings(tx, joinCode.organizationId, created.tenantId);
       const full = body.path === "join" && body.historyVisibility === "full-history";
       const linkId = crypto.randomUUID();
@@ -241,11 +267,30 @@ authRoutes.post("/register/workspace", async (c) => {
         values (${linkId}, ${joinCode.organizationId}, ${created.tenantId}, 'pending', 'join-request', ${joinCode.id}, ${userId},
           ${tx.json(findings as never)}, ${full ? "full-history" : "from-link-date"}, ${full ? userId : null}, ${full ? new Date() : null})
       `;
-      await recordLinkEvent(tx, { linkId, organizationId: joinCode.organizationId, tenantId: created.tenantId, event: "requested", actorUserId: userId, detail: { duplicates: findings.length } });
+      await recordLinkEvent(tx, {
+        linkId, organizationId: joinCode.organizationId, tenantId: created.tenantId, event: "requested", actorUserId: userId,
+        detail: { duplicates: findings.length, via: joinCode.id ? "join-code" : "organization-search" },
+      });
       link = { status: "pending", organizationName: joinCode.organizationName };
     }
+    // Onboarding is free. An organization pays for the sites it creates; any other workspace, including
+    // one waiting to join an organization, pays for itself. Either way a seven-day trial starts now.
+    const billing = await provisionBillingAccount(tx, deps.config, {
+      kind: organization ? "organization" : "independent-facility",
+      name: organization?.name ?? workspace.name,
+      ownerTenantId: organization ? null : created.tenantId,
+      ownerOrganizationId: organization?.id ?? null,
+      createdBy: userId,
+      identity: {
+        ownerEmail: owner.email,
+        organizationRegistration: body.path === "organization" ? body.organization.registrationRef || null : null,
+        facilityRegistrations: workspace.registrations.map((registration) => `${registration.kind}:${registration.identifier}`),
+      },
+      actorKind: "registration",
+    });
+    await attachTenantToAccount(tx, created.tenantId, billing.billingAccountId);
     const emailToken = await createEmailToken(tx, userId, "verify-email");
-    return { tenantId: created.tenantId, organization, link, emailToken };
+    return { tenantId: created.tenantId, organization, link, emailToken, billing };
   });
   const delivery = await deliver(
     c,
@@ -255,13 +300,56 @@ authRoutes.post("/register/workspace", async (c) => {
     result.emailToken.id,
     userId,
   );
+  // The new owner continues straight into their workspace; staff access still requires two-step verification first.
+  const session = await createSession(deps.sql, deps.config, userId, { mfaVerified: false, activeTenantId: result.tenantId, ...requestMeta(c) });
+  setSessionCookie(c, session);
   return c.json({
     ok: true,
-    workspace: { id: result.tenantId, name: workspace.name },
+    workspace: { id: result.tenantId, name: workspace.name, serviceCategory: workspace.serviceCategory, roles: ownerRoles },
     organization: result.organization,
     link: result.link,
+    subscription: {
+      onboardingFee: 0,
+      status: result.billing.trialEligible ? "trialing" : "trial_expired",
+      trialEndsAt: result.billing.trialEndsAt?.toISOString() ?? null,
+    },
     verificationEmail: { delivered: delivery.delivered, detail: delivery.detail },
+    session: { csrfToken: session.csrfToken, next: "/mfa-setup" },
   }, 201);
+});
+
+/**
+ * Finds organizations a workspace can ask to join. Names only; joining still needs the organization's
+ * approval, and nothing about the requester is shared until an administrator approves.
+ */
+authRoutes.get("/organizations/search", async (c) => {
+  await enforceRateLimit(c, "auth.organization-lookup", requestAddress(c));
+  const query = organizationLookupSchema.parse({ q: c.req.query("q") ?? "" });
+  const pattern = `%${query.q.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
+  const rows = await withAnonymous(c.get("deps").sql, async (tx) => tx`
+    select id, name, kind from organizations
+     where status = 'active' and name ilike ${pattern}
+     order by name limit 10`);
+  return c.json({ organizations: rows.map((row) => ({ id: String(row.id), name: String(row.name), kind: String(row.kind) })) });
+});
+
+/** Confirms which organization a join code belongs to before signup, without using the code. */
+authRoutes.post("/join-codes/lookup", async (c) => {
+  await enforceRateLimit(c, "auth.organization-lookup", requestAddress(c));
+  const body = await parseJson(c, joinCodeLookupSchema);
+  const codeHash = await sha256Hex(`org-join:${body.joinCode}`);
+  const found = await withAnonymous(c.get("deps").sql, async (tx) => {
+    await tx`select set_config('app.invitation_token_hash', ${codeHash}, true)`;
+    const [code] = await tx`
+      select c.max_uses, c.uses, c.expires_at, c.revoked_at, o.id as organization_id, o.name, o.kind, o.status
+        from organization_join_codes c join organizations o on o.id = c.organization_id
+       where c.code_hash = ${codeHash}`;
+    return code;
+  });
+  if (!found || found.revokedAt || (found.expiresAt as Date).getTime() <= Date.now() || Number(found.uses) >= Number(found.maxUses) || found.status !== "active") {
+    throw new AppError(404, "join_code_invalid", "This organization join code is not valid, has expired or has been used. Ask the organization's administrator for a new one.");
+  }
+  return c.json({ organization: { id: String(found.organizationId), name: String(found.name), kind: String(found.kind) } });
 });
 
 authRoutes.post("/login", async (c) => {

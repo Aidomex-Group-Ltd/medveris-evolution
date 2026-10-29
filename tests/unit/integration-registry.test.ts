@@ -54,6 +54,18 @@ describe("integration availability registry", () => {
     expect(configured.missingPrerequisites).toContain("per-facility connection test");
   });
 
+  it("makes Yo! mobile money available only when requested and fully configured", () => {
+    const partial = integrationStatus(loadConfig({ ...base, FEATURE_PAYMENTS: "true", YO_MODE: "sandbox", YO_API_USERNAME: "u", YO_API_PASSWORD: "p" }), "payments");
+    expect(partial.state).toBe("misconfigured");
+    expect(partial.reason).toContain("YO_PUBLIC_KEY");
+    const configured = integrationStatus(loadConfig({
+      ...base, FEATURE_PAYMENTS: "true", YO_MODE: "sandbox", YO_API_USERNAME: "u", YO_API_PASSWORD: "p",
+      YO_PUBLIC_KEY: "-----BEGIN PUBLIC KEY-----\\nMIIB\\n-----END PUBLIC KEY-----",
+    }), "payments");
+    expect(configured).toMatchObject({ state: "available", adapterImplemented: true, enabledForEnvironment: true });
+    expect(integrationStatus(loadConfig({ ...base, YO_MODE: "sandbox" }), "payments").state).toBe("unavailable");
+  });
+
   it("refuses operations with a typed, non-retryable unavailable error", () => {
     const config = loadConfig(base);
     let error: unknown;

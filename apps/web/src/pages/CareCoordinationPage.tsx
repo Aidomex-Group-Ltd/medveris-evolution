@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Badge, Button, Card, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Select, Table, Tabs, Textarea } from "@medveris/ui";
+import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Tabs, Textarea } from "@medveris/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDate, formatDateTime } from "../lib/format";
+import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
 
 interface FollowUp {
@@ -36,6 +37,12 @@ interface Referral {
   givenName: string;
   familyName: string;
   authorName: string | null;
+  toTenantId: string | null;
+  toTenantName: string | null;
+  shareId: string | null;
+  shareCategories: string[] | null;
+  shareExpiresAt: string | null;
+  shareRevokedAt: string | null;
 }
 
 interface ActionTarget {
@@ -148,6 +155,7 @@ function Referrals() {
   const [status, setStatus] = useState("pending");
   const referrals = useQuery<{ referrals: Referral[] }>(`/care/referrals?status=${status}`);
   const [target, setTarget] = useState<ActionTarget | null>(null);
+  const [shareTarget, setShareTarget] = useState<Referral | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   function targetFor(row: Referral, next: string): ActionTarget {
@@ -173,6 +181,13 @@ function Referrals() {
             setTarget(null);
             referrals.reload();
           }}
+        />
+      ) : null}
+      {shareTarget ? (
+        <SharePanel
+          referral={shareTarget}
+          onCancel={() => setShareTarget(null)}
+          onSaved={(notice) => { setMessage(notice); setShareTarget(null); referrals.reload(); }}
         />
       ) : null}
       <Card
@@ -206,7 +221,9 @@ function Referrals() {
                     {row.status === "pending" ? <Button size="sm" variant="secondary" onClick={() => setTarget(targetFor(row, "declined"))}>Decline</Button> : null}
                     {row.status === "pending" || row.status === "accepted" ? <Button size="sm" variant="secondary" onClick={() => setTarget(targetFor(row, "completed"))}>Complete</Button> : null}
                     {row.status === "pending" || row.status === "accepted" ? <Button size="sm" variant="ghost" onClick={() => setTarget(targetFor(row, "cancelled"))}>Cancel</Button> : null}
+                    {row.shareId && !row.shareRevokedAt ? <Button size="sm" variant="ghost" onClick={() => setShareTarget(row)}>Manage share</Button> : row.status === "pending" || row.status === "accepted" ? <Button size="sm" variant="ghost" onClick={() => setShareTarget(row)}>Share record</Button> : null}
                   </div>
+                  {row.shareId ? <div className="mv-small mv-muted">{row.shareRevokedAt ? "Share revoked" : `Shared with ${row.toTenantName ?? "recipient"} until ${formatDate(row.shareExpiresAt)}`}</div> : null}
                 </td>
               </tr>
             ))}
@@ -214,6 +231,112 @@ function Referrals() {
         )}
       </Card>
     </div>
+  );
+}
+
+const SHARE_CATEGORIES = ["encounter", "note", "observation", "condition", "allergy", "referral"] as const;
+const SHARE_LABELS: Record<string, string> = {
+  encounter: "Visit", note: "Clinical notes", observation: "Observations", condition: "Conditions", allergy: "Allergies", referral: "Referral letter",
+};
+
+function SharePanel({ referral, onCancel, onSaved }: { referral: Referral; onCancel: () => void; onSaved: (message: string) => void }) {
+  const active = Boolean(referral.shareId && !referral.shareRevokedAt);
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const recipients = useQuery<{ facilities: Array<{ id: string; name: string; city: string | null; district: string | null }> }>(
+    search.trim().length >= 2 ? `/care/referral-recipients?q=${encodeURIComponent(search.trim())}` : null,
+  );
+  const [recipientId, setRecipientId] = useState("");
+  const [categories, setCategories] = useState<string[]>(["encounter", "note", "observation", "condition", "allergy", "referral"]);
+  const [days, setDays] = useState("7");
+  const [purpose, setPurpose] = useState("");
+  const action = useAction();
+
+  async function share(event: FormEvent) {
+    event.preventDefault();
+    if (!recipientId) {
+      action.setError("Choose a receiving facility.");
+      return;
+    }
+    if (!categories.length || purpose.trim().length < 5) {
+      action.setError("Choose at least one category and give a purpose of at least 5 characters.");
+      return;
+    }
+    await action.run("share", async () => {
+      const result = await api<{ share: { expiresAt: string | null } }>(`/care/referrals/${referral.id}/share`, {
+        method: "POST",
+        body: { recipientTenantId: recipientId, categories, days: Number(days), purpose: purpose.trim() },
+      });
+      onSaved(`Record shared until ${result.share.expiresAt ? formatDate(result.share.expiresAt) : `the ${days}-day limit`}.`);
+    });
+  }
+
+  async function revoke() {
+    const reason = window.prompt("Why are you revoking this share? (at least 5 characters)");
+    if (reason === null) return;
+    if (reason.trim().length < 5) {
+      action.setError("Give a revocation reason of at least 5 characters.");
+      return;
+    }
+    await action.run("revoke", async () => {
+      await api(`/care/referrals/${referral.id}/share/revoke`, { method: "POST", body: { reason: reason.trim() } });
+      onSaved("Share revoked. The receiving workspace can no longer read the shared record.");
+    });
+  }
+
+  return (
+    <Card
+      title={active ? "Shared record" : "Share this record"}
+      description={`${referral.givenName} ${referral.familyName} · ${referral.toFacility}. Only the selected categories are shared, sensitive categories are excluded, and the share expires automatically.`}
+      actions={<Button variant="ghost" size="sm" onClick={onCancel}>Close</Button>}
+    >
+      {action.error ? <ErrorState message={action.error} /> : null}
+      {active ? (
+        <div className="mv-stack">
+          <Notice tone="info" title={`Shared with ${referral.toTenantName ?? "the receiving facility"}`}>
+            Until {formatDate(referral.shareExpiresAt)}. Categories: {(referral.shareCategories ?? []).map((category) => SHARE_LABELS[category] ?? category).join(", ")}.
+          </Notice>
+          <div><Button variant="secondary" onClick={() => void revoke()} disabled={action.busy !== null}>{action.busy === "revoke" ? "Revoking…" : "Revoke share"}</Button></div>
+        </div>
+      ) : (
+        <form className="mv-stack" onSubmit={share}>
+          <div className="mv-row" style={{ alignItems: "flex-end" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Field label="Find the receiving facility" htmlFor="share-recipient-search" hint="Type at least two letters, then search.">
+                <Input id="share-recipient-search" value={query} onChange={(event) => setQuery(event.target.value)} maxLength={120} />
+              </Field>
+            </div>
+            <Button type="button" variant="secondary" onClick={() => setSearch(query)} disabled={query.trim().length < 2 || recipients.loading}>Search</Button>
+          </div>
+          {recipients.error ? <ErrorState message={recipients.error} /> : null}
+          {recipients.data?.facilities.length ? (
+            <fieldset className="mv-stack" style={{ border: 0, padding: 0, margin: 0, gap: 6 }}>
+              <legend className="mv-small">Receiving facility</legend>
+              {recipients.data.facilities.map((facility) => (
+                <label key={facility.id} className="mv-check mv-choice">
+                  <input type="radio" name="share-recipient" checked={recipientId === facility.id} onChange={() => setRecipientId(facility.id)} />
+                  <span><strong>{facility.name}</strong> <span className="mv-small mv-muted">{[facility.city, facility.district].filter(Boolean).join(", ")}</span></span>
+                </label>
+              ))}
+            </fieldset>
+          ) : null}
+          <fieldset className="mv-stack" style={{ border: 0, padding: 0, margin: 0, gap: 6 }}>
+            <legend className="mv-small">What may they read?</legend>
+            {SHARE_CATEGORIES.map((category) => (
+              <label key={category} className="mv-check">
+                <input type="checkbox" checked={categories.includes(category)} onChange={(event) => setCategories((previous) => event.target.checked ? [...previous, category] : previous.filter((value) => value !== category))} />
+                <span>{SHARE_LABELS[category]}</span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="mv-form-grid">
+            <Field label="Days" htmlFor="share-days" hint="1 to 30 days"><Input id="share-days" type="number" min={1} max={30} value={days} onChange={(event) => setDays(event.target.value)} /></Field>
+            <Field label="Purpose" htmlFor="share-purpose" hint="Why the receiving facility needs it."><Input id="share-purpose" value={purpose} onChange={(event) => setPurpose(event.target.value)} maxLength={500} /></Field>
+          </div>
+          <div className="mv-row"><Button type="submit" disabled={action.busy !== null || !recipientId || !categories.length || purpose.trim().length < 5}>{action.busy === "share" ? "Sharing…" : "Share selected record"}</Button><Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button></div>
+        </form>
+      )}
+    </Card>
   );
 }
 

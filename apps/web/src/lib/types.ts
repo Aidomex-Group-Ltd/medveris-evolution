@@ -52,6 +52,16 @@ export interface SessionUser {
   mfaVerified: boolean;
 }
 
+/** What kind of workspace is active, so navigation and the landing dashboard fit the unit. */
+export interface WorkspaceSummary {
+  workspaceKind: string;
+  serviceCategory: string | null;
+  /** Empty for workspaces created before module selection: every module is shown. */
+  enabledModules: string[];
+  /** Set only while an organization link is active. */
+  organizationId: string | null;
+}
+
 export interface Membership {
   id: string;
   tenantId: string;
@@ -60,6 +70,7 @@ export interface Membership {
   roles: Role[];
   /** Department or unit a scoped role (department_admin, unit_lead) is limited to. */
   scope?: { departmentId: string | null; unitId: string | null } | null;
+  workspace?: WorkspaceSummary | null;
 }
 
 export interface OrganizationMembership {
@@ -74,6 +85,7 @@ export interface ActiveTenant {
   slug: string;
   roles: Role[];
   membershipId: string;
+  workspace?: WorkspaceSummary | null;
 }
 
 export interface MeResponse {
@@ -261,4 +273,127 @@ export interface ExchangeGrant {
   revokedAt: string | null;
   version: number;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------- patient workflow and billing
+
+export type WorkflowDepartment = "laboratory" | "imaging" | "theatre" | "pharmacy" | "procedure" | "other";
+export type RecommendationStatus = "requested" | "accepted" | "in-progress" | "completed" | "declined" | "cancelled";
+export type BillingStatus = "unbilled" | "billed" | "part-paid" | "paid";
+
+export interface Recommendation {
+  id: string;
+  encounterId: string;
+  patientId: string;
+  department: WorkflowDepartment;
+  departmentId: string | null;
+  catalogItemId: string | null;
+  itemCode: string | null;
+  description: string;
+  quantity: number;
+  priority: "routine" | "urgent" | "emergency";
+  /** Null when the caller's role may not read clinical instructions. */
+  instructions: string | null;
+  instructionsRestricted: boolean;
+  source: "consultation" | "direct-request";
+  externalReferrer: string | null;
+  status: RecommendationStatus;
+  statusNote: string | null;
+  billingStatus: BillingStatus;
+  version: number;
+  createdAt: string;
+  createdBy: string;
+  createdByName: string | null;
+  updatedAt: string;
+  updatedByName: string | null;
+  completedAt: string | null;
+  completedByName: string | null;
+  unitPrice: number | null;
+  currency: string | null;
+  canProgress: boolean;
+  canCancel: boolean;
+  canEdit: boolean;
+}
+
+export interface SupplyUsage {
+  id: string;
+  recommendationId: string | null;
+  catalogItemId: string;
+  name: string;
+  code: string;
+  itemType: string;
+  quantity: number;
+  note: string | null;
+  billingStatus: BillingStatus;
+  recordedAt: string;
+  recordedByName: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+  unitPrice: number | null;
+  currency: string | null;
+}
+
+export interface VisitPatient {
+  id: string;
+  publicId: string;
+  givenName: string;
+  familyName: string;
+  dateOfBirth: string;
+  sex: string;
+}
+
+export interface VisitWorkflow {
+  encounter: { id: string; state: string; type: string; openedAt: string; closedAt: string | null; patient: VisitPatient };
+  recommendations: Recommendation[];
+  supplies: SupplyUsage[];
+  permissions: { recommend: boolean; directRequestDepartments: WorkflowDepartment[]; recordSupplies: boolean; bill: boolean };
+}
+
+export interface QueueItem extends Recommendation {
+  patient: VisitPatient;
+  visit: { id: string; state: string; reason: string | null; openedAt: string };
+}
+
+export interface VisitBoardEntry {
+  id: string;
+  state: string;
+  type: string;
+  openedAt: string;
+  closedAt: string | null;
+  patient: VisitPatient;
+  requests: { requested: number; active: number; completed: number; closed: number; departments: WorkflowDepartment[] };
+  billing: { unbilledRequests: number; unpaidRequests: number; paidRequests: number; unbilledSupplies: number; total: number | null; paid: number | null; balance: number | null };
+}
+
+export interface QueueSummary {
+  department: WorkflowDepartment;
+  canWork: boolean;
+  requested: number;
+  accepted: number;
+  inProgress: number;
+  completedToday: number;
+  emergency: number;
+  urgent: number;
+}
+
+export interface CatalogueItem {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  itemType: string;
+  price: string | number;
+  currency: string;
+  active: boolean;
+  priceStatus: "test" | "approved";
+  approvedAt: string | null;
+  deactivatedAt: string | null;
+  deactivationReason: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  description: string | null;
+  unitOfMeasure: string | null;
+  version: number;
+  updatedAt: string;
+  updatedByName: string | null;
 }

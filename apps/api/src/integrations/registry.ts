@@ -1,6 +1,7 @@
 import type { AppConfig } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { dicomwebConfigProblems } from "./dicomweb.js";
+import { yoConfigProblems } from "./yo.js";
 
 export type IntegrationState =
   | "available"
@@ -32,6 +33,8 @@ interface IntegrationDefinition {
    * connection; `available` here never means that any facility is connected.
    */
   facilityScoped?: boolean;
+  /** Implemented adapter that is usable once requested and fully configured; each transaction is reconciled with the provider. */
+  availableWhenConfigured?: boolean;
 }
 
 /** Latest conformance run for the configured endpoint, as stored in integration_verifications. */
@@ -65,7 +68,7 @@ export interface IntegrationStatus {
  * Integrations with an adapter in this release. Each one is `available` only when it is requested, fully
  * configured and has a passing, unexpired verification run against the configured endpoint.
  */
-export const IMPLEMENTED_ADAPTERS: ReadonlySet<IntegrationId> = new Set(["dicomweb"]);
+export const IMPLEMENTED_ADAPTERS: ReadonlySet<IntegrationId> = new Set(["dicomweb", "payments"]);
 
 export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
   {
@@ -143,15 +146,22 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
   },
   {
     id: "payments",
-    name: "Payments",
+    name: "Mobile money (Yo! Payments)",
     flag: "FEATURE_PAYMENTS",
     baseline: "unavailable",
-    baselineReason: "No payment provider, verified callback signature or reconciliation is configured",
-    requiredConfiguration: ["payment provider credentials", "callback signing secret"],
-    prerequisites: ["provider adapter implementation", "signed callback verification", "idempotency and reconciliation tests"],
-    capabilities: ["online payment initiation", "provider-confirmed payment status", "provider receipts"],
-    effectWhileUnavailable: "Invoices and manually recorded payments work; no online payment is initiated or treated as provider-confirmed.",
-    remediation: "Contract a payment provider, implement the adapter with signed callbacks and pass reconciliation tests.",
+    baselineReason: "Mobile money is not enabled for this environment (FEATURE_PAYMENTS is not set)",
+    requiredConfiguration: [
+      "YO_MODE (sandbox or production)",
+      "YO_API_USERNAME and YO_API_PASSWORD (Worker secrets)",
+      "YO_PUBLIC_KEY (Yo! public certificate for the selected mode, PEM)",
+      "YO_NOTIFICATION_BASE_URL (public HTTPS origin; defaults to APP_ORIGIN)",
+    ],
+    prerequisites: ["Yo! Payments business account with collections enabled", "notification URLs reachable from Yo!"],
+    capabilities: ["mobile money collection prompt", "signed payment notifications", "status reconciliation"],
+    effectWhileUnavailable: "Bills and cash payments work; mobile money prompts cannot be sent and no payment is treated as provider-confirmed.",
+    remediation: "Set FEATURE_PAYMENTS=true, YO_MODE, the Yo! API credentials and public certificate, then take a sandbox payment end to end.",
+    configurationProblems: yoConfigProblems,
+    availableWhenConfigured: true,
   },
   {
     id: "publicHealth",
@@ -244,8 +254,30 @@ function facilityScopedStatus(config: AppConfig, definition: IntegrationDefiniti
   };
 }
 
+function configuredStatus(config: AppConfig, definition: IntegrationDefinition): IntegrationStatus {
+  const requested = Boolean(config.features[definition.id]);
+  const problems = requested ? definition.configurationProblems?.(config) ?? [] : [];
+  const state: IntegrationState = !requested ? definition.baseline : problems.length ? "misconfigured" : "available";
+  const reason = !requested
+    ? definition.baselineReason
+    : problems.length ? problems.join("; ") : `Configured for ${config.yo.mode}; every payment is confirmed by a verified notification or a status check before it is posted`;
+  return {
+    id: definition.id, name: definition.name, state, reason, requested,
+    enabledForEnvironment: state === "available",
+    adapterImplemented: true,
+    requiredConfiguration: definition.requiredConfiguration,
+    missingPrerequisites: state === "available" ? [] : [...definition.prerequisites],
+    lastSuccessfulVerificationAt: null,
+    lastVerificationOutcome: "never-verified",
+    capabilities: definition.capabilities.map((capability) => ({ capability, status: state })),
+    effectWhileUnavailable: definition.effectWhileUnavailable,
+    remediation: definition.remediation,
+  };
+}
+
 function statusFor(config: AppConfig, definition: IntegrationDefinition, verification: VerificationRecord | null | undefined): IntegrationStatus {
   if (definition.facilityScoped) return facilityScopedStatus(config, definition);
+  if (definition.availableWhenConfigured) return configuredStatus(config, definition);
   const requested = Boolean(config.features[definition.id]);
   const adapterImplemented = IMPLEMENTED_ADAPTERS.has(definition.id);
   let state: IntegrationState = definition.baseline;

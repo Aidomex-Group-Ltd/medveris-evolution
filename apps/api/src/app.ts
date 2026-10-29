@@ -53,6 +53,10 @@ import { workspaceRoutes } from "./routes/workspace.js";
 import { organizationsRoutes } from "./routes/organizations.js";
 import { procurementRoutes } from "./routes/procurement.js";
 import { ehmisRoutes } from "./routes/ehmis.js";
+import { workflowRoutes } from "./routes/workflow.js";
+import { paymentCallbackRoutes } from "./routes/payment-callbacks.js";
+import { billingRoutes } from "./routes/billing.js";
+import { subscriptionGuard, usageMeter } from "./lib/billing-middleware.js";
 
 function isFhirPath(path: string): boolean {
   return path.startsWith("/fhir/") || path.startsWith("/terminology/fhir/");
@@ -143,6 +147,8 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.use("*", readYourWrites());
   app.use("*", tenantWriteGuard());
   app.use("/api/*", requestVolumeGuard());
+  app.use("/api/*", usageMeter());
+  app.use("/api/*", subscriptionGuard());
 
   app.use(
     "*",
@@ -176,6 +182,9 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", diagnosticsRoutes);
   app.route("/api/v1", pharmacyRoutes);
   app.route("/api/v1", financeRoutes);
+  app.route("/api/v1", workflowRoutes);
+  app.route("/api/v1", paymentCallbackRoutes);
+  app.route("/api/v1", billingRoutes);
   app.route("/api/v1", programmeRoutes);
   app.route("/api/v1", telehealthRoutes);
   app.route("/api/v1", deviceRoutes);

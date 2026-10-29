@@ -146,6 +146,7 @@ export function checkStagingConfig(config) {
   }
   const required = staging.secrets?.required ?? [];
   for (const name of requiredSecrets(staging)) check(required.includes(name), `${name} must be listed in env.staging.secrets.required`);
+  for (const name of required) check(!(name in vars), `${name} is a required secret and must not also be a plaintext var`);
 
   check((staging.triggers?.crons ?? []).length > 0, "staging cron trigger is missing");
   const serialized = JSON.stringify(staging);

@@ -49,7 +49,8 @@
     "deploy:production:rollback": "node scripts/production-rollback.mjs",
     "domain:production:check": "node scripts/production-domain.mjs --check",
     "domain:production": "node scripts/production-domain.mjs",
-    "start": "node apps/api/dist/server.mjs"
+    "start": "node apps/api/dist/server.mjs",
+    "yo:check": "tsx scripts/yo-check.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",

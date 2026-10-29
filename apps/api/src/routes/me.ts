@@ -26,7 +26,7 @@ meRoutes.get("/me", async (c) => {
       mfaEnrolled: Boolean(auth.user.mfaEnrolledAt),
       mfaVerified: auth.mfaVerified,
     },
-    memberships: auth.memberships.map((m) => ({ id: m.id, tenantId: m.tenantId, tenantName: m.tenantName, tenantSlug: m.tenantSlug, roles: m.roles, scope: m.scope ?? null })),
+    memberships: auth.memberships.map((m) => ({ id: m.id, tenantId: m.tenantId, tenantName: m.tenantName, tenantSlug: m.tenantSlug, roles: m.roles, scope: m.scope ?? null, workspace: m.workspace ?? null })),
     activeTenant: auth.activeTenant,
     patientId: auth.patientId,
     platformRoles: auth.platformRoles,
@@ -62,6 +62,7 @@ meRoutes.post("/me/context", async (c) => {
   const membership = auth.memberships.find((m) => m.tenantId === body.tenantId);
   if (!membership) throw new NotFoundError("Facility membership not found");
   await c.get("deps").sql`update sessions set active_tenant_id = ${body.tenantId}, last_seen_at = now() where id = ${auth.session.id}`;
+  await c.get("deps").sql`update users set last_active_tenant_id = ${body.tenantId} where id = ${auth.user.id}`;
   await withActor(c, async (tx) => {
     await writeAudit(tx, c.get("deps").config, {
       tenantId: body.tenantId,
@@ -73,7 +74,7 @@ meRoutes.post("/me/context", async (c) => {
       metadata: { fromTenantId: auth.activeTenant?.id ?? null, toTenantId: body.tenantId },
     });
   });
-  return c.json({ ok: true, activeTenant: { id: membership.tenantId, name: membership.tenantName, roles: membership.roles } });
+  return c.json({ ok: true, activeTenant: { id: membership.tenantId, name: membership.tenantName, roles: membership.roles, workspace: membership.workspace ?? null } });
 });
 
 meRoutes.get("/me/sessions", async (c) => {

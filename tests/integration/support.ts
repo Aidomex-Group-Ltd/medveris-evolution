@@ -12,12 +12,12 @@ export const CLINICIAN_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 export interface Session { cookie: string; csrf: string }
 
 /**
- * Sign-in opens a facility only when the user has exactly one; with several, the user chooses, as the
- * facility selector does through /me/context. Picks `tenantId` (Kampala by default) when it is one of them.
+ * Sign-in reopens the facility the user last worked in, or the only one; otherwise the user chooses, as the
+ * facility selector does through /me/context. Switches to `tenantId` (Kampala by default) when it is one of them.
  */
 export async function chooseFacility(app: { fetch(request: Request): Response | Promise<Response> }, session: Session, tenantId = KAMPALA_TENANT): Promise<void> {
   const facilities = await (await app.fetch(new Request("http://localhost/api/v1/me/facilities", { headers: { cookie: session.cookie } }))).json() as any;
-  if (facilities.activeTenantId !== null || !facilities.facilities?.some((facility: { tenantId: string }) => facility.tenantId === tenantId)) return;
+  if (facilities.activeTenantId === tenantId || !facilities.facilities?.some((facility: { tenantId: string }) => facility.tenantId === tenantId)) return;
   const switched = await app.fetch(new Request("http://localhost/api/v1/me/context", {
     method: "POST",
     headers: { cookie: session.cookie, "x-medveris-csrf": session.csrf, "content-type": "application/json" },

@@ -3,6 +3,7 @@ import { randomToken } from "@medveris/auth";
 import type { facilityRegistrationSchema, workspaceDetailsSchema } from "@medveris/contracts";
 import { setLocalContext, type Tx } from "@medveris/db";
 import { describeLevel, recommendModules, resolveLevel, serviceCategory, type ResolvedLevel } from "@medveris/domain";
+import type { Role } from "@medveris/authz";
 import type { AppConfig } from "../config.js";
 import { writeAudit } from "../lib/audit.js";
 import { ConflictError } from "../lib/errors.js";
@@ -13,6 +14,22 @@ export type RegistrationInput = z.infer<typeof facilityRegistrationSchema>;
 
 /** Roles of the person who creates a workspace: its primary owner, who can run it alone. */
 export const OWNER_ROLES = ["owner", "facility_admin"] as const;
+
+/**
+ * An owner who registers a standalone unit also runs its front desk, till and the unit's own bench, so the
+ * unit works from the first sign-in. Prescribing, signing and reporting roles are never granted this way;
+ * they need a credentialed assignment from the workspace administrator.
+ */
+const UNIT_OPERATIONAL_ROLES: Readonly<Record<string, readonly Role[]>> = Object.freeze({
+  laboratory: ["laboratory"],
+  imaging: ["radiology", "radiographer"],
+  pharmacy: ["pharmacist"],
+  "drug-shop": ["pharmacist"],
+});
+
+export function unitOwnerRoles(serviceCategory: string): Role[] {
+  return [...OWNER_ROLES, "receptionist", "finance", ...(UNIT_OPERATIONAL_ROLES[serviceCategory] ?? [])];
+}
 
 export function slugify(name: string): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
@@ -75,11 +92,14 @@ export interface CreatedWorkspace {
 export async function createWorkspace(tx: Tx, config: AppConfig, input: {
   details: WorkspaceDetails;
   ownerUserId: string;
+  /** Defaults to OWNER_ROLES; always includes them. */
+  ownerRoles?: readonly Role[];
   hostTenantId?: string | null;
   actorKind: "registration" | "staff";
   meta: AuditMeta;
 }): Promise<CreatedWorkspace> {
   const { details } = input;
+  const ownerRoles = [...new Set<Role>([...OWNER_ROLES, ...(input.ownerRoles ?? [])])];
   const category = serviceCategory(details.serviceCategory);
   const level = levelFrom(details);
   const modules = details.modules ?? recommendModules(details.serviceCategory, level).modules;
@@ -98,7 +118,7 @@ export async function createWorkspace(tx: Tx, config: AppConfig, input: {
   `;
   await setLocalContext(tx, { actorKind: input.actorKind, tenantId, userId: input.ownerUserId, roles: [...OWNER_ROLES] });
   await tx`
-    insert into memberships (id, tenant_id, user_id, roles) values (${crypto.randomUUID()}, ${tenantId}, ${input.ownerUserId}, ${[...OWNER_ROLES]})
+    insert into memberships (id, tenant_id, user_id, roles) values (${crypto.randomUUID()}, ${tenantId}, ${input.ownerUserId}, ${ownerRoles})
   `;
   await recordLevelHistory(tx, tenantId, details.serviceCategory, details.serviceSubtype ?? null, level, input.ownerUserId, "Recorded at onboarding");
   for (const registration of details.registrations) await insertRegistration(tx, tenantId, registration, input.ownerUserId);
