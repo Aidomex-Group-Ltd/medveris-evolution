@@ -106,3 +106,29 @@ New: `tests/unit/yo.test.ts` (7), `tests/integration/workflow-payments.test.ts` 
 | `npm run build:web`, `npm run build:api` | 0 | built |
 
 Mobile money stays disabled in every environment until `FEATURE_PAYMENTS`, `YO_MODE` and the Yo! credentials and public certificate are configured.
+
+## 2026-10-30 — Credential expiry, operational notification inbox and FHIR facade acceptance tests
+
+### Changes
+
+| Change | Files |
+|---|---|
+| Effective credential status is computed at request time: a verified credential whose `expires_on` has passed reads as `expired` without mutating the reviewed row, and re-verification of an expired credential requires a future expiry date (AT25) | `routes/credentials.ts`, `tests/integration/onboarding.test.ts` |
+| Durable operational notification inbox for low stock and lots nearing expiry: per-recipient rows, stable daily dedupe keys, acknowledgement with audit, and recipient-only row-level security | `routes/notifications.ts`, `packages/db/migrations/038_notifications.sql`, `tests/integration/notifications.test.ts` |
+| The jobs cron scans inventory every five minutes and enqueues notifications through a `SECURITY DEFINER` function owned by `medveris_exchange`, so the jobs role needs no broad inventory grants | `apps/jobs/src/cycle.ts`, `packages/db/migrations/038_notifications.sql` |
+| FHIR R4 facade acceptance coverage for `/metadata`, read/search projections, OperationOutcome errors, write rejection and cross-tenant isolation (AT27–AT28) | `tests/integration/fhir.test.ts` |
+| Gap matrix records BK07 and BK11 as Verified and BK16 as Partial with AT27–AT28 evidenced and AT29–AT31 terminology validation remaining | `docs/implementation/GAP_MATRIX.md` |
+| Deterministic ordering for the eHMIS submission ledger when a dry run and its import finish in the same transaction | `apps/api/src/routes/ehmis.ts` |
+
+### Tests
+
+New: `tests/integration/notifications.test.ts` (4), `tests/integration/fhir.test.ts` (7); `tests/integration/onboarding.test.ts` adds the AT25 expiry case.
+
+| Command | Exit | Result |
+|---|---|---|
+| `npm run typecheck` | 0 | no errors |
+| `npm run lint` | 0 | no warnings |
+| `npm test` | 0 | 53 files, 485 tests passed |
+| `npm run build` | 0 | web and API bundles built |
+
+Notifications remain pull-only until a facility configures inventory thresholds; no external delivery channel is claimed.

@@ -614,7 +614,7 @@ ehmisRoutes.post("/ehmis/periods/:id/submit", async (c) => {
       summary = { ...dry.outcome, stage: "dry-run" };
       error = "DHIS2 dry run reported conflicts or ignored values; nothing was imported";
     } else {
-      const liveStarted = new Date();
+      const liveStarted = new Date(Math.max(Date.now(), dryStarted.getTime() + 1));
       const live = await client.submit(payload, { dryRun: false });
       const liveOk = live.outcome.status !== "ERROR" && live.outcome.conflicts.length === 0 && live.outcome.ignored === 0;
       entries.push({ ...base, kind: "live", outcome: liveOk ? "succeeded" : "rejected", httpStatus: live.httpStatus, summary: { ...live.outcome }, startedAt: liveStarted, error: liveOk ? null : "DHIS2 reported conflicts or ignored values" });

@@ -56,6 +56,7 @@ import { ehmisRoutes } from "./routes/ehmis.js";
 import { workflowRoutes } from "./routes/workflow.js";
 import { paymentCallbackRoutes } from "./routes/payment-callbacks.js";
 import { billingRoutes } from "./routes/billing.js";
+import { notificationRoutes } from "./routes/notifications.js";
 import { subscriptionGuard, usageMeter } from "./lib/billing-middleware.js";
 
 function isFhirPath(path: string): boolean {
@@ -185,6 +186,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", workflowRoutes);
   app.route("/api/v1", paymentCallbackRoutes);
   app.route("/api/v1", billingRoutes);
+  app.route("/api/v1", notificationRoutes);
   app.route("/api/v1", programmeRoutes);
   app.route("/api/v1", telehealthRoutes);
   app.route("/api/v1", deviceRoutes);

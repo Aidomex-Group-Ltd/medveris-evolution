@@ -14,11 +14,17 @@ export interface JobsCycleResult {
   checkpointError: string | null;
   billing: BillingCycleResult | null;
   billingError: string | null;
+  notifications: number | null;
+  notificationsError: string | null;
 }
 
 /** Subscription lifecycle work is daily or hourly in nature; running it every few minutes is enough. */
 const BILLING_INTERVAL_MS = 10 * 60_000;
 let lastBillingRun = 0;
+
+/** Inventory thresholds change slowly; a scan every few minutes is plenty. */
+const NOTIFICATION_INTERVAL_MS = 5 * 60_000;
+let lastNotificationScan = 0;
 
 async function maybeRunBilling(sql: Sql): Promise<{ billing: BillingCycleResult | null; billingError: string | null }> {
   if (Date.now() - lastBillingRun < BILLING_INTERVAL_MS) return { billing: null, billingError: null };
@@ -30,6 +36,20 @@ async function maybeRunBilling(sql: Sql): Promise<{ billing: BillingCycleResult 
   } catch (error) {
     logEvent("error", "billing_cycle_failed", errorFields(error, false));
     return { billing: null, billingError: (error as Error).message };
+  }
+}
+
+async function maybeScanNotifications(sql: Sql): Promise<{ notifications: number | null; notificationsError: string | null }> {
+  if (Date.now() - lastNotificationScan < NOTIFICATION_INTERVAL_MS) return { notifications: null, notificationsError: null };
+  lastNotificationScan = Date.now();
+  try {
+    const rows = await sql`select app.enqueue_inventory_notifications() as inserted`;
+    const notifications = Number(rows[0]?.inserted ?? 0);
+    if (notifications > 0) metric("jobs.notifications_enqueued", notifications, {});
+    return { notifications, notificationsError: null };
+  } catch (error) {
+    logEvent("error", "notification_scan_failed", errorFields(error, false));
+    return { notifications: null, notificationsError: (error as Error).message };
   }
 }
 
@@ -89,10 +109,11 @@ export async function runJobsCycle(
     metric("jobs.backlog", row.events, { status: row.status, oldestSeconds: Math.round(row.oldestSeconds), maxAttempts: row.maxAttempts });
   }
   const billing = await maybeRunBilling(sql);
+  const notifications = await maybeScanNotifications(sql);
   try {
     const checkpoints = await checkpointAllTenants(sql, signingKey, keyId);
-    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing };
+    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing, ...notifications };
   } catch (error) {
-    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message, ...billing };
+    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message, ...billing, ...notifications };
   }
 }

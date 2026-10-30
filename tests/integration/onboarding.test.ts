@@ -419,6 +419,55 @@ describe("facility credential review and tenant isolation", () => {
     expect((await call(admin, "/api/v1/credentials/queue")).status).toBe(403);
   });
 
+  it("computes an expired effective status at request time once a verified credential passes expiry (AT25)", async () => {
+    const submitted = await expectOk(await call(admin, "/api/v1/credentials", {
+      method: "POST",
+      body: JSON.stringify({
+        subjectType: "practitioner",
+        credentialType: "Professional licence",
+        issuer: "Uganda Medical and Dental Practitioners Council",
+        jurisdiction: "Uganda",
+        credentialNumber: `EXPIRY-CRED-${stamp}`,
+        issuedOn: "2024-01-01",
+        expiresOn: "2027-01-01",
+      }),
+    }), 201);
+    await expectOk(await call(reviewer, `/api/v1/credentials/${submitted.credentialId}/decision`, {
+      method: "POST",
+      body: JSON.stringify({
+        decision: "verified",
+        reason: "Independent platform review against the synthetic register",
+        checksPerformed: "Checked registration and licence numbers against the synthetic UMDPC register",
+      }),
+    }));
+
+    const verified = (await expectOk(await call(admin, "/api/v1/credentials/mine"))).credentials
+      .find((row: any) => row.id === submitted.credentialId);
+    expect(verified.status).toBe("verified");
+    expect(verified.effectiveStatus).toBe("verified");
+
+    await withContext(sql, {
+      tenantId: null, userId: reviewer.userId, patientId: null,
+      actorKind: "staff", roles: [], platformRole: "credential_reviewer",
+    }, async (tx) => {
+      await tx`update credentials set expires_on = current_date - 1 where id = ${submitted.credentialId}`;
+    });
+
+    const expired = (await expectOk(await call(admin, "/api/v1/credentials/mine"))).credentials
+      .find((row: any) => row.id === submitted.credentialId);
+    expect(expired.status).toBe("verified");
+    expect(expired.effectiveStatus).toBe("expired");
+
+    expect((await call(reviewer, `/api/v1/credentials/${submitted.credentialId}/decision`, {
+      method: "POST",
+      body: JSON.stringify({
+        decision: "verified",
+        reason: "Re-verifying an expired credential must require a future expiry date",
+        checksPerformed: "Checked registration and licence numbers against the synthetic UMDPC register",
+      }),
+    })).status).toBe(422);
+  });
+
   it("does not expose another facility's onboarding credential queue or affiliations", async () => {
     const switched = await call(admin, "/api/v1/me/context", {
       method: "POST",
