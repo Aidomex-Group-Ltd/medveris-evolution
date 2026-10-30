@@ -26,6 +26,8 @@ import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import { assertIntegrationAvailable } from "../integrations/registry.js";
 import { loadVerifications } from "../integrations/verification.js";
+import { validateClinicalCoding, validateUnit } from "../services/clinical.js";
+import { LOINC_SYSTEM, UCUM_SYSTEM } from "../terminology/index.js";
 import type { AppEnv } from "../types.js";
 
 export const diagnosticsRoutes = new Hono<AppEnv>();
@@ -72,16 +74,21 @@ diagnosticsRoutes.post("/lab-tests", async (c) => {
   if (!hasRole(c, "laboratory", "facility_admin")) throw new ForbiddenError("The laboratory role is required");
   const auth = c.get("auth")!;
   const body = await parseJson(c, labTestSchema);
+  if (body.loincSystem !== LOINC_SYSTEM) throw new ValidationError("Laboratory test identity must use LOINC");
+  const coding = await validateClinicalCoding(c, {
+    system: body.loincSystem, version: body.loincVersion, code: body.loincCode, display: body.name,
+  }, "observation");
+  const unit = await validateUnit(c, { code: body.unitCode, system: UCUM_SYSTEM });
   const id = crypto.randomUUID();
   await withStaffActor(c, async (tx) => {
     await tx`
       insert into lab_tests (id, tenant_id, name, loinc_system, loinc_version, loinc_code, specimen_type, method, unit_code, mapped_reviewed, created_by)
-      values (${id}, ${auth.activeTenant!.id}, ${body.name}, ${body.loincSystem}, ${body.loincVersion}, ${body.loincCode},
-        ${body.specimenType}, ${body.method || null}, ${body.unitCode}, ${body.mappedReviewed}, ${auth.user.id})
+      values (${id}, ${auth.activeTenant!.id}, ${body.name}, ${coding.system}, ${coding.version}, ${coding.code},
+        ${body.specimenType}, ${body.method || null}, ${unit.code}, ${body.mappedReviewed}, ${auth.user.id})
     `;
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "lab.test.create", {
       resourceType: "LabTest", resourceId: id,
-      metadata: { loincCode: body.loincCode, loincVersion: body.loincVersion, mappedReviewed: body.mappedReviewed },
+      metadata: { loincCode: coding.code, loincVersion: coding.version, unitCode: unit.code, unitVersion: unit.version, mappedReviewed: body.mappedReviewed },
     }));
   });
   return c.json({ ok: true, test: { id } }, 201);

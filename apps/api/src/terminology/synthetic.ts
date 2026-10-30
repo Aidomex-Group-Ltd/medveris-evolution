@@ -2,6 +2,7 @@ import type {
   ConceptMapDefinition,
   TerminologyAdapter,
   TerminologyConcept,
+  TranslateInput,
   ValueSetDefinition,
   ValidateCodeResult,
 } from "./types.js";
@@ -10,6 +11,7 @@ export const SYNTHETIC_LABEL = "Synthetic development terminology — not for pr
 export const SNOMED_SYSTEM = "http://snomed.info/sct";
 export const LOINC_SYSTEM = "http://loinc.org";
 export const UCUM_SYSTEM = "http://unitsofmeasure.org";
+export const LOCAL_LAB_SYSTEM = "https://medveris.example/local-lab";
 export const SNOMED_SYNTHETIC_VERSION = "http://snomed.info/sct/version/20240131-medveris-synthetic";
 export const LOINC_SYNTHETIC_VERSION = "2.80-medveris-synthetic";
 export const UCUM_SYNTHETIC_VERSION = "2.2-medveris-synthetic";
@@ -48,6 +50,7 @@ const concepts: TerminologyConcept[] = [
   c(LOINC_SYSTEM, LOINC_SYNTHETIC_VERSION, "8302-2", "Body height", ["Height"]),
   c(LOINC_SYSTEM, LOINC_SYNTHETIC_VERSION, "29463-7", "Body weight", ["Weight"]),
   c(LOINC_SYSTEM, LOINC_SYNTHETIC_VERSION, "2339-0", "Glucose [Mass/volume] in Blood", ["Blood glucose"]),
+  c(LOINC_SYSTEM, LOINC_SYNTHETIC_VERSION, "2345-7", "Glucose [Mass/volume] in Serum or Plasma", ["Serum glucose"]),
   c(LOINC_SYSTEM, LOINC_SYNTHETIC_VERSION, "4548-4", "Hemoglobin A1c/Hemoglobin.total in Blood", ["HbA1c"]),
   c(UCUM_SYSTEM, UCUM_SYNTHETIC_VERSION, "/min", "per minute", ["/min"]),
   c(UCUM_SYSTEM, UCUM_SYNTHETIC_VERSION, "Cel", "degree Celsius", ["Cel"]),
@@ -91,7 +94,7 @@ const valueSets: ValueSetDefinition[] = [
     "39579001", "126485001",
   ]),
   vs(`${base}/observation-type-synthetic`, "1.0.0", "Synthetic observation types", LOINC_SYSTEM, [
-    "8867-4", "9279-1", "8310-5", "8480-6", "8462-4", "2708-6", "59408-5", "8302-2", "29463-7", "2339-0", "4548-4",
+    "8867-4", "9279-1", "8310-5", "8480-6", "8462-4", "2708-6", "59408-5", "8302-2", "29463-7", "2339-0", "2345-7", "4548-4",
   ]),
   vs(`${base}/ucum-units-synthetic`, "1.0.0", "Synthetic UCUM units", UCUM_SYSTEM, [
     "/min", "Cel", "mm[Hg]", "%", "cm", "kg", "mg/dL",
@@ -107,15 +110,53 @@ const conceptMaps: ConceptMapDefinition[] = [
     canonical: `${mapsBase}/local-lab-glucose-to-loinc`,
     version: "1.0.0",
     name: "Reviewed local blood glucose to LOINC",
-    fromSystem: "https://medveris.example/local-lab",
+    fromSystem: LOCAL_LAB_SYSTEM,
     toSystem: LOINC_SYSTEM,
     reviewed: true,
     entries: [
+      {
+        fromCode: "GLU", toCode: "2339-0", toDisplay: "Glucose [Mass/volume] in Blood", equivalence: "equivalent",
+        specimen: "Blood", method: "Enzymatic", unit: "mg/dL",
+      },
+      {
+        fromCode: "HBA1C", toCode: "4548-4", toDisplay: "Hemoglobin A1c/Hemoglobin.total in Blood", equivalence: "equivalent",
+        specimen: "Blood", method: "HPLC", unit: "%",
+      },
+    ],
+  },
+  {
+    canonical: `${mapsBase}/local-lab-serum-glucose-to-loinc`,
+    version: "1.0.0",
+    name: "Reviewed local serum glucose to LOINC",
+    fromSystem: LOCAL_LAB_SYSTEM,
+    toSystem: LOINC_SYSTEM,
+    reviewed: true,
+    entries: [
+      {
+        fromCode: "GLU_SERUM", toCode: "2345-7", toDisplay: "Glucose [Mass/volume] in Serum or Plasma", equivalence: "equivalent",
+        specimen: "Serum", method: "Hexokinase", unit: "mg/dL",
+      },
+    ],
+  },
+  {
+    canonical: `${mapsBase}/local-lab-unreviewed-to-loinc`,
+    version: "1.0.0",
+    name: "Unreviewed draft local laboratory mapping",
+    fromSystem: LOCAL_LAB_SYSTEM,
+    toSystem: LOINC_SYSTEM,
+    reviewed: false,
+    entries: [
       { fromCode: "GLU", toCode: "2339-0", toDisplay: "Glucose [Mass/volume] in Blood", equivalence: "equivalent" },
-      { fromCode: "HBA1C", toCode: "4548-4", toDisplay: "Hemoglobin A1c/Hemoglobin.total in Blood", equivalence: "equivalent" },
     ],
   },
 ];
+
+function contextMismatch(entry: ConceptMapDefinition["entries"][number], input: TranslateInput): string | null {
+  if (entry.specimen != null && entry.specimen !== input.specimen) return `specimen '${input.specimen ?? ""}' does not match the reviewed mapping (${entry.specimen})`;
+  if (entry.method != null && entry.method !== input.method) return `method '${input.method ?? ""}' does not match the reviewed mapping (${entry.method})`;
+  if (entry.unit != null && entry.unit !== input.unit) return `unit '${input.unit ?? ""}' does not match the reviewed mapping (${entry.unit})`;
+  return null;
+}
 
 export const FIELD_VALUE_SETS: Record<string, string> = {
   "clinical-finding": `${base}/clinical-findings-synthetic`,
@@ -174,14 +215,26 @@ export class SyntheticTerminologyAdapter implements TerminologyAdapter {
     return { valueSet, concepts: all.slice(input.offset, input.offset + input.count), total: all.length };
   }
 
-  async translate(input: { conceptMap: string; conceptMapVersion?: string; system: string; code: string }) {
+  async translate(input: TranslateInput) {
     const map = conceptMaps.find((entry) => entry.canonical === input.conceptMap);
-    if (!map || !map.reviewed) return { result: false, message: "ConceptMap is not approved for use" };
+    if (!map) return { result: false, message: "ConceptMap is not registered with this adapter" };
+    if (!map.reviewed) return { result: false, map, message: "ConceptMap is not approved for use; an unapproved draft mapping cannot be applied" };
     if (input.conceptMapVersion && input.conceptMapVersion !== map.version) return { result: false, map, message: "ConceptMap version is not available" };
     if (map.fromSystem !== input.system) return { result: false, map, message: "Source system is not supported by this map" };
     const match = map.entries.find((entry) => entry.fromCode === input.code);
     if (!match) return { result: false, map, message: "No reviewed translation exists for this code" };
-    return { result: true, map, match: { toCode: match.toCode, toDisplay: match.toDisplay, equivalence: match.equivalence } };
+    const mismatch = contextMismatch(match, input);
+    if (mismatch) return { result: false, map, message: `The submitted laboratory context does not match the reviewed mapping: ${mismatch}` };
+    return {
+      result: true,
+      map,
+      match: {
+        toCode: match.toCode, toDisplay: match.toDisplay, equivalence: match.equivalence,
+        ...(match.specimen != null ? { specimen: match.specimen } : {}),
+        ...(match.method != null ? { method: match.method } : {}),
+        ...(match.unit != null ? { unit: match.unit } : {}),
+      },
+    };
   }
 
   async search(field: string, query: string, limit: number) {

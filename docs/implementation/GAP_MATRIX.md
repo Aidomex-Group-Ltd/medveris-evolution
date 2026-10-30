@@ -13,12 +13,12 @@
 | BK09 | M2 | Inpatient/Emergency | Verified | `apps/web/src/pages/EmergencyPage.tsx` | Clinical sign-off. |
 | BK10 | M2 | Diagnostics workflow | Verified | `integrations/dicomweb.ts` | PACS labs mapping. |
 | BK11 | M3 | Finance/Inventory | Verified | `apps/api/src/routes/notifications.ts`, `packages/db/migrations/038_notifications.sql`, `tests/integration/notifications.test.ts` | None. |
-| BK12 | M4 | Telemedicine/Devices | Partial | `apps/api/src/routes/devices.ts` | Integration registry update. |
+| BK12 | M4 | Telemedicine/Devices | Partial | `apps/api/src/routes/devices.ts`, `tests/integration/terminology.test.ts` | Device metric LOINC/UCUM validation and AT34 mapping evidence added; media adapter and verified device gateway remain unconfigured. |
 | BK13 | M5 | AI/Radiology AI | Partial | `apps/api/src/routes/ai.ts` | Model validation. |
 | BK14 | M5 | Ledger adapter | Not Started | — | Governance and anchoring. |
 | BK15 | M0 | Standards baseline | Verified | `specs/standards-traceability.csv` | None. |
-| BK16 | M1 | FHIR Facade | Partial | `apps/api/src/fhir/`, `tests/integration/fhir.test.ts` (AT27–AT28) | AT29–AT31 terminology validation. |
+| BK16 | M1 | FHIR Facade | Verified | `apps/api/src/fhir/`, `apps/api/src/terminology/`, `tests/integration/{fhir,terminology}.test.ts` (AT27–AT31) | None. |
 | BK17 | M2 | DICOMweb PACS | Verified | `integrations/dicomweb.ts` | None. |
-| BK18 | M4 | LOINC/UCUM | Not Started | — | Observation export mapping. |
+| BK18 | M4 | LOINC/UCUM | Verified | `apps/api/src/terminology/`, `apps/api/src/routes/{diagnostics,devices}.ts`, `tests/integration/terminology.test.ts` | Reviewed specimen/method/unit ConceptMaps, contextual LOINC/UCUM validation and Observation export mapping. |
 | BK19 | M5 | AI version compat | Not Started | — | Code-aware AI mapping. |
 | BK20 | M1+ | Operational resilience | Partial | `RESILIENCE_RUNBOOK.md` | Credential rotation drill. |

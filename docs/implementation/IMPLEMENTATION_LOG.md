@@ -132,3 +132,33 @@ New: `tests/integration/notifications.test.ts` (4), `tests/integration/fhir.test
 | `npm run build` | 0 | web and API bundles built |
 
 Notifications remain pull-only until a facility configures inventory thresholds; no external delivery channel is claimed.
+
+
+## 2026-10-30 — Contextual terminology, laboratory ConceptMaps and device metric validation
+
+### Changes
+
+| Change | Files |
+|---|---|
+| Reviewed laboratory ConceptMaps now carry specimen, method and UCUM unit context; `$translate` only returns a match when the submitted context matches, and unapproved draft maps are refused | `apps/api/src/terminology/{types,synthetic,router}.ts` |
+| Added synthetic LOINC serum glucose (`2345-7`) and a serum-specific local laboratory map; unknown codes, inactive codes and superseded releases fail validation with explicit messages | `apps/api/src/terminology/synthetic.ts` |
+| Laboratory test and device metric registration validate LOINC identity and UCUM units through the terminology facade; fabricated codes and non-UCUM units are rejected before storage | `apps/api/src/routes/diagnostics.ts`, `apps/api/src/routes/devices.ts`, `apps/api/src/services/clinical.ts` |
+| Production terminology adapter accepts contextual translate input and keeps fail-closed behaviour; timeout and unlicensed/unauthorised upstream responses become dependency errors, never fabricated results | `apps/api/src/terminology/production.ts` |
+| AT29–AT31 acceptance coverage: contextual search, inactive/fabricated/superseded codes, signed observation version stability, reviewed and unapproved ConceptMaps, UCUM validation and upstream failure | `tests/integration/terminology.test.ts`, `tests/unit/terminology-production.test.ts` |
+| Gap matrix records BK16 and BK18 as Verified and BK12 device mapping validation as partial evidence | `docs/implementation/GAP_MATRIX.md` |
+
+### Tests
+
+New: `tests/integration/terminology.test.ts` (7), `tests/unit/terminology-production.test.ts` (3); existing FHIR, departments, terminology-unavailable and integration-registry suites re-run.
+
+| Command | Exit | Result |
+|---|---|---|
+| `npx vitest run tests/integration/terminology.test.ts` | 0 | 7 tests passed |
+| `npx vitest run tests/unit/terminology-production.test.ts` | 0 | 3 tests passed |
+| `npx vitest run tests/integration/{departments,fhir}.test.ts tests/unit/{terminology-unavailable,integration-registry}.test.ts` | 0 | 28 tests passed |
+| `npm run typecheck` | 0 | no errors |
+| `npm run lint` | 0 | no warnings |
+| `npm test` | 0 | 55 files, 495 tests passed |
+| `npm run build` | 0 | web and API bundles built |
+
+Terminology remains synthetic in development and unavailable in production until a licensed provider is configured; no unapproved mapping is applied automatically.

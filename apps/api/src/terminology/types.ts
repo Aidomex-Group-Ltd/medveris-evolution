@@ -15,6 +15,19 @@ export interface ValueSetDefinition {
   codes: string[];
 }
 
+export interface ConceptMapEntry {
+  fromCode: string;
+  toCode: string;
+  toDisplay: string;
+  equivalence: string;
+  /** Reviewed specimen context for laboratory mappings. Omitted when the map is not context-specific. */
+  specimen?: string;
+  /** Reviewed method context for laboratory mappings. */
+  method?: string;
+  /** Reviewed UCUM unit for laboratory mappings. */
+  unit?: string;
+}
+
 export interface ConceptMapDefinition {
   canonical: string;
   version: string;
@@ -22,7 +35,17 @@ export interface ConceptMapDefinition {
   fromSystem: string;
   toSystem: string;
   reviewed: boolean;
-  entries: Array<{ fromCode: string; toCode: string; toDisplay: string; equivalence: string }>;
+  entries: ConceptMapEntry[];
+}
+
+export interface TranslateInput {
+  conceptMap: string;
+  conceptMapVersion?: string;
+  system: string;
+  code: string;
+  specimen?: string;
+  method?: string;
+  unit?: string;
 }
 
 export interface ValidateCodeResult {
@@ -56,11 +79,11 @@ export interface TerminologyAdapter {
     offset: number;
     activeOnly: boolean;
   }): Promise<{ valueSet: ValueSetDefinition; concepts: TerminologyConcept[]; total: number }>;
-  translate(input: { conceptMap: string; conceptMapVersion?: string; system: string; code: string }): Promise<{
+  translate(input: TranslateInput): Promise<{
     result: boolean;
     message?: string;
     map?: ConceptMapDefinition;
-    match?: { toCode: string; toDisplay: string; equivalence: string };
+    match?: { toCode: string; toDisplay: string; equivalence: string; specimen?: string; method?: string; unit?: string };
   }>;
   search(field: string, query: string, limit: number): Promise<TerminologyConcept[]>;
 }

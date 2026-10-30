@@ -259,18 +259,25 @@ async function translateResponse(c: Context<AppEnv>) {
   const system = stringParam(values, "system");
   const code = stringParam(values, "code");
   if (!conceptMap || !system || !code) return fhir(c, outcome("required", "conceptMap, system and code are required"), 400);
-  const result = await terminology(c).translate({ conceptMap, conceptMapVersion: stringParam(values, "conceptMapVersion"), system, code });
+  const result = await terminology(c).translate({
+    conceptMap, conceptMapVersion: stringParam(values, "conceptMapVersion"), system, code,
+    specimen: stringParam(values, "specimen"), method: stringParam(values, "method"), unit: stringParam(values, "unit"),
+  });
   return fhir(c, {
     resourceType: "Parameters",
     parameter: [
       { name: "result", valueBoolean: result.result },
       ...(result.message ? [{ name: "message", valueString: result.message }] : []),
+      ...(result.map ? [{ name: "conceptMap", valueString: result.map.canonical }, { name: "conceptMapVersion", valueString: result.map.version }] : []),
       ...(result.match
         ? [{
             name: "match",
             part: [
               { name: "equivalence", valueString: result.match.equivalence },
               { name: "concept", valueCoding: { system: result.map?.toSystem, code: result.match.toCode, display: result.match.toDisplay } },
+              ...(result.match.specimen ? [{ name: "specimen", valueString: result.match.specimen }] : []),
+              ...(result.match.method ? [{ name: "method", valueString: result.match.method }] : []),
+              ...(result.match.unit ? [{ name: "unit", valueString: result.match.unit }] : []),
             ],
           }]
         : []),

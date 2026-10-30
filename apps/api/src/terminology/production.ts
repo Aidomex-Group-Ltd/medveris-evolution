@@ -1,6 +1,6 @@
 import { breakerFor, CircuitOpenError, retry, withTimeout } from "@medveris/platform";
 import { DependencyError } from "../lib/errors.js";
-import type { TerminologyAdapter, TerminologyConcept, ValidateCodeResult } from "./types.js";
+import type { TerminologyAdapter, TerminologyConcept, TranslateInput, ValidateCodeResult } from "./types.js";
 
 class ProviderStatus extends Error {
   constructor(readonly status: number) {
@@ -101,7 +101,7 @@ export class ProductionTerminologyAdapter implements TerminologyAdapter {
     throw new DependencyError("Production ValueSet expansion requires a configured approved value set mapping; the local adapter cannot assume one");
   }
 
-  async translate(): Promise<never> {
+  async translate(_input: TranslateInput): Promise<never> {
     throw new DependencyError("Production ConceptMap translation requires an approved mapping registration");
   }
 

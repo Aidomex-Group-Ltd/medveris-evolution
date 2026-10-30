@@ -14,6 +14,8 @@ import { writeAudit } from "../lib/audit.js";
 import { enforceRateLimit } from "../lib/rate-limit.js";
 import { ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
 import { assertIntegrationAvailable } from "../integrations/registry.js";
+import { validateClinicalCoding, validateUnit } from "../services/clinical.js";
+import { LOINC_SYSTEM, UCUM_SYSTEM } from "../terminology/index.js";
 import type { AppEnv } from "../types.js";
 
 export const deviceRoutes = new Hono<AppEnv>();
@@ -39,22 +41,35 @@ deviceRoutes.post("/devices", async (c) => {
   if (!hasRole(c, "clinician", "nurse", "facility_admin")) throw new ForbiddenError("Clinical or administrator permission is required");
   const auth = c.get("auth")!;
   const body = await parseJson(c, deviceSchema);
+  const metrics: Array<{
+    nativeCode: string;
+    coding: Awaited<ReturnType<typeof validateClinicalCoding>>;
+    unit: Awaited<ReturnType<typeof validateUnit>>;
+  }> = [];
+  for (const metric of body.supportedMetrics) {
+    if (metric.loincSystem !== LOINC_SYSTEM) throw new ValidationError("Device metrics must map to LOINC");
+    const coding = await validateClinicalCoding(c, {
+      system: metric.loincSystem, version: metric.loincVersion, code: metric.loincCode, display: metric.display,
+    }, "observation");
+    const unit = await validateUnit(c, { code: metric.unitCode, system: UCUM_SYSTEM });
+    metrics.push({ ...metric, coding, unit });
+  }
   const id = crypto.randomUUID();
   await withStaffActor(c, async (tx) => {
     await tx`
       insert into devices (id, tenant_id, serial, manufacturer, model, firmware, site, created_by)
       values (${id}, ${auth.activeTenant!.id}, ${body.serial}, ${body.manufacturer}, ${body.model}, ${body.firmware || null}, ${body.site || null}, ${auth.user.id})
     `;
-    for (const metric of body.supportedMetrics) {
+    for (const metric of metrics) {
       await tx`
         insert into device_metric_capabilities (id, tenant_id, device_id, native_code, loinc_system, loinc_version, loinc_code, display, unit_code)
-        values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${id}, ${metric.nativeCode}, ${metric.loincSystem},
-          ${metric.loincVersion}, ${metric.loincCode}, ${metric.display}, ${metric.unitCode})
+        values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${id}, ${metric.nativeCode}, ${metric.coding.system},
+          ${metric.coding.version}, ${metric.coding.code}, ${metric.coding.display}, ${metric.unit.code})
       `;
     }
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "device.register", {
       resourceType: "Device", resourceId: id,
-      metadata: { serial: body.serial, metrics: body.supportedMetrics.length },
+      metadata: { serial: body.serial, metrics: metrics.length },
     }));
   });
   return c.json({ ok: true, device: { id } }, 201);
