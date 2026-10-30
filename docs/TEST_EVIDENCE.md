@@ -1,5 +1,16 @@
 # Test evidence
 
+Latest full gate: 30 October 2026, commit `584fa64`, Node v22, local PostgreSQL 14. All data is synthetic.
+
+| Command | Result |
+|---|---|
+| `npm run typecheck` | Passed, no errors |
+| `npm run lint` | Passed, zero warnings |
+| `npm test` | 55 files, 495 tests passed |
+| `npm run build` | Web and API/worker bundles built |
+
+Everything below records the 25 October 2026 baseline and remains accurate for the suites it names; newer suites are listed in `IMPLEMENTATION_LOG.md`.
+
 Date: 25 October 2026. All data is synthetic. Commands were run from the repository root with Node v22.22.3 and PostgreSQL 14.
 
 ## Executed successfully
@@ -8,7 +19,7 @@ Date: 25 October 2026. All data is synthetic. Commands were run from the reposit
 |---|---|
 | `npm run lint` | Passed, zero warnings |
 | `npm run typecheck` | Passed |
-| `npm test` | 9 files, 57 tests passed |
+| `npm test` | 9 files, 57 tests passed (baseline; the current suite is 55 files, 495 tests) |
 | `npm run test:e2e` | 12 Playwright tests passed (smoke 3, departmental 9) |
 | `npm run smoke:clinical` | Draft → sign → amend → versions: `[[1,"signed"],[2,"amended"]]` |
 | `npm run smoke:workers` | Event processed once; dedup row present; signed Merkle checkpoint present |

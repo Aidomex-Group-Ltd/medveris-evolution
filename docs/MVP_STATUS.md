@@ -1,6 +1,6 @@
 # Medveris M0/M1 and departmental operations status
 
-Status date: 25 October 2026. Environment: local synthetic development only.
+Status date: 30 October 2026. Environments: local, staging and production on Cloudflare Workers; every environment holds synthetic data only. Deployment evidence is in `docs/implementation/PRODUCTION_READINESS.md`.
 
 ## Delivered
 
@@ -19,6 +19,12 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 | Signed Merkle integrity checkpoints | Working | `integrity_checkpoints`; batch 1 recorded |
 | Patient portal records, consent and access history | Working | Playwright patient flow + seeded release |
 | Consent-scoped cross-facility exchange projection | Working | SECURITY DEFINER grant validation and audited read |
+| Authorised patient merge with two-person approval, blocker checks and reversal | Working, synthetic | `tests/integration/patient-merge.test.ts`; migration 025 |
+| Radiology structured reporting: approved templates, autosaved drafts, radiologist-only sign-off, addenda, corrections, critical-finding communication and turnaround | Working, synthetic | `tests/integration/radiology.test.ts`; `RadiologyReportPage.tsx` |
+| Reports framework: role- and department-scoped definitions, bounded ranges, CSV export with formula-injection guard and audit | Working, synthetic | `reports/definitions.ts`, `routes/reports.ts`, `tests/integration/reports.test.ts` |
+| Patient workflow, price list and point-of-sale billing with cash, Yo! mobile money and receipts | Working, synthetic; provider gated | `tests/integration/workflow-payments.test.ts` |
+| Workspaces, organizations, procurement and eHMIS/DHIS2 aggregate reporting | Working, synthetic | migration 032/033; `tests/integration/{workspaces,ehmis}.test.ts` |
+| Operational notification inbox (low stock, expiring lots) | Working, synthetic | migration 038; `tests/integration/notifications.test.ts` |
 | Emergency override with review task | Working | API routes; synthetic clinical role |
 | Credential submission and independent review | Working | API + reviewer console |
 | Facility administration, memberships, queue management | Working | API + admin console |
@@ -52,9 +58,9 @@ Status date: 25 October 2026. Environment: local synthetic development only.
 
 - Clinical validation, regulatory approval, security certification or production readiness.
 - Real SNOMED CT, LOINC or UCUM content; production terminology requires licensed services.
-- External integration transports: DICOMweb/PACS, laboratory analysers, e-prescribing/wholesalers, telemedicine media, device gateways, model inference, payment rails, regulator submission and ledger/WORM anchoring. Departmental workflows run on synthetic data with feature flags off by default; disabled pages state this explicitly.
+- External integration transports still unavailable: laboratory analysers, e-prescribing/wholesalers, telemedicine media, device gateways, model inference, regulator submission and ledger/WORM anchoring. DICOMweb/PACS and Yo! mobile money are implemented and become available only after their verification or configuration gates pass. Departmental workflows run on synthetic data with feature flags off by default; disabled pages state this explicitly.
 - FHIR writes, bulk export, SMART/OAuth client registration or cross-facility FHIR reads.
-- Cloudflare deployment, Hyperdrive verification, R2/Resend production integration, hosted CI execution evidence, deployment pipelines, backups, monitoring and incident response.
+- Monitoring, alerting, dashboards, tracing, on-call incident response and hosted CI execution evidence. Cloudflare deployment, Hyperdrive, R2, Resend and PITR backups are configured for staging and production.
 - Production identity proofing, consent legal-basis configuration, retention automation and jurisdictional forms.
 
 ## Known defect fixed during verification

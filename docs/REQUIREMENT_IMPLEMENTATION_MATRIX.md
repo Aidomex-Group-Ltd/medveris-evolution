@@ -1,6 +1,6 @@
 # Requirement implementation matrix
 
-Status date: 25 October 2026. Local synthetic environment only.
+Status date: 30 October 2026. Local, staging and production environments; all data synthetic.
 
 Status definitions:
 - **Verified** — application behaviour exists and the referenced automated check has passed.
@@ -26,7 +26,7 @@ Status definitions:
 | FND-09 | Optimistic concurrency, atomic clinical write/audit/outbox | 04, 06, 17 | Concurrent amendment and disposition races do not overwrite silently | Domain tests, stale amendment path, emergency stale-disposition test | Verified for covered commands |
 | FND-10 | Private uploads, quarantine and local/production adapters | 08, 16 | Credential evidence is not publicly addressable | Local storage adapter and quarantine metadata; production object store not configured | Partial; R2/provider blocked |
 | FND-11 | Local setup, migrations, seeds, synthetic reset and CI script | 14, 16 | Developers can reproduce the local system | `docs/LOCAL_DEVELOPMENT.md`, migrations 001–015, seed and reset scripts, committed CI workflow | Verified locally; hosted CI not executed |
-| FND-12 | Production monitoring, backups, restore, alerting and incident response | 16 | Operations can recover and observe the service | No backup/restore drill, metrics, paging or on-call runbook executed | Missing / externally blocked by operations ownership |
+| FND-12 | Production monitoring, backups, restore, alerting and incident response | 16 | Operations can recover and observe the service | Aiven PITR and encrypted backups confirmed; restore drill recorded 2026-10-28 (`PRODUCTION_READINESS.md`) | Partial: no metrics, alerting, paging or on-call runbook |
 
 ## Patient and provider experience
 
@@ -35,12 +35,12 @@ Status definitions:
 | PAT-01 | Self-registration and unique Medveris ID | 01, 06 | Patients create an account and receive a non-sequential public ID | Registration APIs; domain public-ID tests; patient portal Playwright flow | Verified |
 | PAT-02 | Assisted registration and temporary/emergency identity | 06, 07 | Reception and emergency staff register patients without a device | Assisted registration UI/API; temporary emergency identity in `tests/integration/emergency.test.ts` | Verified |
 | PAT-03 | Exact-ID resolution and identity confirmation | 02, 06 | Staff cannot open a chart from a public ID alone | Exact ID + family name + DOB resolution; lookup audited | Verified |
-| PAT-04 | Facility-scoped duplicate review without automatic merge | 02, 06, 15 (AT26) | Administrators review same-facility candidates; another facility cannot inspect or review them | `tests/integration/patients.test.ts`; migration 006 adds `tenant_id` and tenant RLS; review console records a decision only | Verified; identity merge remains deliberately disabled |
+| PAT-04 | Facility-scoped duplicate review and authorised merge | 02, 06, 15 (AT26) | Administrators review same-facility candidates; merges need a second authorised person and are reversible | `tests/integration/patients.test.ts`; `tests/integration/patient-merge.test.ts`; migrations 006 and 025 | Verified; cross-facility merges stay with platform review |
 | PAT-05 | Patient profile and permitted medical history | 05, 06, 07 | Patients see released records from linked facilities | Patient portal records, observations, conditions, allergies, appointments | Verified for signed/released records |
 | PAT-06 | Appointments, follow-ups and referrals | 05, 06 | Reception schedules; clinicians record and track follow-ups and referrals | Appointment API/UI; versioned follow-up/referral status commands; `tests/integration/care.test.ts`; Playwright care-coordination journey | Verified for local lifecycle; referral is never presented as an external transmission |
 | PAT-07 | Consent and record-access management | 02, 07 | Patients grant, inspect and revoke scoped access | Consent API and patient portal consent screen | Implemented |
 | PAT-08 | Patient-readable disclosure/access history | 07, 09 | Patients see who accessed their record | `/me/access` and patient access-history page | Implemented |
-| PAT-09 | Proxy/guardian access | 02, 06, 07 | Authorized carers can act for a patient | No patient relationship/proxy model or delegated session exists | Missing; requires policy and identity-proofing decision |
+| PAT-09 | Proxy/guardian access | 02, 06, 07 | Authorized carers can act for a patient | Scoped proxy requests with patient or facility review, audited decisions and caregiver UI; `tests/integration/onboarding.test.ts` | Implemented; delegated session scope is limited to the granted proxy scopes |
 | PAT-10 | Facility registration and configuration | 01, 05 | Facilities register and administer their own scope | Facility registration, tenant settings, administration console | Verified for local synthetic facilities |
 | PAT-11 | Memberships, role management and scheduling scope | 02, 05 | Administrators invite members with least privilege | Membership APIs and admin UI; tenant context switching | Implemented |
 | PAT-12 | Credential submission, independent verification, expiry and review | 10 | Practitioners submit evidence; an independent reviewer decides | Quarantine upload, credential decisions, expiry-aware badge | Implemented; authoritative licensing-authority lookup blocked |
@@ -94,8 +94,8 @@ Status definitions:
 | DIA-02 | Orders, specimen collection, accession and rejection/recollection | 06 | Laboratory receives and accepts/rejects specimens | Order/specimen APIs and order-detail UI | Verified |
 | DIA-03 | Preliminary/final results, correction history and critical communication | 06, 15 (AT10) | Corrected results preserve history and notify recipients | Result versions, correction reason, critical communication; integration test | Verified |
 | DIA-04 | Radiology order, booking and accession | 06 | Imaging workflow is recorded | Imaging study/report tables and diagnostics UI | Implemented |
-| DIA-05 | PACS DICOMweb integration and diagnostic viewer | 11, 13, 19, 20 | Authorized QIDO/WADO/STOW and viewer | No DICOMweb adapter or PACS configuration; no viewer | Externally blocked by PACS/VNA and conformance testing |
-| DIA-06 | Preliminary/final imaging reports, amendments and critical acknowledgement | 06, 11 | Radiologists sign and correct reports | Report version tables and APIs; no PACS link | Implemented as records |
+| DIA-05 | PACS DICOMweb integration and diagnostic viewer | 11, 13, 19, 20 | Authorized QIDO/WADO and rendered-frame viewing | `integrations/dicomweb.ts`, `tests/integration/pacs.test.ts` against a fake PACS | Implemented; `available` only after a recorded passing conformance run; STOW-RS not implemented |
+| DIA-06 | Preliminary/final imaging reports, amendments and critical acknowledgement | 06, 11 | Radiologists sign and correct reports | `radiology.ts`, `tests/integration/radiology.test.ts`: approved templates, drafts, sign-off, addenda, corrections, critical communication, turnaround | Verified |
 | PHA-01 | Governed medicine catalogue and authorised review | 06, 12 | Pharmacists review medication orders | Medicine catalogue, review queue, integration test | Implemented with synthetic catalogue |
 | PHA-02 | Dispensing, administration, reconciliation and stock lots/movements | 06, 15 (AT10) | Retry-safe dispensing and truthful stock | Stock lots/movements/dispenses, row locks, integration test | Verified |
 | PHA-03 | Drug interaction/dose decision support | 06, 11 | Only approved knowledge sources may advise | No approved medicine knowledge source configured | Externally blocked; feature must remain unavailable |
@@ -119,7 +119,7 @@ Status definitions:
 |---|---|---|---|---|---|
 | ADM-01 | Facilities, departments/locations and staff memberships | 01, 05 | Administrators configure operational scope | Tenant, membership and admin console; location model is minimal | Partial |
 | ADM-02 | Service catalogue and decimal pricing with explicit currency | 06, 17 | Finance bills accurate amounts | `service_catalog` numeric price + ISO currency; finance test | Verified |
-| ADM-03 | Invoices, payments, reversals and reconciliation | 06, 15 (AT11) | One financial effect per command | Invoice/payment/reversal APIs; integration test | Verified for manual records; no payment rail |
+| ADM-03 | Invoices, payments, reversals and reconciliation | 06, 15 (AT11) | One financial effect per command | Invoice/payment/reversal APIs; `workflow-payments.test.ts`; Yo! mobile money adapter with signed notifications | Verified for manual, cash and gated mobile-money records |
 | ADM-04 | Insurance/claims workflow | 06 | Claims are prepared and tracked | Claims table/API/UI | Implemented as local records; no clearing-house integration |
 | ADM-05 | Procurement and inventory | 06 | Stock and purchasing are managed | Location hierarchy, catalogue/units, movement ledger, FEFO lots, receipts, issues, reservations, requisitions, transfers, counts, adjustments, recalls and assets; `tests/integration/inventory.test.ts` | Verified for local stock control; external supplier ordering remains out of scope |
 | ADM-06 | Operational reports from stored data | 06, 07 | Managers see real local data | Finance, public-health and inventory reports (stock-on-hand, low-stock, expiry, consumption, valuation, fulfilment, discrepancies, variance, downtime, maintenance, recall status) with audited CSV export | Implemented; no broad BI layer |
@@ -160,7 +160,7 @@ Status definitions:
 | STD-05 | Terminology lookup, expansion, validation and translation with pinned releases | 19, 20 | Clinical coding is validated, not invented | Synthetic adapter and production HTTP adapter; `/terminology/fhir/r4` subset | Implemented with synthetic data; production licensing externally blocked |
 | STD-06 | Contextual SNOMED CT/LOINC/UCUM search and historical coding preservation | 07, 19 | Clinicians select governed concepts | `CodingPicker`, field value sets, stored version/display | Implemented with synthetic content |
 | STD-07 | ConceptMap translation with reviewed equivalence | 19, 20 | Local lab tests map to LOINC only when approved | Synthetic reviewed map; unapproved maps rejected | Implemented |
-| STD-08 | DICOM QIDO-RS, WADO-RS, STOW-RS and patient/study reconciliation | 13, 19, 20 | Imaging studies are discoverable and retrievable | No DICOMweb route, PACS, original-object store or viewer | Externally blocked |
+| STD-08 | DICOM QIDO-RS, WADO-RS, STOW-RS and patient/study reconciliation | 13, 19, 20 | Imaging studies are discoverable and retrievable | `integrations/dicomweb.ts`, verification runs, study linkage with identity comparison, rendered frames | Partial: QIDO/WADO implemented and verification-gated; STOW not implemented |
 | STD-09 | FHIR bulk export, SMART/OAuth client registration and external writes | 13, 19 | Partner exchange is governed | Explicitly disabled in config and CapabilityStatement | Externally blocked by governance and partner onboarding |
 | STD-10 | Public-health ConceptMap/reporting transport | 19, 20 | Aggregate reporting reaches an authority | Aggregate report exists; no transport | Externally blocked by authority agreement |
 
@@ -170,7 +170,8 @@ Executed after the hospital-operations increment:
 
 - `npm run typecheck` — passed.
 - `npm run lint` — passed.
-- `npm test` — 9 files and 57 tests, including the hospital organisation/workforce, documentation, maternity and support-services suite.
+- `npm test` — 55 files and 495 tests (30 October 2026), including radiology, patient merge, reports, notifications, scaling and resilience suites.
+- `npm run deploy:staging`, `npm run deploy:production` — blue-green releases with retained rollback versions (30 October 2026).
 - `npm run test:e2e` — browser journeys, including the emergency registration/triage journey.
 - `npm run build` — web, API server and worker bundles.
 - `npm run smoke:clinical`, `npm run smoke:workers` — see `docs/TEST_EVIDENCE.md`.

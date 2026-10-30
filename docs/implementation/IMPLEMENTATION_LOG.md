@@ -162,3 +162,24 @@ New: `tests/integration/terminology.test.ts` (7), `tests/unit/terminology-produc
 | `npm run build` | 0 | web and API bundles built |
 
 Terminology remains synthetic in development and unavailable in production until a licensed provider is configured; no unapproved mapping is applied automatically.
+
+## 2026-10-30 — Final verification and status reconciliation
+
+No application code changed in this pass. Every item the 28 October matrices listed as outstanding was checked against the current code: structured radiology reporting (`b84ab05`), authorised patient merge (migration `025`), the reports framework (`reports/definitions.ts`), the separate §16 roles (`packages/authz`), concurrent bed allocation and dispensing (`reliability.test.ts`), encounter idempotency and browser journeys A–G (`journeys.spec.ts`) are implemented and covered by tests. The matrices and status records were rewritten to that state so the documented gaps match the code.
+
+### Verification
+
+| Command | Exit | Result |
+|---|---|---|
+| `npm run typecheck` | 0 | no errors |
+| `npm run lint` | 0 | no warnings |
+| `npm test` | 0 | 55 files, 495 tests passed (local PostgreSQL 14) |
+| `npm run build` | 0 | web and API/worker bundles built |
+
+### Remaining work, unchanged in scope
+
+- Patient contacts, next of kin and emergency contacts are still not stored or shown (no schema or UI).
+- No Content-Security-Policy header; the integration token limiter and email-code second factor findings remain accepted risks (`SECURITY_AND_PRIVACY_REVIEW.md`).
+- Metrics, alerting, tracing and on-call runbooks are absent; hosted CI has not executed; the credential rotation drill is outstanding.
+- External WORM/ledger anchoring, model inference and AI output review, licensed terminology, laboratory/device/e-prescribing/telemedicine media adapters, insurance clearing and regulator transmission remain blocked on providers, licences or approvals.
+- Clinical safety sign-off, DPPA legal review, identity proofing, retention automation and `www.medveris.online` routing are owned outside engineering.
