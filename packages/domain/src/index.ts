@@ -8,6 +8,7 @@ export * from "./hmis.js";
 export * from "./workflow.js";
 export * from "./integrity.js";
 export * from "./billing.js";
+export * from "./subscription-interval.js";
 export * from "./currency.js";
 export type EncounterState =
   | "planned"

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { Button, Card, ErrorState, Field, Input, Notice, Tabs } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
 import { api, errorMessage } from "../lib/api";
+import { COMPANY } from "../content/company";
 import { useAuth } from "../lib/auth";
 import { useAppEnvironment } from "../lib/environment";
 import { safeReturnPath } from "../lib/navigation";
@@ -144,6 +145,13 @@ export function LoginPage() {
           </ul>
         </div>
         <p className="mv-small">{environment.synthetic ? "Not clinically validated. Development terminology is synthetic." : "Facility access always requires a verified staff assignment and two-step verification."}</p>
+        <p className="mv-small">
+          <Link to="/about">About us</Link> · <Link to="/help">Help &amp; support</Link> · <Link to="/contacts">Contacts</Link>
+          <br />
+          <a href={COMPANY.phoneHref}>{COMPANY.phone}</a> · <a href={COMPANY.emailHref}>{COMPANY.email}</a>
+          <br />
+          <span className="mv-muted">{COMPANY.attribution}</span>
+        </p>
       </section>
       <section className="mv-auth__panel">
         <div className="mv-auth__card mv-stack">

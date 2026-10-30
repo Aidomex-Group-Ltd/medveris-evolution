@@ -90,6 +90,9 @@ const WorkQueuePage = lazyPage(() => import("./pages/WorkQueuePage"), "WorkQueue
 const PointOfSalePage = lazyPage(() => import("./pages/PointOfSalePage"), "PointOfSalePage");
 const PriceListPage = lazyPage(() => import("./pages/PriceListPage"), "PriceListPage");
 const ReceiptPage = lazyPage(() => import("./pages/ReceiptPage"), "ReceiptPage");
+const AboutPage = lazyPage(() => import("./pages/AboutPage"), "AboutPage");
+const HelpSupportPage = lazyPage(() => import("./pages/HelpSupportPage"), "HelpSupportPage");
+const ContactsPage = lazyPage(() => import("./pages/ContactsPage"), "ContactsPage");
 const SubscriptionPage = lazyPage(() => import("./pages/SubscriptionPage"), "SubscriptionPage");
 const PlatformBillingPage = lazyPage(() => import("./pages/PlatformBillingPage"), "PlatformBillingPage");
 
@@ -106,6 +109,10 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Public information pages; they never open a workspace. */}
+      <Route path="/about" element={<AboutPage />} />
+      <Route path="/help" element={<HelpSupportPage />} />
+      <Route path="/contacts" element={<ContactsPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />

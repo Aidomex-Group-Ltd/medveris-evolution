@@ -250,6 +250,10 @@ export function AppShell() {
         <div className="mv-sidebar__footer">
           <div>{me.user.displayName}</div>
           <div className="mv-small">{me.activeTenant ? me.activeTenant.name : me.patientId ? "Patient account" : "No active role"}</div>
+          <div className="mv-small">
+            <NavLink to="/about">About us</NavLink> · <NavLink to="/help">Help &amp; support</NavLink> · <NavLink to="/contacts">Contacts</NavLink>
+          </div>
+          <div className="mv-small mv-muted">A product of Aidomex Group Ltd.</div>
           <div className="mv-sidebar__actions">
             <Button variant="ghost" size="sm" onClick={() => navigate("/security")}>Security</Button>
             <Button variant="secondary" size="sm" onClick={() => void signOut()}>Sign out</Button>

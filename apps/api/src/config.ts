@@ -64,6 +64,8 @@ export interface AppConfig {
   /** Yo! Payments mobile money collections for point-of-sale bills. */
   yo: YoConfig;
   billing: BillingConfig;
+  /** Self-service subscription pricing and the rate used to convert USD to UGX at checkout. */
+  subscription: SubscriptionConfig;
   /** Exchange rates for converting facility prices; never applied at billing time. */
   fx: FxConfig;
   database: {
@@ -112,6 +114,20 @@ export interface BillingConfig {
   enforcement: "off" | "notify" | "enforce";
   /** Server-side measurement of API compute time and traffic per workspace. */
   usageMetering: boolean;
+}
+
+export interface SubscriptionConfig {
+  /** What the subscription buys, shown beside the price. Configurable so the product can be named. */
+  productDescription: string;
+  /** Smallest UGX collection attempted; Yo! collects whole shillings and small prompts are uneconomic. */
+  minUgx: number;
+  /**
+   * Operator-configured USD/UGX rate used only when no live provider is configured or reachable.
+   * It is disclosed as a configured rate, never presented as a market rate, and never hardcoded here.
+   */
+  fxFallbackUsdUgx: number | null;
+  /** A provider rate older than this is refused rather than priced. */
+  fxMaxAgeMinutes: number;
 }
 
 export interface DicomwebConfig {
@@ -422,6 +438,18 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     billing: {
       enforcement: env.BILLING_ENFORCEMENT === "off" || env.BILLING_ENFORCEMENT === "enforce" ? env.BILLING_ENFORCEMENT : "notify",
       usageMetering: bool(env.USAGE_METERING, true),
+    },
+    subscription: {
+      productDescription: (env.SUBSCRIPTION_PRODUCT_DESCRIPTION ?? "").trim() || "Medveris workspace access for all modules enabled in the workspace",
+      minUgx: Math.max(0, integer(env.SUBSCRIPTION_MIN_UGX, 500)),
+      fxFallbackUsdUgx: (() => {
+        const raw = (env.SUBSCRIPTION_FX_USD_UGX ?? "").trim();
+        if (!raw) return null;
+        const value = Number(raw);
+        if (!Number.isFinite(value) || value <= 0) throw new Error("SUBSCRIPTION_FX_USD_UGX must be a positive number when set");
+        return value;
+      })(),
+      fxMaxAgeMinutes: Math.max(1, Math.min(integer(env.SUBSCRIPTION_FX_MAX_AGE_MINUTES, 1440), 10_080)),
     },
     fx: {
       provider: env.FX_PROVIDER === "openexchangerates" ? "openexchangerates" : "none",

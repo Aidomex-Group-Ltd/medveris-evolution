@@ -32,6 +32,7 @@ export const RATE_LIMIT_POLICIES = {
   "auth.organization-lookup": { limit: 20, windowSeconds: 60, distributed: true, failureMode: "local-strict" },
   "payments.callback": { limit: 120, windowSeconds: 60, distributed: true, failureMode: "local" },
   "payments.mobile-money": { limit: 20, windowSeconds: 60, distributed: true, failureMode: "local-strict" },
+  "subscriptions.checkout": { limit: 10, windowSeconds: 60, distributed: true, failureMode: "local-strict" },
   "auth.verify-resend": { limit: 3, windowSeconds: 900, distributed: true, failureMode: "local-strict" },
   "auth.recovery": { limit: 6, windowSeconds: 900, distributed: true, failureMode: "local-strict" },
   "auth.reset": { limit: 8, windowSeconds: 900, distributed: true, failureMode: "local-strict", progressive: { cooldownSeconds: 300, maxCooldownSeconds: 3600 } },

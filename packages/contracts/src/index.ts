@@ -2651,6 +2651,25 @@ export const hmisPeriodReopenSchema = z.object({
 
 export const hmisLiveSubmissionSchema = z.object({ enabled: z.boolean() });
 
+// ---------------------------------------------------------------- self-service subscription checkout
+
+export const billingIntervalSchema = z.enum(["daily", "weekly", "monthly", "quarterly", "annually"]);
+
+export const subscriptionCheckoutQuoteSchema = z.object({
+  interval: billingIntervalSchema,
+});
+
+export const subscriptionCheckoutSchema = z.object({
+  interval: billingIntervalSchema,
+  msisdn: z.string().trim().min(9).max(24),
+  /** The customer read the amount, period and manual-renewal terms beside the payment action. */
+  consent: z.literal(true),
+});
+
+export const subscriptionCheckoutCancelSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
 export const hmisReportingRuleSchema = z.object({
   periodType: z.enum(["Weekly", "Monthly", "Quarterly"]),
   submissionDueDay: z.number().int().min(1).max(28),

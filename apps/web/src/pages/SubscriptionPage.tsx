@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Select, Table } from "@medveris/ui";
 import { api } from "../lib/api";
+import { SubscriptionCheckoutPanel } from "../components/SubscriptionCheckoutPanel";
 import { formatDate, formatDateTime } from "../lib/format";
 import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
@@ -173,6 +174,7 @@ function Manageable({ overviewRefresh }: { overviewRefresh: () => void }) {
     <div className="mv-stack">
       {action.error ? <ErrorState message={action.error} /> : null}
       {action.message ? <Notice tone="success">{action.message}</Notice> : null}
+      <SubscriptionCheckoutPanel />
       <div className="mv-grid mv-grid--3">
         <Card title="Current plan" description={data.account.name}>
           <p className="mv-metric">{subscription.plan.name}</p>

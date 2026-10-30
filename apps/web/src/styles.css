@@ -90,3 +90,29 @@ details > summary:hover { text-decoration: underline; }
   border-bottom-color: color-mix(in srgb, var(--mv-warning, #b45309) 35%, transparent);
   background: color-mix(in srgb, var(--mv-warning, #b45309) 12%, transparent);
 }
+
+/* Public information pages (About, Help, Contacts) */
+.mv-public { min-height: 100vh; background: var(--mv-surface, #fff); color: var(--mv-text, #14231d); }
+.mv-public__header {
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between;
+  padding: 14px clamp(16px, 5vw, 48px); border-bottom: 1px solid var(--mv-border, #d8e3dc);
+}
+.mv-public__header nav { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.9rem; }
+.mv-public__header nav a { text-decoration: none; font-weight: 600; }
+.mv-public__header nav a:hover, .mv-public__header nav a.active { text-decoration: underline; }
+.mv-public__main { max-width: 1080px; margin: 0 auto; padding: clamp(18px, 4vw, 40px) clamp(16px, 4vw, 32px); }
+.mv-public__footer {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;
+  padding: 28px clamp(16px, 5vw, 48px); border-top: 1px solid var(--mv-border, #d8e3dc);
+  background: color-mix(in srgb, var(--mv-surface, #fff) 92%, #0f3d2e);
+}
+.mv-public__footer nav { display: flex; flex-direction: column; gap: 6px; }
+.mv-public__footer a { text-decoration: none; }
+.mv-public__footer a:hover { text-decoration: underline; }
+@media (max-width: 640px) {
+  .mv-public__header { flex-direction: column; align-items: flex-start; }
+  .mv-public__footer { grid-template-columns: 1fr; }
+}
+.mv-checkout-terms { font-size: 0.85rem; line-height: 1.5; }
+.mv-consent { display: flex; gap: 10px; align-items: flex-start; font-size: 0.875rem; }
+.mv-consent input { margin-top: 3px; }
