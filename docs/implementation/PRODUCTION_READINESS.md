@@ -1,8 +1,8 @@
 # Production readiness record — 2026-10-30
 
-Status: **DEPLOYED (synthetic data only).** `npm run deploy:production` completed a blue-green release. Worker `medveris-production` version `ce3d711d-c314-4889-b050-a2c7d2b58f3f` (tag `034baf0`) serves 100% of traffic on `https://medveris.online` and `https://medveris-production.aidomexgroupltd.workers.dev`; health, readiness, shell, version, assets and production smoke checks passed. Blue version `252b3777-9fb0-4303-8c31-43ed39d851bb` (tag `0702832`) remains available for rollback with `npm run deploy:production:rollback`.
+Status: **DEPLOYED (synthetic data only).** `npm run deploy:production` completed a blue-green release. Worker `medveris-production` version `714d0dbc-061b-43ce-b82a-3f24234b957c` (tag `d88bb21`) serves 100% of traffic on `https://medveris.online` and `https://medveris-production.aidomexgroupltd.workers.dev`; health, readiness, shell, version, assets and production smoke checks passed. Blue version `ce3d711d-c314-4889-b050-a2c7d2b58f3f` (tag `034baf0`) remains available for rollback with `npm run deploy:production:rollback`.
 
-Staging `medveris-staging` version `af600732-926e-49ff-9d52-7e2a071509e0` (tag `034baf0`) serves 100% of traffic; blue `9aa9c1a8-ee5f-403e-bd39-4c40662af6aa` remains for rollback.
+Staging `medveris-staging` version `713ce689-34a6-4f0b-9023-b0c74e5ae5c4` (tag `d88bb21`) serves 100% of traffic; blue `af600732-926e-49ff-9d52-7e2a071509e0` remains for rollback.
 
 This record covers infrastructure and release evidence only. It is not a clinical, legal or privacy sign-off, and production holds synthetic/demo data (2 tenants, 6 users, no patients, encounters or audit events at the time of release).
 
@@ -20,7 +20,7 @@ This record covers infrastructure and release evidence only. It is not a clinica
 |---|---|
 | Cloudflare account `6337ed24a5f8ff4ec3f74517a55a7e6b` | Wrangler session has access |
 | Zone `medveris.online` | Active; apex served by the Worker custom domain; MX, SPF, DKIM and DMARC untouched |
-| Worker `medveris-production` | Deployed; version `ce3d711d-c314-4889-b050-a2c7d2b58f3f` at 100%, blue `252b3777-9fb0-4303-8c31-43ed39d851bb` retained |
+| Worker `medveris-production` | Deployed; version `714d0dbc-061b-43ce-b82a-3f24234b957c` at 100%, blue `ce3d711d-c314-4889-b050-a2c7d2b58f3f` retained |
 | R2 `medveris-production-uploads` | Location WEUR, r2.dev disabled, no public custom domain, no CORS |
 | Hyperdrive (production) | `medveris-production-runtime` (`c6e463fe4d6649a3a41c7c38fee16d3d`, `medveris_runtime`) and `medveris-production-jobs` (`770ba2f6008d4b7d97e9045f38d987fa`, `medveris_jobs`) on `medveris_production`, caching disabled, `verify-full` with the Aiven project CA `1227360c-…` |
 | PostgreSQL | Production `medveris_production` on `medverispro`; staging `medveris_staging` on a separate server |
@@ -33,7 +33,7 @@ This record covers infrastructure and release evidence only. It is not a clinica
 |---|---|
 | `npm run lint` | Pass |
 | `npm run typecheck` | Pass |
-| `npm test` (unit and PostgreSQL integration on local PostgreSQL 14) | Pass: 53 files, 485 tests |
+| `npm test` (unit and PostgreSQL integration on local PostgreSQL 14) | Pass: 55 files, 495 tests |
 | `npm run build` | Pass |
 | `wrangler deploy --env production --dry-run` | Pass (2640 KiB / 487 KiB gzip) |
 | Migration state | Pass after applying `034`–`038` |
