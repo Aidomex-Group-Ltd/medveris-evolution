@@ -13,7 +13,7 @@ Status words: **VERIFIED** means exercised by automated tests and, where marked,
 | Caching | All `/api` responses `no-store`; no asset cache headers; no Worker cache | Missing |
 | Read replicas | No read routing; no replica provisioned | Missing / blocked |
 | Sharding | Single database, no directory | Missing |
-| Async jobs | Transactional outbox with `SKIP LOCKED`, dedupe table, backoff, dead-letter after 6 attempts, drained by cron | Partial: rows left `processing` by a crash were never reclaimed; no queue |
+| Async jobs | Transactional outbox with `SKIP LOCKED`, dedupe table, backoff, dead-letter after 6 attempts, reclaimed on lease expiry by cron | Verified | `tests/integration/jobs-queue.test.ts`; `runtime-verify.mjs` |
 | Real-time | None | Missing |
 | Rate limiting | In-memory `Map` per isolate; integration token limiter keyed on spoofable `X-Forwarded-For` | Partial, flagged open in the security review |
 | Resilience | Fixed fetch timeouts for Resend and terminology; no retries, breakers or database outage handling; `/health/ready` ran an unbounded query | Partial |
