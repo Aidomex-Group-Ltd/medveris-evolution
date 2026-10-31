@@ -1,6 +1,6 @@
 # Medveris M0/M1 and departmental operations status
 
-Status date: 30 October 2026. Environments: local, staging and production on Cloudflare Workers; every environment holds synthetic data only. Deployment evidence is in `docs/implementation/PRODUCTION_READINESS.md`.
+Status date: 31 October 2026. Environments: local, staging and production on Cloudflare Workers; every environment holds synthetic data only. Deployment evidence is in `docs/implementation/PRODUCTION_READINESS.md`.
 
 ## Delivered
 
@@ -10,6 +10,7 @@ Status date: 30 October 2026. Environments: local, staging and production on Clo
 | Separate DB roles and forced RLS | Working | `tests/integration/rls.test.ts` |
 | Authentication, staff MFA, patient sessions, CSRF | Working | `tests/integration/http.test.ts`, Playwright sign-in flows |
 | Patient registration, assisted registration, exact-ID resolution and facility-scoped duplicate review | Working | API routes + browser flows; `tests/integration/patients.test.ts`; no automatic merge |
+| Facility enrolment of an existing patient by confirmed public ID, without a second identity | Working, synthetic | `POST /patients/enroll`; `tests/integration/patients.test.ts` (idempotent retry and identity-mismatch refusal) |
 | Appointments, walk-in encounters, queues and triage | Working | API + UI; seeded Kampala/Entebbe tenants |
 | Follow-up worklist and referral tracking | Working, local only | API + UI; versioned status changes; no external referral transmission |
 | Emergency temporary identity, triage, serial observations, handoff and disposition | Working | `tests/integration/emergency.test.ts`; emergency board + case UI; Playwright emergency journey |
@@ -25,6 +26,8 @@ Status date: 30 October 2026. Environments: local, staging and production on Clo
 | Patient workflow, price list and point-of-sale billing with cash, Yo! mobile money and receipts | Working, synthetic; provider gated | `tests/integration/workflow-payments.test.ts` |
 | Workspaces, organizations, procurement and eHMIS/DHIS2 aggregate reporting | Working, synthetic | migration 032/033; `tests/integration/{workspaces,ehmis}.test.ts` |
 | Operational notification inbox (low stock, expiring lots) | Working, synthetic | migration 038; `tests/integration/notifications.test.ts` |
+| Public company/support pages and per-period subscription checkout (USD 0.50 per active user, UGX quote, signed Yo! confirmation) | Working, synthetic; provider gated | migration 039; `subscription-checkout.test.ts`, `subscription-interval.test.ts`, `SubscriptionCheckoutPanel.tsx` |
+| Platform operators can inspect integration availability without a facility membership | Working, synthetic | `admin.ts` `GET /admin/integrations`; `PlatformIntegrationsPage.tsx` |
 | Emergency override with review task | Working | API routes; synthetic clinical role |
 | Credential submission and independent review | Working | API + reviewer console |
 | Facility administration, memberships, queue management | Working | API + admin console |
@@ -45,6 +48,8 @@ Status date: 30 October 2026. Environments: local, staging and production on Clo
 | Theatre checkpoints: preop, consent, sign-in/time-out/sign-out, anesthesia, recovery, counts, specimens | Working, synthetic | integration checkpoint flow + Playwright theatre case |
 | Diagnostics orders, specimens, results, correction, critical communication, imaging reports | Working, synthetic only | integration diagnostics flow; external modalities are not connected |
 | Pharmacy prescriptions, stock, dispensing, administration | Working, synthetic only | integration pharmacy flow; no external e-prescribing or wholesaler |
+| Retail pharmacy point of sale: priced catalogue, FEFO batch allocation, untracked stock, prescriptions, idempotent sales, voids, receipts and audited CSV reports | Working, synthetic only | `routes/pharmacy-pos.ts`, migration 040/041, `tests/integration/pharmacy-pos.test.ts`, `PharmacyPosPage.tsx` |
+| Procurement supplier-invoice uniqueness across purchase orders in one workspace | Working, synthetic | `routes/procurement.ts`, migration 040; `tests/integration/workspaces.test.ts` |
 | Invoicing, payments, reversals, claims and finance summary | Working, synthetic only | integration finance flow; no payment rail |
 | Care programmes, enrolments, care plans, events, advance care | Working, synthetic | API + programmes UI |
 | Aggregate public-health reporting with small-cell suppression and release | Working, synthetic | API + public-health UI |

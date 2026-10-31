@@ -19,6 +19,20 @@ interface VersionRow {
 
 const empty = { title: "Outpatient consultation note", subjective: "", objective: "", assessment: "", plan: "", changeNote: "" };
 
+const SECTION_LABELS: Record<"subjective" | "objective" | "assessment" | "plan", string> = {
+  subjective: "Subjective — what the patient reports",
+  objective: "Objective — findings on examination",
+  assessment: "Assessment — clinical impression",
+  plan: "Plan — treatment and follow-up",
+};
+
+const STATUS_ACTION_LABELS: Record<string, string> = {
+  draft: "Draft note",
+  signed: "Signed",
+  amended: "Amendment",
+  "entered-in-error": "Entered in error",
+};
+
 export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { encounterId: string; entry: Entry | null; canSign: boolean; onChanged: () => void }) {
   const [form, setForm] = useState(empty);
   const [amending, setAmending] = useState(false);
@@ -180,7 +194,7 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
           <div className="mv-client-fields">
             {(["subjective", "objective", "assessment", "plan"] as const).map((key) => (
               <div key={key} style={{ marginBottom: 8 }}>
-                <div className="mv-small mv-muted" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>{key}</div>
+                <div className="mv-small mv-muted" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>{SECTION_LABELS[key]}</div>
                 <p className="mv-pre">{entry.content[key] || "Not documented"}</p>
               </div>
             ))}
@@ -224,8 +238,8 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
           <h3>Version history</h3>
           {history.map((version) => (
             <div key={version.id} className={`mv-note mv-note--${version.status}`}>
-              <div className="mv-spread"><strong>Version {version.version}</strong><Badge tone={version.status === "signed" || version.status === "amended" ? "success" : version.status === "draft" ? "warning" : "danger"}>{version.status}</Badge></div>
-              <div className="mv-small mv-muted">{version.authorName} · {new Date(version.occurredAt).toLocaleString()} · {version.changeNote}</div>
+              <div className="mv-spread"><strong>{STATUS_ACTION_LABELS[version.status] ?? `Version ${version.version}`}</strong><Badge tone={version.status === "signed" || version.status === "amended" ? "success" : version.status === "draft" ? "warning" : "danger"}>{version.status}</Badge></div>
+              <div className="mv-small mv-muted">Version {version.version} · {version.authorName} · clinical time {new Date(version.occurredAt).toLocaleString()} · {version.changeNote}</div>
               <div className="mv-small mv-mono" style={{ marginTop: 4 }}>{version.contentDigest}</div>
             </div>
           ))}

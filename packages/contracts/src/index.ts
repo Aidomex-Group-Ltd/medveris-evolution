@@ -177,6 +177,13 @@ export const resolvePatientSchema = z.object({
   dateOfBirth: z.string().date(),
 });
 
+/** Enrol an existing global patient at this facility after identity is confirmed (same proof as resolve). */
+export const enrollPatientSchema = z.object({
+  publicId: publicPatientIdSchema,
+  familyName: z.string().trim().min(1).max(120),
+  dateOfBirth: z.string().date(),
+});
+
 export const patientSearchSchema = z.object({
   q: z.string().trim().min(2).max(120),
   dateOfBirth: z.string().date().optional().or(z.literal("").transform(() => undefined)),
@@ -732,6 +739,56 @@ export const stockMovementSchema = z.object({
   lotId: uuidSchema,
   delta: z.number().min(-10000000).max(10000000),
   reason: z.string().trim().min(3).max(1000),
+});
+
+export const prescriptionItemSchema = z.object({
+  itemId: uuidSchema,
+  doseText: z.string().trim().min(1).max(300),
+  route: z.string().trim().min(1).max(100),
+  frequency: z.string().trim().min(1).max(200),
+  quantity: z.number().positive().max(100000),
+  repeatsAllowed: z.number().int().min(0).max(24).default(0),
+  directions: z.string().trim().max(1000).optional().or(z.literal("")),
+  prescriptionOnly: z.boolean().default(true),
+});
+
+export const prescriptionSchema = z.object({
+  patientId: uuidSchema,
+  encounterId: uuidSchema.nullable().optional(),
+  reference: z.string().trim().min(3).max(80),
+  issuedOn: z.string().date().optional(),
+  expiresOn: z.string().date().nullable().optional(),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  items: z.array(prescriptionItemSchema).min(1).max(50),
+});
+
+export const prescriptionCancelSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  reason: z.string().trim().min(5).max(1000),
+});
+
+export const pharmacySaleLineSchema = z.object({
+  itemId: uuidSchema,
+  quantity: z.number().positive().max(100000),
+  unitPrice: z.number().min(0).max(1_000_000_000).optional(),
+  discount: z.number().min(0).max(1_000_000_000).default(0),
+  prescriptionItemId: uuidSchema.nullable().optional(),
+});
+
+export const pharmacySaleSchema = z.object({
+  locationId: uuidSchema,
+  patientId: uuidSchema.nullable().optional(),
+  prescriptionId: uuidSchema.nullable().optional(),
+  prescriptionReference: z.string().trim().max(80).optional().or(z.literal("")),
+  currency: z.string().trim().length(3).regex(/^[A-Z]{3}$/).default("UGX"),
+  discount: z.number().min(0).max(1_000_000_000).default(0),
+  paymentMethod: z.enum(["cash", "mobile-money", "bank-transfer", "card", "manual"]),
+  paymentReference: z.string().trim().max(200).optional().or(z.literal("")),
+  lines: z.array(pharmacySaleLineSchema).min(1).max(100),
+});
+
+export const pharmacySaleVoidSchema = z.object({
+  reason: z.string().trim().min(5).max(1000),
 });
 
 export const serviceCatalogSchema = z.object({
@@ -1757,6 +1814,14 @@ export const inventoryItemSchema = z.object({
   criticality: z.enum(["standard","medium","high","critical"]).default("standard"),
   unitCost: z.number().min(0).max(1000000000).default(0),
   currency: z.string().trim().length(3).regex(/^[A-Z]{3}$/).default("UGX"),
+  genericName: z.string().trim().max(300).optional().or(z.literal("")),
+  brandName: z.string().trim().max(300).optional().or(z.literal("")),
+  strength: z.string().trim().max(120).optional().or(z.literal("")),
+  form: z.string().trim().max(120).optional().or(z.literal("")),
+  sellingPrice: z.number().min(0).max(1000000000).default(0),
+  taxRate: z.number().min(0).max(100).default(0),
+  prescriptionOnly: z.boolean().default(false),
+  reorderThreshold: z.number().min(0).max(1000000000).optional().nullable(),
   units: z.array(inventoryItemUnitSchema).min(1),
 });
 
@@ -1770,6 +1835,14 @@ export const inventoryItemUpdateSchema = z.object({
   currency: z.string().trim().length(3).regex(/^[A-Z]{3}$/).optional(),
   storageRequirements: z.string().trim().max(1000).optional().or(z.literal("")),
   status: z.enum(["active","discontinued"]).optional(),
+  genericName: z.string().trim().max(300).optional().or(z.literal("")),
+  brandName: z.string().trim().max(300).optional().or(z.literal("")),
+  strength: z.string().trim().max(120).optional().or(z.literal("")),
+  form: z.string().trim().max(120).optional().or(z.literal("")),
+  sellingPrice: z.number().min(0).max(1000000000).optional(),
+  taxRate: z.number().min(0).max(100).optional(),
+  prescriptionOnly: z.boolean().optional(),
+  reorderThreshold: z.number().min(0).max(1000000000).optional().nullable(),
 });
 
 export const inventoryPolicySchema = z.object({
@@ -2554,6 +2627,7 @@ export const purchaseOrderActionSchema = z.object({
 export const purchaseOrderReceiveSchema = z.object({
   expectedVersion: z.number().int().min(1),
   reason: z.string().trim().min(3).max(500).default("Purchase order receipt"),
+  supplierInvoiceNumber: z.string().trim().max(80).optional().or(z.literal("")),
   lines: z.array(z.object({
     lineId: uuidSchema,
     quantity: z.number().positive().max(10_000_000),

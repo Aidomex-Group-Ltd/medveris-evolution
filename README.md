@@ -51,6 +51,7 @@ See `docs/LOCAL_DEVELOPMENT.md`, `docs/MVP_STATUS.md`, `docs/IMPLEMENTATION_GAPS
 | docs/18_SOURCES.md | Primary technical and healthcare references |
 | docs/19_STANDARDS_IMPLEMENTATION.md | Required FHIR, DICOM, SNOMED CT, LOINC and UCUM implementation |
 | docs/20_API_INTEGRATION_REGISTRY.md | Standard and operational APIs and external adapters |
+| docs/22_PACS_DICOMWEB_RUNBOOK.md | End-to-end PACS/DICOMweb configuration, verification and troubleshooting |
 | specs/integration-config.example.json | Non-secret integration configuration template |
 | specs/standards-traceability.csv | Standards requirements and acceptance mapping |
 | specs/openapi-standards.json | Starter standards endpoint discovery contract |

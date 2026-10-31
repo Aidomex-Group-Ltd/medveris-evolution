@@ -356,7 +356,8 @@ adminRoutes.post("/duplicate-candidates/:id/review", async (c) => {
 });
 
 adminRoutes.get("/integrations", async (c) => {
-  assertMembershipAdmin(actor(c));
+  // Platform operators monitor adapter state without needing a facility membership.
+  if (!isPlatformOperator(c)) assertMembershipAdmin(actor(c));
   const config = c.get("deps").config;
   return c.json({
     integrations: listIntegrations(config, await loadVerifications(c.get("deps").sql, config)).map((integration) => ({ ...integration, enabled: integration.state === "available" })),

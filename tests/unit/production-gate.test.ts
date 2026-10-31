@@ -11,6 +11,7 @@ import {
   checkProductionIsolation,
   checkSmokeResponses,
   migrationSetDigest,
+  requiredProductionSecrets,
   verificationOrigin,
 } from "../../scripts/production-gate.mjs";
 
@@ -111,6 +112,31 @@ describe("production configuration rules", () => {
     Object.assign(live.env.production.vars, { FEATURE_PAYMENTS: "true", YO_MODE: "production" });
     live.env.production.secrets.required.push("YO_API_USERNAME", "YO_API_PASSWORD", "YO_PUBLIC_KEY");
     expect(checkProductionConfig(live).filter((problem: string) => /YO_|PAYMENTS/.test(problem))).toEqual([]);
+  });
+
+  it("enables DICOMweb only with an HTTPS endpoint, credentials and declared secrets", () => {
+    const config = readyConfig();
+    Object.assign(config.env.production.vars, {
+      FEATURE_DICOMWEB: "true",
+      DICOMWEB_BASE_URL: "http://pacs.medveris.online/dicom-web",
+      DICOMWEB_AUTH: "none",
+    });
+    expect(checkProductionConfig(config)).toEqual(expect.arrayContaining([
+      "FEATURE_DICOMWEB=true requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root",
+      "FEATURE_DICOMWEB=true requires DICOMWEB_AUTH=basic or bearer in production",
+      "FEATURE_DICOMWEB=true requires the DICOMWEB_USERNAME secret to be declared",
+      "FEATURE_DICOMWEB=true requires the DICOMWEB_PASSWORD secret to be declared",
+    ]));
+    expect(requiredProductionSecrets(config.env.production)).toEqual(expect.arrayContaining(["DICOMWEB_USERNAME", "DICOMWEB_PASSWORD"]));
+
+    Object.assign(config.env.production.vars, { DICOMWEB_BASE_URL: "https://pacs.medveris.online/dicom-web", DICOMWEB_AUTH: "basic" });
+    config.env.production.secrets.required.push("DICOMWEB_USERNAME", "DICOMWEB_PASSWORD");
+    expect(checkProductionConfig(config).filter((problem: string) => /DICOMWEB|DICOMweb/.test(problem))).toEqual([]);
+
+    Object.assign(config.env.production.vars, { DICOMWEB_AUTH: "bearer" });
+    config.env.production.secrets.required = config.env.production.secrets.required.filter((name: string) => !name.startsWith("DICOMWEB_"));
+    config.env.production.secrets.required.push("DICOMWEB_BEARER_TOKEN");
+    expect(checkProductionConfig(config).filter((problem: string) => /DICOMWEB|DICOMweb/.test(problem))).toEqual([]);
   });
 
   it("requires every secret, the cron and version metadata to be declared", () => {

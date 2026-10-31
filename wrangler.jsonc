@@ -108,12 +108,15 @@
         "REQUEST_LOG_SAMPLE_RATE": "1",
         // Statuses, reminders and banners only; growth features are not paused on staging.
         "BILLING_ENFORCEMENT": "notify",
-        "USAGE_METERING": "true"
+        "USAGE_METERING": "true",
+        // LivePay payment provider. The API key and webhook secret are Worker secrets.
+        "LIVEPAY_ENDPOINT_URL": "https://medveris.online/webhook"
       },
       "secrets": {
         "required": [
           "SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY",
-          "FEATURE_PAYMENTS", "YO_MODE", "YO_API_USERNAME", "YO_API_PASSWORD", "YO_PUBLIC_KEY", "YO_NOTIFICATION_BASE_URL"
+          "FEATURE_PAYMENTS", "YO_MODE", "YO_API_USERNAME", "YO_API_PASSWORD", "YO_PUBLIC_KEY", "YO_NOTIFICATION_BASE_URL",
+          "LIVEPAY_API_KEY", "LIVEPAY_WEBHOOK_SECRET"
         ]
       }
     },
@@ -178,6 +181,10 @@
         // Auto-published imports need content-governance approval before production use.
         "CONTENT_FEEDS_ENABLED": "false",
         "DIRECTORY_SPONSORED_LISTINGS": "false",
+        // PACS / DICOMweb: set FEATURE_DICOMWEB=true with DICOMWEB_BASE_URL and DICOMWEB_AUTH here,
+        // add the matching credentials to secrets.required, then put the values with `wrangler secret put`.
+        // The PACS stays unavailable until a platform operator records a passing conformance run.
+        // See docs/22_PACS_DICOMWEB_RUNBOOK.md.
         "FEATURE_DICOMWEB": "false",
         "FEATURE_LAB": "false",
         "FEATURE_PHARMACY": "false",
@@ -188,6 +195,8 @@
         // YO_API_PASSWORD and YO_PUBLIC_KEY to secrets.required (wrangler secret put) before enabling.
         "FEATURE_PAYMENTS": "false",
         "YO_MODE": "disabled",
+        // LivePay payment provider. The API key and webhook secret are Worker secrets.
+        "LIVEPAY_ENDPOINT_URL": "https://medveris.online/webhook",
         "FEATURE_PUBLIC_HEALTH": "false",
         "FEATURE_LEDGER_ANCHORING": "false",
         // Off until staging failover and WebSocket verification are signed off.
@@ -195,7 +204,10 @@
         "REQUEST_LOG_SAMPLE_RATE": "0.1"
       },
       "secrets": {
-        "required": ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]
+        "required": [
+          "SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY",
+          "LIVEPAY_API_KEY", "LIVEPAY_WEBHOOK_SECRET"
+        ]
       }
     }
   }

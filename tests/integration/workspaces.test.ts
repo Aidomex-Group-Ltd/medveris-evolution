@@ -309,14 +309,31 @@ describe("autonomous department operations", () => {
       method: "POST", body: JSON.stringify({ expectedVersion: 3, lines: [{ lineId, quantity: 2 }] }),
     });
     expect(missingLot.status).toBe(422);
+    const invoice = `INV-${run}`;
     const partial = await h.post(admin, `/api/v1/procurement/purchase-orders/${order.purchaseOrder.id}/receive`, {
-      expectedVersion: 3, lines: [{ lineId, quantity: 2, lotNumber: `LOT-${run}`, expiresOn: "2028-12-31" }],
+      expectedVersion: 3, supplierInvoiceNumber: invoice,
+      lines: [{ lineId, quantity: 2, lotNumber: `LOT-${run}`, expiresOn: "2028-12-31" }],
     }, 200);
     expect(partial.status).toBe("partially-received");
+    const relinked = await h.call(admin, `/api/v1/procurement/purchase-orders/${order.purchaseOrder.id}/receive`, {
+      method: "POST", body: JSON.stringify({ expectedVersion: 4, supplierInvoiceNumber: `OTHER-${run}`, lines: [{ lineId, quantity: 1, lotNumber: `LOT-${run}`, expiresOn: "2028-12-31" }] }),
+    });
+    expect(relinked.status).toBe(409);
     const over = await h.call(admin, `/api/v1/procurement/purchase-orders/${order.purchaseOrder.id}/receive`, {
       method: "POST", body: JSON.stringify({ expectedVersion: 4, lines: [{ lineId, quantity: 2, lotNumber: `LOT-${run}`, expiresOn: "2028-12-31" }] }),
     });
     expect(over.status).toBe(409);
+
+    const duplicateOrder = await h.post(admin, "/api/v1/procurement/purchase-orders", {
+      supplierId: supplier.id, destinationLocationId: location.location.id, departmentId,
+      lines: [{ itemId: item.item.id, unit: "box", quantity: 1, unitPrice: 25000 }],
+    });
+    await h.post(admin, `/api/v1/procurement/purchase-orders/${duplicateOrder.purchaseOrder.id}/action`, { action: "submit", expectedVersion: 1 }, 200);
+    await h.post(admin, `/api/v1/procurement/purchase-orders/${duplicateOrder.purchaseOrder.id}/action`, { action: "approve", expectedVersion: 2 }, 200);
+    const duplicateInvoice = await h.call(admin, `/api/v1/procurement/purchase-orders/${duplicateOrder.purchaseOrder.id}/receive`, {
+      method: "POST", body: JSON.stringify({ expectedVersion: 3, supplierInvoiceNumber: invoice, lines: [{ lineId: (await get(admin, `/api/v1/procurement/purchase-orders/${duplicateOrder.purchaseOrder.id}`)).lines[0].id, quantity: 1, lotNumber: `LOT2-${run}`, expiresOn: "2028-12-31" }] }),
+    });
+    expect(duplicateInvoice.status).toBe(409);
     const stock = await get(admin, `/api/v1/inventory/stock?scope=all&locationId=${location.location.id}`);
     expect(Number(stock.stock[0].onHand)).toBe(200);
 

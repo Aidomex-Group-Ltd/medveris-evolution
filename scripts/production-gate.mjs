@@ -22,6 +22,24 @@ export const PRODUCTION = Object.freeze({
 
 export const PRODUCTION_SECRETS = Object.freeze(["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]);
 
+/** Credentials the PACS needs once FEATURE_DICOMWEB is on; the subset depends on DICOMWEB_AUTH. */
+export const DICOMWEB_SECRETS = Object.freeze(["DICOMWEB_USERNAME", "DICOMWEB_PASSWORD", "DICOMWEB_BEARER_TOKEN"]);
+
+/** @param {Record<string, unknown>} vars production vars */
+function dicomwebRequiredSecrets(vars) {
+  if (vars?.FEATURE_DICOMWEB !== "true") return [];
+  return vars.DICOMWEB_AUTH === "bearer" ? ["DICOMWEB_BEARER_TOKEN"] : ["DICOMWEB_USERNAME", "DICOMWEB_PASSWORD"];
+}
+
+/**
+ * Secrets the production Worker needs: the core keys, plus the PACS credentials when DICOMweb is requested.
+ * @param {any} production env.production from wrangler.jsonc
+ * @returns {string[]}
+ */
+export function requiredProductionSecrets(production) {
+  return [...PRODUCTION_SECRETS, ...dicomwebRequiredSecrets(production?.vars ?? {})];
+}
+
 const REQUIRED_VARS = Object.freeze({
   APP_ENV: "production",
   APP_ORIGIN: PRODUCTION.origin,
@@ -35,7 +53,7 @@ const REQUIRED_VARS = Object.freeze({
 
 /** Flags that request an external integration with no implemented, verified adapter yet. */
 const INTEGRATION_FLAGS = Object.freeze([
-  "FEATURE_DICOMWEB", "FEATURE_LAB", "FEATURE_PHARMACY", "FEATURE_TELEMEDICINE", "FEATURE_DEVICES",
+  "FEATURE_LAB", "FEATURE_PHARMACY", "FEATURE_TELEMEDICINE", "FEATURE_DEVICES",
   "FEATURE_AI", "FEATURE_PUBLIC_HEALTH", "FEATURE_LEDGER_ANCHORING",
 ]);
 
@@ -123,6 +141,18 @@ export function checkProductionConfig(config) {
   }
   const required = production.secrets?.required ?? [];
   for (const name of PRODUCTION_SECRETS) check(required.includes(name), `${name} must be listed in env.production.secrets.required`);
+
+  check(["false", "true"].includes(String(vars.FEATURE_DICOMWEB ?? "false")), "FEATURE_DICOMWEB must be true or false");
+  if (vars.FEATURE_DICOMWEB === "true") {
+    const baseUrl = String(vars.DICOMWEB_BASE_URL ?? "").trim();
+    check(/^https:\/\/[^/]/.test(baseUrl), "FEATURE_DICOMWEB=true requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root");
+    check(!/^https?:\/\/[^/]*@/.test(baseUrl), "DICOMWEB_BASE_URL must not embed credentials; use DICOMWEB_USERNAME and DICOMWEB_PASSWORD");
+    check(!/[?#]/.test(baseUrl), "DICOMWEB_BASE_URL must not contain a query or fragment");
+    check(["basic", "bearer"].includes(String(vars.DICOMWEB_AUTH ?? "")), "FEATURE_DICOMWEB=true requires DICOMWEB_AUTH=basic or bearer in production");
+    for (const name of dicomwebRequiredSecrets(vars)) {
+      check(required.includes(name), `FEATURE_DICOMWEB=true requires the ${name} secret to be declared`);
+    }
+  }
 
   check((production.triggers?.crons ?? []).length > 0, "production cron trigger is missing");
   check(production.version_metadata?.binding === "CF_VERSION_METADATA", "env.production.version_metadata must bind CF_VERSION_METADATA");

@@ -40,6 +40,7 @@ const AccessHistoryPage = lazyPage(() => import("./pages/AccessHistoryPage"), "A
 const ExchangePage = lazyPage(() => import("./pages/ExchangePage"), "ExchangePage");
 const CredentialsPage = lazyPage(() => import("./pages/CredentialsPage"), "CredentialsPage");
 const AdminPage = lazyPage(() => import("./pages/AdminPage"), "AdminPage");
+const PlatformIntegrationsPage = lazyPage(() => import("./pages/PlatformIntegrationsPage"), "PlatformIntegrationsPage");
 const ReviewerPage = lazyPage(() => import("./pages/ReviewerPage"), "ReviewerPage");
 const SecurityPage = lazyPage(() => import("./pages/SecurityPage"), "SecurityPage");
 const WardsPage = lazyPage(() => import("./pages/WardsPage"), "WardsPage");
@@ -53,6 +54,7 @@ const RadiologyPage = lazyPage(() => import("./pages/RadiologyPage"), "Radiology
 const RadiologyReportPage = lazyPage(() => import("./pages/RadiologyReportPage"), "RadiologyReportPage");
 const OrderDetailPage = lazyPage(() => import("./pages/OrderDetailPage"), "OrderDetailPage");
 const PharmacyPage = lazyPage(() => import("./pages/PharmacyPage"), "PharmacyPage");
+const PharmacyPosPage = lazyPage(() => import("./pages/PharmacyPosPage"), "PharmacyPosPage");
 const FinancePage = lazyPage(() => import("./pages/FinancePage"), "FinancePage");
 const InvoiceDetailPage = lazyPage(() => import("./pages/InvoiceDetailPage"), "InvoiceDetailPage");
 const ProgrammesPage = lazyPage(() => import("./pages/ProgrammesPage"), "ProgrammesPage");
@@ -150,6 +152,7 @@ export function App() {
         <Route path="radiology/reports/:id" element={<ProtectedRoute roles={["nurse", "clinician", "radiology", "radiographer", "radiologist"]}><RadiologyReportPage /></ProtectedRoute>} />
         <Route path="diagnostics/orders/:id" element={<ProtectedRoute roles={["nurse", "clinician", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"]}><OrderDetailPage /></ProtectedRoute>} />
         <Route path="pharmacy" element={<ProtectedRoute roles={["nurse", "clinician", "pharmacist", "facility_admin"]}><PharmacyPage /></ProtectedRoute>} />
+        <Route path="pharmacy-pos" element={<ProtectedRoute roles={["pharmacist", "finance", "facility_admin", "owner", "clinician", "specialist_clinician"]}><PharmacyPosPage /></ProtectedRoute>} />
         <Route path="finance" element={<ProtectedRoute roles={["finance", "facility_admin"]}><FinancePage /></ProtectedRoute>} />
         <Route path="finance/invoices/:id" element={<ProtectedRoute roles={["finance", "facility_admin"]}><InvoiceDetailPage /></ProtectedRoute>} />
         <Route path="finance/receipts/:paymentId" element={<ProtectedRoute roles={CASHIER_ROLES}><ReceiptPage /></ProtectedRoute>} />
@@ -182,6 +185,7 @@ export function App() {
         <Route path="provider-directory" element={<ProtectedRoute roles={["facility_admin"]}><ProviderDirectoryPage /></ProtectedRoute>} />
         <Route path="promotions" element={<ProtectedRoute roles={["facility_admin"]}><PromotionsPage /></ProtectedRoute>} />
         <Route path="directory-governance" element={<ProtectedRoute platform><DirectoryGovernancePage /></ProtectedRoute>} />
+        <Route path="platform-integrations" element={<ProtectedRoute platform><PlatformIntegrationsPage /></ProtectedRoute>} />
         <Route path="reviewer" element={<ProtectedRoute platform><ReviewerPage /></ProtectedRoute>} />
         <Route path="security" element={<ProtectedRoute><SecurityPage /></ProtectedRoute>} />
         <Route path="*" element={<NotFoundPage />} />

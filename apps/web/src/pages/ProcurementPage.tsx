@@ -198,6 +198,7 @@ function OrderPanel({ id, onClose, onChanged }: { id: string; onClose: () => voi
   if (detail.error || !detail.data) return <ErrorState message={detail.error ?? "Purchase order not found"} onRetry={detail.reload} />;
   const { order, lines, receipts } = detail.data;
   const done = () => { detail.reload(); onChanged(); };
+  const [supplierInvoice, setSupplierInvoice] = useState("");
 
   async function act(kind: "submit" | "approve" | "cancel") {
     const reason = kind === "cancel" ? window.prompt("Why is this purchase order cancelled?") : undefined;
@@ -209,14 +210,16 @@ function OrderPanel({ id, onClose, onChanged }: { id: string; onClose: () => voi
 
   async function receive(event: FormEvent) {
     event.preventDefault();
-    const entries = lines.map((line) => ({ line, input: receipt[line.id] })).filter((entry) => entry.input && Number(entry.input.quantity) > 0);
+    const entries = lines.map((line) => ({ line, input: receipt[line.id] }))      .filter((entry) => entry.input && Number(entry.input.quantity) > 0);
     if (!entries.length) return;
     if (await action.run("receive", async () => {
       const result = await api<{ status: string }>(`/procurement/purchase-orders/${id}/receive`, { method: "POST", body: {
         expectedVersion: order.version,
+        supplierInvoiceNumber: supplierInvoice || undefined,
         lines: entries.map(({ line, input }) => ({ lineId: line.id, quantity: Number(input!.quantity), lotNumber: input!.lotNumber, expiresOn: input!.expiresOn })),
       } });
       setReceipt({});
+      setSupplierInvoice("");
       return `Received into stock; the order is now ${result.status}.`;
     })) done();
   }
@@ -229,6 +232,13 @@ function OrderPanel({ id, onClose, onChanged }: { id: string; onClose: () => voi
         {action.message ? <Notice tone="success">{action.message}</Notice> : null}
         {order.cancelReason ? <Notice tone="warning" title="Cancelled">{order.cancelReason}</Notice> : null}
         <form className="mv-stack" onSubmit={receive}>
+          {receivable ? (
+            <div className="mv-form-grid">
+              <Field label="Supplier invoice number" htmlFor="po-invoice" hint="Recorded on the receipt and its stock lots. A second receipt cannot reuse the same invoice from this supplier.">
+                <Input id="po-invoice" value={supplierInvoice} onChange={(event) => setSupplierInvoice(event.target.value)} maxLength={80} />
+              </Field>
+            </div>
+          ) : null}
           <Table head={["Item", "Ordered", "Received", "Unit price", ...(receivable ? ["Receive now", "Lot", "Expiry"] : [])]} caption="Order lines">
             {lines.map((line) => {
               const input = receipt[line.id] ?? { quantity: "", lotNumber: "", expiresOn: "" };

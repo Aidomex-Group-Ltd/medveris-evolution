@@ -27,6 +27,7 @@ import { inpatientRoutes } from "./routes/inpatient.js";
 import { theatreRoutes } from "./routes/theatre.js";
 import { diagnosticsRoutes } from "./routes/diagnostics.js";
 import { pharmacyRoutes } from "./routes/pharmacy.js";
+import { pharmacyPosRoutes } from "./routes/pharmacy-pos.js";
 import { financeRoutes } from "./routes/finance.js";
 import { programmeRoutes } from "./routes/programmes.js";
 import { telehealthRoutes } from "./routes/telehealth.js";
@@ -183,6 +184,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", theatreRoutes);
   app.route("/api/v1", diagnosticsRoutes);
   app.route("/api/v1", pharmacyRoutes);
+  app.route("/api/v1", pharmacyPosRoutes);
   app.route("/api/v1", financeRoutes);
   app.route("/api/v1", workflowRoutes);
   app.route("/api/v1", paymentCallbackRoutes);

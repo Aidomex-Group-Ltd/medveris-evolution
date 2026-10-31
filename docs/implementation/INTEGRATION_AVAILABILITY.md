@@ -27,6 +27,8 @@ The registry is `apps/api/src/integrations/registry.ts`. It is the only source o
 | National Health Facility Registry | unavailable | NHFR IDs are entered by hand and shown as recorded, not verified |
 | Ledger anchoring | not_requested | Checkpoints are HMAC-signed locally and unanchored |
 
+The DICOMweb setup, configuration, fake-PACS rehearsal and conformance-record steps are in `docs/22_PACS_DICOMWEB_RUNBOOK.md`; `npm run pacs:mock` starts the synthetic PACS used by `pacs.test.ts`.
+
 ## Enabling an integration
 
 Each registry entry lists `requiredConfiguration`, `missingPrerequisites` and `remediation`. To enable one:

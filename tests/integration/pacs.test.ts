@@ -83,6 +83,14 @@ describe("PACS availability is decided by a stored verification run", () => {
     expect(refused.status).toBe(403);
   });
 
+  it("lets a platform operator inspect integration state without a facility membership", async () => {
+    const list = await h.expectOk(await h.call(operator, "/api/v1/admin/integrations"));
+    expect(list.integrations.find((integration: { id: string }) => integration.id === "dicomweb")).toMatchObject({
+      requested: true,
+      state: "verification_failed",
+    });
+  });
+
   it("records a failed run when the PACS cannot be reached and stays unavailable", async () => {
     pacs.offline = true;
     const run = await h.expectOk(await h.call(operator, "/api/v1/admin/integrations/dicomweb/verify", { method: "POST", body: "{}" }));

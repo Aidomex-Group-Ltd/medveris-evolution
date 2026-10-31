@@ -10,6 +10,7 @@ import {
   PRODUCTION,
   PRODUCTION_SECRETS,
   checkBackupAttestation,
+  requiredProductionSecrets,
   checkDomainState,
   checkMigrationState,
   checkProductionConfig,
@@ -185,10 +186,12 @@ const available = new Map([
 ]);
 const secretPlan = remoteSecretNames === undefined
   ? { upload: [], problems: [], notes: [] }
-  : planSecretUpload({ remoteNames: remoteSecretNames, availableNames: [...available.keys()], required: [...PRODUCTION_SECRETS] });
+  : planSecretUpload({ remoteNames: remoteSecretNames, availableNames: [...available.keys()], required: requiredProductionSecrets(production) });
 problems.push(...secretPlan.problems);
 notes.push(...secretPlan.notes);
-for (const name of secretPlan.upload) problems.push(...secretFormatProblems(name, available.get(name) ?? "", new Set()));
+for (const name of secretPlan.upload) {
+  if (PRODUCTION_SECRETS.includes(name)) problems.push(...secretFormatProblems(name, available.get(name) ?? "", new Set()));
+}
 evidence.secrets = { present: remoteSecretNames ?? [], toUpload: secretPlan.upload };
 
 const live = remoteSecretNames ? blueVersion(parseJsonOutput(wrangler("deployments", "status", "--env", PRODUCTION.env, "--json").stdout), PRODUCTION.env) : { blue: null, problems: [] };

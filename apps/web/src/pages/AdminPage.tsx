@@ -253,7 +253,7 @@ function Memberships() {
 
 interface VerificationResult { outcome: "passed" | "failed"; checks: Array<{ name: string; passed: boolean; detail: string; durationMs: number }> }
 
-function Integrations() {
+export function Integrations() {
   const integrations = useQuery<IntegrationResponse>("/admin/integrations");
   const { me } = useAuth();
   const operator = me?.platformRoles.includes("platform_operator") ?? false;

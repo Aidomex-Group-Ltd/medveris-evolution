@@ -224,6 +224,39 @@ describe("staging gate email rules", () => {
   });
 });
 
+describe("staging gate DICOMweb rules", () => {
+  it("requires an HTTPS endpoint, supported auth and declared credentials once enabled", () => {
+    const config = readyConfig();
+    Object.assign(config.env.staging.vars, {
+      FEATURE_DICOMWEB: "true",
+      DICOMWEB_BASE_URL: "http://pacs.medveris.test/dicom-web",
+      DICOMWEB_AUTH: "none",
+    });
+    expect(requiredSecrets(config.env.staging)).toEqual(expect.arrayContaining(["DICOMWEB_USERNAME", "DICOMWEB_PASSWORD"]));
+    expect(checkStagingConfig(config)).toEqual(expect.arrayContaining([
+      "FEATURE_DICOMWEB=true requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root",
+      "FEATURE_DICOMWEB=true requires DICOMWEB_AUTH=basic or bearer in staging",
+      "DICOMWEB_USERNAME must be listed in env.staging.secrets.required",
+      "DICOMWEB_PASSWORD must be listed in env.staging.secrets.required",
+    ]));
+
+    Object.assign(config.env.staging.vars, { DICOMWEB_BASE_URL: "https://pacs.medveris.test/dicom-web", DICOMWEB_AUTH: "basic" });
+    config.env.staging.secrets.required.push("DICOMWEB_USERNAME", "DICOMWEB_PASSWORD");
+    expect(checkStagingConfig(config).filter((problem: string) => /DICOMWEB|DICOMweb/.test(problem))).toEqual([]);
+  });
+
+  it("asks for the bearer token instead of basic credentials", () => {
+    const config = readyConfig();
+    Object.assign(config.env.staging.vars, {
+      FEATURE_DICOMWEB: "true",
+      DICOMWEB_BASE_URL: "https://pacs.medveris.test/dicom-web",
+      DICOMWEB_AUTH: "bearer",
+    });
+    expect(requiredSecrets(config.env.staging)).toEqual(expect.arrayContaining(["DICOMWEB_BEARER_TOKEN"]));
+    expect(requiredSecrets(config.env.staging)).not.toContain("DICOMWEB_USERNAME");
+  });
+});
+
 describe("blue-green release rules", () => {
   const BLUE = "0e3daf50-7a54-4107-9e7b-44794cf475b7";
   const GREEN = "5c80fb1e-7895-49f6-8987-2655ee1cb0bc";

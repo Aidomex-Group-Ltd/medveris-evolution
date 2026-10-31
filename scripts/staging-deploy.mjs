@@ -159,7 +159,7 @@ problems.push(...secretPlan.problems);
 notes.push(...secretPlan.notes);
 if (secretPlan.upload.some((name) => REQUIRED_SECRETS.includes(name))) {
   const localValues = existsSync(".env") ? parseEnvFile(readFileSync(".env", "utf8")) : new Map();
-  problems.push(...checkSecretValues(coreValues, localValues));
+  problems.push(...checkSecretValues(coreValues, localValues, staging.secrets?.required ?? requiredSecrets(staging)));
 }
 if (secretPlan.upload.includes("RESEND_API_KEY")) problems.push(...checkResendKey(available.get("RESEND_API_KEY")));
 

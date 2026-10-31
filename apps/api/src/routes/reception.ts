@@ -5,6 +5,7 @@ import {
   appointmentStatusSchema,
   createEncounterSchema,
   createPatientByStaffSchema,
+  enrollPatientSchema,
   patientSearchSchema,
   queueEntrySchema,
   resolvePatientSchema,
@@ -13,6 +14,7 @@ import {
   uuidSchema,
 } from "@medveris/contracts";
 import type { ActorContext } from "@medveris/authz";
+import { sha256Hex } from "@medveris/auth";
 import type { Tx } from "@medveris/db";
 import { canTransitionAppointment, canTransitionEncounter, localMedicalRecordNumber, randomPatientPublicId, type AppointmentStatus, type EncounterState } from "@medveris/domain";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
@@ -55,6 +57,17 @@ receptionRoutes.post("/reception/patients", async (c) => {
   const body = await parseJson(c, createPatientByStaffSchema);
   const meta = requestMeta(c);
   const result = await withStaffActor(c, async (tx) => {
+    // A client retry (network flap, double submit, replayed form) must not create a second patient.
+    const idemKey = idempotencyKey(c);
+    if (idemKey) {
+      await tx`select pg_advisory_xact_lock(hashtext(${`reception/register:${auth.user.id}:${idemKey}`}))`;
+      const [saved] = await tx`
+        select response_body from idempotency_keys
+         where actor_id = ${auth.user.id} and key = ${idemKey} and route = '/reception/patients'
+           and response_body is not null and expires_at > now()
+      `;
+      if (saved) return { payload: saved.responseBody as { patientId: string; publicId: string; duplicateReviewQueued: number }, replayed: true };
+    }
     let publicId = randomPatientPublicId();
     for (let i = 0; i < 5; i++) {
       const clash = await tx`select 1 from patients where public_id = ${publicId}`;
@@ -101,9 +114,87 @@ receptionRoutes.post("/reception/patients", async (c) => {
       ...meta,
       metadata: { publicId, duplicateCandidates: possible.length },
     });
-    return { patientId, publicId, duplicateReviewQueued: possible.length };
+    const payload = { patientId, publicId, duplicateReviewQueued: possible.length };
+    if (idemKey) {
+      await tx`
+        insert into idempotency_keys (id, key, actor_id, tenant_id, route, request_digest, response_status, response_body, expires_at)
+        values (${crypto.randomUUID()}, ${idemKey}, ${auth.user.id}, ${auth.activeTenant!.id}, '/reception/patients',
+          ${await sha256Hex(JSON.stringify(body))}, 201,
+          ${tx.json(payload as never)}, now() + interval '24 hours')
+        on conflict (actor_id, key) do nothing
+      `;
+    }
+    return { payload, replayed: false };
   });
-  return c.json({ ok: true, patient: result }, 201);
+  return c.json({ ok: true, patient: result.payload }, 201);
+});
+
+receptionRoutes.post("/patients/enroll", async (c) => {
+  // Enrol a globally registered patient (found via exact-ID resolve) at this facility, without creating a new identity.
+  requireStaff(c);
+  requireFrontDesk(c);
+  await enforceRateLimit(c, "patient.resolve", c.get("auth")!.user.id);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const meta = requestMeta(c);
+  const body = await parseJson(c, enrollPatientSchema);
+  const result = await withStaffActor(c, async (tx) => {
+    const [confirmed] = await tx`
+      select p.id, p.public_id, p.merged_into from patients p
+       where p.public_id = ${body.publicId} and lower(p.family_name) = lower(${body.familyName}) and p.date_of_birth = ${body.dateOfBirth}
+       limit 1
+    `;
+    if (!confirmed) {
+      await writeAudit(tx, deps.config, {
+        tenantId: auth.activeTenant!.id,
+        actorKind: "staff",
+        actorUserId: auth.user.id,
+        actorRoles: auth.activeTenant!.roles,
+        action: "patient.enroll",
+        subjectPatientId: null,
+        resourceType: "Patient",
+        resourceId: null,
+        decision: "deny",
+        reasonCode: "no-patient-matched",
+        ...meta,
+      });
+      throw new NotFoundError("No patient matched the supplied ID, family name and date of birth");
+    }
+    const targetId = String(confirmed.mergedInto ?? confirmed.id);
+    const [survivor] = await tx`select id, public_id from patients where id = ${targetId} and merged_into is null`;
+    if (!survivor) throw new NotFoundError("No patient matched the supplied ID, family name and date of birth");
+    await tx`select pg_advisory_xact_lock(hashtext(${`patient:enroll:${auth.activeTenant!.id}:${targetId}`}))`;
+    const [existing] = await tx`
+      select id from tenant_patient_links where tenant_id = ${auth.activeTenant!.id} and patient_id = ${targetId}
+    `;
+    if (!existing) {
+      await tx`
+        insert into tenant_patient_links (id, tenant_id, patient_id, local_mrn)
+        values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${targetId},
+          ${localMedicalRecordNumber(auth.activeTenant!.slug, String(survivor.publicId))})
+      `;
+    }
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "patient.enroll",
+      subjectPatientId: targetId,
+      resourceType: "Patient",
+      resourceId: targetId,
+      ...meta,
+      metadata: { publicId: String(survivor.publicId), alreadyLinked: Boolean(existing) },
+    });
+    await writeOutbox(tx, {
+      tenantId: auth.activeTenant!.id,
+      eventType: "patient.enrolled",
+      aggregateId: targetId,
+      payload: { patientId: targetId, publicId: String(survivor.publicId), alreadyLinked: Boolean(existing) },
+    });
+    return { id: targetId, publicId: survivor.publicId, alreadyLinked: Boolean(existing) };
+  });
+  return c.json({ ok: true, patient: result, alreadyLinked: result.alreadyLinked }, result.alreadyLinked ? 200 : 201);
 });
 
 receptionRoutes.post("/patients/resolve", async (c) => {

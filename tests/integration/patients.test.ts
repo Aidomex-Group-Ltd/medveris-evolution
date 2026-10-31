@@ -131,6 +131,16 @@ describe("patient registration and duplicate review", () => {
     sameFacilityCandidate = matching[0];
   });
 
+  it("replays a retried assisted registration without creating a second patient", async () => {
+    const familyName = `Retry${Date.now()}`;
+    const body = JSON.stringify({ givenName: "Synthetic", familyName, dateOfBirth: "1992-06-15", sex: "female", identityConfidence: "confirmed-verbal" });
+    const key = `register-${crypto.randomUUID()}`;
+    const first = await expectOk(await call(reception, "/api/v1/reception/patients", { method: "POST", headers: { "idempotency-key": key }, body }), 201);
+    const second = await expectOk(await call(reception, "/api/v1/reception/patients", { method: "POST", headers: { "idempotency-key": key }, body }), 201);
+    expect(second.patient.publicId).toBe(first.patient.publicId);
+    expect(second.patient.patientId).toBe(first.patient.patientId);
+  });
+
   it("records an audited duplicate review without merging identities", async () => {
     const reviewed = await expectOk(await call(admin, `/api/v1/admin/duplicate-candidates/${sameFacilityCandidate.id}/review`, {
       method: "POST",
@@ -151,6 +161,36 @@ describe("patient registration and duplicate review", () => {
        where action = 'patient.duplicate.review' and resource_id = ${sameFacilityCandidate.id}
     `);
     expect(audit).toHaveLength(1);
+  });
+});
+
+describe("facility enrolment of an existing patient", () => {
+  it("links a patient registered elsewhere without creating a second identity", async () => {
+    const familyName = `Enrol${Date.now()}`;
+    const registered = await register(clinicianB, familyName);
+    const body = JSON.stringify({ publicId: registered.publicId, familyName, dateOfBirth: "1992-06-15" });
+    const enrolled = await expectOk(await call(reception, "/api/v1/patients/enroll", { method: "POST", body }), 201);
+    expect(enrolled).toMatchObject({ alreadyLinked: false, patient: { publicId: registered.publicId } });
+
+    const replay = await expectOk(await call(reception, "/api/v1/patients/enroll", { method: "POST", body }), 200);
+    expect(replay.alreadyLinked).toBe(true);
+
+    const resolved = await expectOk(await call(reception, "/api/v1/patients/resolve", {
+      method: "POST",
+      body: JSON.stringify({ publicId: registered.publicId, familyName, dateOfBirth: "1992-06-15" }),
+    }));
+    expect(resolved.matched).toBe(true);
+    expect(resolved.patient.linked).toBe(true);
+  });
+
+  it("refuses enrolment when the identity details do not match", async () => {
+    const familyName = `EnrolMismatch${Date.now()}`;
+    const registered = await register(clinicianB, familyName);
+    const response = await call(reception, "/api/v1/patients/enroll", {
+      method: "POST",
+      body: JSON.stringify({ publicId: registered.publicId, familyName, dateOfBirth: "1992-06-16" }),
+    });
+    expect(response.status).toBe(404);
   });
 });
 

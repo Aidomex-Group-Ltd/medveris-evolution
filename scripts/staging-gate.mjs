@@ -14,6 +14,15 @@ export const EXPECTED = Object.freeze({
 
 export const REQUIRED_SECRETS = Object.freeze(["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY"]);
 
+/** Credentials the PACS needs once FEATURE_DICOMWEB is on; the subset depends on DICOMWEB_AUTH. */
+export const DICOMWEB_SECRETS = Object.freeze(["DICOMWEB_USERNAME", "DICOMWEB_PASSWORD", "DICOMWEB_BEARER_TOKEN"]);
+
+/** @param {Record<string, unknown>} vars staging vars */
+function dicomwebRequiredSecrets(vars) {
+  if (vars?.FEATURE_DICOMWEB !== "true") return [];
+  return vars.DICOMWEB_AUTH === "bearer" ? ["DICOMWEB_BEARER_TOKEN"] : ["DICOMWEB_USERNAME", "DICOMWEB_PASSWORD"];
+}
+
 export const REQUIRED_VARS = Object.freeze({
   APP_ENV: "staging",
   APP_ORIGIN: EXPECTED.origin,
@@ -33,7 +42,12 @@ const HYPERDRIVE_ROLES = Object.freeze({ HYPERDRIVE: EXPECTED.runtimeRole, HYPER
  * @returns {string[]}
  */
 export function requiredSecrets(staging) {
-  return staging?.vars?.EMAIL_ADAPTER === "resend" ? [...REQUIRED_SECRETS, "RESEND_API_KEY"] : [...REQUIRED_SECRETS];
+  const vars = staging?.vars ?? {};
+  return [
+    ...REQUIRED_SECRETS,
+    ...(vars.EMAIL_ADAPTER === "resend" ? ["RESEND_API_KEY"] : []),
+    ...dicomwebRequiredSecrets(vars),
+  ];
 }
 const SECRET_LIKE_VAR = /(SECRET|PASSWORD|TOKEN|_KEY|CONNECTION_STRING|DATABASE_URL)$/;
 const PRODUCTION_REFERENCE = /(^|[^a-z])prod(uction)?([^a-z]|$)/i;
@@ -148,6 +162,21 @@ export function checkStagingConfig(config) {
   for (const name of requiredSecrets(staging)) check(required.includes(name), `${name} must be listed in env.staging.secrets.required`);
   for (const name of required) check(!(name in vars), `${name} is a required secret and must not also be a plaintext var`);
 
+  check(["false", "true"].includes(String(vars.FEATURE_DICOMWEB ?? "false")), "FEATURE_DICOMWEB must be true or false");
+  if (vars.FEATURE_DICOMWEB === "true") {
+    const baseUrl = String(vars.DICOMWEB_BASE_URL ?? "").trim();
+    let parsed = null;
+    try {
+      parsed = new URL(baseUrl);
+    } catch {
+      parsed = null;
+    }
+    check(parsed !== null && parsed.protocol === "https:", "FEATURE_DICOMWEB=true requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root");
+    check(!parsed || (!parsed.username && !parsed.password), "DICOMWEB_BASE_URL must not embed credentials; use DICOMWEB_USERNAME and DICOMWEB_PASSWORD");
+    check(!parsed || (!parsed.search && !parsed.hash), "DICOMWEB_BASE_URL must not contain a query or fragment");
+    check(["basic", "bearer"].includes(String(vars.DICOMWEB_AUTH ?? "")), "FEATURE_DICOMWEB=true requires DICOMWEB_AUTH=basic or bearer in staging");
+  }
+
   check((staging.triggers?.crons ?? []).length > 0, "staging cron trigger is missing");
   const serialized = JSON.stringify(staging);
   check(!serialized.includes("REPLACE_WITH"), "staging config still contains REPLACE_WITH placeholders");
@@ -211,10 +240,10 @@ export function parseEnvFile(text) {
  * @param {Map<string, string>} localValues local .env, used to reject reused development keys
  * @returns {string[]}
  */
-export function checkSecretValues(values, localValues) {
+export function checkSecretValues(values, localValues, allowed = REQUIRED_SECRETS) {
   const problems = [];
   for (const name of values.keys()) {
-    if (!REQUIRED_SECRETS.includes(name)) problems.push(`secrets file contains unexpected key ${name}; only ${REQUIRED_SECRETS.join(", ")} may be uploaded`);
+    if (!allowed.includes(name)) problems.push(`secrets file contains unexpected key ${name}; only ${allowed.join(", ")} may be uploaded`);
   }
   const reused = new Set(localValues.values());
   for (const name of REQUIRED_SECRETS) {

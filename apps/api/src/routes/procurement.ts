@@ -203,12 +203,22 @@ procurementRoutes.post("/procurement/purchase-orders/:id/receive", async (c) => 
   const id = uuidSchema.parse(c.req.param("id"));
   const body = await parseJson(c, purchaseOrderReceiveSchema);
   const tenantId = auth.activeTenant!.id;
-  const result = await withStaffActor(c, async (tx) => {
+  const invoiceNumber = body.supplierInvoiceNumber || null;
+  let result;
+  try {
+    result = await withStaffActor(c, async (tx) => {
     const { order, lines } = await loadOrder(tx, tenantId, id, true);
     ensureMatch(body.expectedVersion, Number(order.version));
     if (!["approved", "partially-received"].includes(String(order.status))) throw new ConflictError("Only an approved purchase order can be received");
     await assertLocationInScope(tx, c, String(order.destinationLocationId));
     const [supplier] = await tx`select name from suppliers where id = ${order.supplierId}`;
+    if (invoiceNumber && order.supplierInvoiceNumber && order.supplierInvoiceNumber !== invoiceNumber) {
+      throw new ConflictError(`This purchase order is already linked to supplier invoice ${order.supplierInvoiceNumber}`);
+    }
+    if (invoiceNumber) {
+      await tx`update purchase_orders set supplier_invoice_number = ${invoiceNumber}, updated_at = now() where id = ${id} and tenant_id = ${tenantId}`;
+    }
+    const receiptReference = invoiceNumber ?? String(order.poNumber);
     const movements: string[] = [];
     for (const input of body.lines) {
       const line = lines.find((candidate) => candidate.id === input.lineId);
@@ -226,7 +236,7 @@ procurementRoutes.post("/procurement/purchase-orders/:id/receive", async (c) => 
           await tx`
             insert into inventory_lots (id, tenant_id, item_id, lot_number, manufacture_on, expires_on, supplier, receipt_reference, status, created_by)
             values (${lotId}, ${tenantId}, ${line.itemId}, ${input.lotNumber}, ${input.manufactureOn || null}, ${input.expiresOn || null},
-              ${supplier?.name ?? null}, ${order.poNumber}, 'available', ${auth.user.id})`;
+              ${supplier?.name ?? null}, ${receiptReference}, 'available', ${auth.user.id})`;
         }
       }
       const movement = await postMovement(tx, tenantId, auth.user.id, {
@@ -241,10 +251,16 @@ procurementRoutes.post("/procurement/purchase-orders/:id/receive", async (c) => 
     const status = Number(remaining?.n ?? 0) === 0 ? "received" : "partially-received";
     await tx`update purchase_orders set status = ${status}, version = version + 1, updated_at = now() where id = ${id}`;
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "procurement.purchase-order.receive", {
-      resourceType: "PurchaseOrder", resourceId: id, metadata: { poNumber: order.poNumber, lines: body.lines.length, status },
+      resourceType: "PurchaseOrder", resourceId: id, metadata: { poNumber: order.poNumber, lines: body.lines.length, status, supplierInvoiceNumber: invoiceNumber },
     }));
-    await writeOutbox(tx, { tenantId, eventType: "inventory.stock.received", aggregateId: id, payload: { purchaseOrder: order.poNumber } });
+    await writeOutbox(tx, { tenantId, eventType: "inventory.stock.received", aggregateId: id, payload: { purchaseOrder: order.poNumber, supplierInvoiceNumber: invoiceNumber } });
     return { status, movements, version: Number(order.version) + 1 };
-  });
+    });
+  } catch (error) {
+    if (uniqueViolation(error) === "purchase_orders_supplier_invoice") {
+      throw new ConflictError(`Supplier invoice ${invoiceNumber} has already been received in this workspace`);
+    }
+    throw error;
+  }
   return c.json({ ok: true, ...result });
 });

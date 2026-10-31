@@ -33,7 +33,7 @@ export function ProtectedRoute({ children, roles, platform, patient, staff, orga
   if (roles && !roles.some((role) => me.activeTenant?.roles.includes(role))) {
     return <EmptyState title="Access denied" description="Your active facility role does not include this workspace. Facility administration does not grant clinical access." />;
   }
-  if (!patient && !me.activeTenant && !platform && !me.patientId) {
+  if (!patient && !me.activeTenant && !platform && me.platformRoles.length === 0 && !me.patientId) {
     return me.memberships.length
       ? <EmptyState title="Choose a facility" description="Your account has staff access at more than one facility. Choose one to open its workspace." action={<Link to="/facility-staff">Choose a facility</Link>} />
       : <EmptyState title="Not registered as facility staff" description="Accept the invitation your facility administrator emailed you, or ask them to invite you." action={<Link to="/facility-staff">Facility staff sign-in</Link>} />;

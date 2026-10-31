@@ -109,6 +109,26 @@ export function PatientsPage() {
     }
   }
 
+  async function enrollHere() {
+    if (!resolved) return;
+    setBusy("enroll");
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await api<{ ok: boolean; patient: { id: string; publicId: string }; alreadyLinked: boolean }>("/patients/enroll", {
+        method: "POST",
+        body: { publicId: resolved.publicId, familyName: resolved.familyName, dateOfBirth: resolved.dateOfBirth },
+      });
+      setMessage(`${response.alreadyLinked ? "This patient is already registered here" : `${response.patient.publicId} is now registered at this facility`}. You can start the visit.`);
+      setResolved({ ...resolved, linked: true });
+      recent.reload();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function startEncounter() {
     if (!resolved) return;
     setBusy("encounter");
@@ -151,9 +171,15 @@ export function PatientsPage() {
               <div className="mv-small mv-muted"><span className="mv-id">{resolved.publicId}</span> · DOB {resolved.dateOfBirth} · {resolved.sex}</div>
               {resolved.mergedFrom ? <div className="mv-small"><Badge tone="warning">{`ID ${resolved.mergedFrom} was merged into this record`}</Badge></div> : null}
             </div>
+            {resolved.linked === false ? (
+              <div className="mv-stack mv-small">
+                <Badge tone="warning">Not yet registered at this facility</Badge>
+                <Button variant="secondary" disabled={busy !== null} onClick={() => void enrollHere()}>{busy === "enroll" ? "Adding…" : "Add to this facility"}</Button>
+              </div>
+            ) : null}
             <div className="mv-row">
               <Field label="Encounter reason" htmlFor="encounter-reason"><Input id="encounter-reason" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
-              <Button onClick={() => void startEncounter()} disabled={busy === "encounter" || !reason.trim()}>{busy === "encounter" ? "Starting…" : "Start walk-in encounter"}</Button>
+              <Button onClick={() => void startEncounter()} disabled={busy === "encounter" || busy === "enroll" || !reason.trim()}>{busy === "encounter" ? "Starting…" : "Start walk-in encounter"}</Button>
             </div>
           </div>
         </Card>
