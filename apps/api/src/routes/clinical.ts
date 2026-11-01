@@ -12,7 +12,7 @@ import {
   updateDraftEntrySchema,
   uuidSchema,
 } from "@medveris/contracts";
-import { assertClinicalRead, assertClinicalWrite, assertSign, type ActorContext } from "@medveris/authz";
+import { assertClinicalRead, assertClinicalWrite, assertSign, assertAuthorized, type ActorContext } from "@medveris/authz";
 import { canonicalJson, contentDigest, type ClinicalEntryStatus } from "@medveris/domain";
 import { hmacHex } from "@medveris/auth";
 import type { Tx } from "@medveris/db";
@@ -21,6 +21,7 @@ import { auditMeta, ensureMatch, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, NotFoundError } from "../lib/errors.js";
 import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
+import { loadStaffAccessActor } from "../services/access.js";
 import type { AppEnv } from "../types.js";
 
 export const clinicalRoutes = new Hono<AppEnv>();
@@ -222,7 +223,13 @@ clinicalRoutes.put("/entries/:id/draft", async (c) => {
 
 clinicalRoutes.post("/entries/:id/sign", async (c) => {
   requireStaff(c);
-  assertSign(actor(c));
+  const access = await loadStaffAccessActor(c);
+  assertAuthorized(access.actor, "clinical.note.sign", {
+    kind: "clinical-record",
+    tenantId: access.actor.tenantId,
+    patientId: access.actor.patientId,
+    requiresCredential: true,
+  });
   const auth = c.get("auth")!;
   const deps = c.get("deps");
   const entryId = uuidSchema.parse(c.req.param("id"));
@@ -268,7 +275,13 @@ clinicalRoutes.post("/entries/:id/sign", async (c) => {
 
 clinicalRoutes.post("/entries/:id/amendments", async (c) => {
   requireStaff(c);
-  assertSign(actor(c));
+  const access = await loadStaffAccessActor(c);
+  assertAuthorized(access.actor, "clinical.note.amend", {
+    kind: "clinical-record",
+    tenantId: access.actor.tenantId,
+    patientId: access.actor.patientId,
+    requiresCredential: true,
+  });
   const auth = c.get("auth")!;
   const deps = c.get("deps");
   const entryId = uuidSchema.parse(c.req.param("id"));

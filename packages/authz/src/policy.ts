@@ -233,6 +233,14 @@ export function authorize(actor: PolicyActor, action: Permission, resource: Reso
     if (action === "role_grant.approve" || action === "privilege.review") return deny(action, "grant-expired");
   }
 
+  if (action === "clinical.note.sign" || action === "clinical.note.amend") {
+    const privilegeHeld = (actor.privileges ?? []).includes("CLIN-SIGN");
+    const credentialRequired = true;
+    if (!privilegeHeld || (credentialRequired && actor.credentialValid === false)) {
+      return deny(action, "credential-invalid");
+    }
+  }
+
   return allow(action);
 }
 
