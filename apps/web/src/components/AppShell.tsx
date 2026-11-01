@@ -102,6 +102,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/platform-integrations", label: "Integrations", platform: true },
       { to: "/reviewer", label: "Credential review", platform: true },
       { to: "/platform-billing", label: "Platform billing", platform: true },
+      { to: "/platform-observability", label: "Observability", platform: true },
       { to: "/security", label: "Session security", staffOnly: true },
     ],
   },

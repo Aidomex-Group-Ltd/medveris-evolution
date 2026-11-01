@@ -85,6 +85,15 @@ export interface AppConfig {
   observability: {
     requestLogSampleRate: number;
   };
+  /** Read-only Cloudflare API used by the platform observability dashboard; disabled until configured. */
+  cloudflare: {
+    enabled: boolean;
+    /** Token is a Worker secret in staging/production; never logged or returned by the API. */
+    apiToken: string | null;
+    accountId: string | null;
+    timeoutMs: number;
+    cacheTtlMs: number;
+  };
   realtime: {
     enabled: boolean;
     /** Origins allowed to open WebSockets; always includes APP_ORIGIN. */
@@ -480,6 +489,13 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     },
     observability: {
       requestLogSampleRate: fraction(env.REQUEST_LOG_SAMPLE_RATE, appEnv === "production" ? 0.1 : 1),
+    },
+    cloudflare: {
+      enabled: bool(env.CLOUDFLARE_OBSERVABILITY_ENABLED, false),
+      apiToken: env.CLOUDFLARE_API_TOKEN?.trim() || null,
+      accountId: (env.CLOUDFLARE_ACCOUNT_ID ?? "").trim() || null,
+      timeoutMs: Math.max(1_000, Math.min(integer(env.CLOUDFLARE_TIMEOUT_MS, 10_000), 30_000)),
+      cacheTtlMs: Math.max(60_000, Math.min(integer(env.CLOUDFLARE_CACHE_TTL_MS, 60_000), 300_000)),
     },
     realtime: {
       enabled: bool(env.REALTIME_ENABLED, false),

@@ -97,6 +97,7 @@ const HelpSupportPage = lazyPage(() => import("./pages/HelpSupportPage"), "HelpS
 const ContactsPage = lazyPage(() => import("./pages/ContactsPage"), "ContactsPage");
 const SubscriptionPage = lazyPage(() => import("./pages/SubscriptionPage"), "SubscriptionPage");
 const PlatformBillingPage = lazyPage(() => import("./pages/PlatformBillingPage"), "PlatformBillingPage");
+const PlatformObservabilityPage = lazyPage(() => import("./pages/PlatformObservabilityPage"), "PlatformObservabilityPage");
 
 function NotFoundPage() {
   return (
@@ -160,6 +161,7 @@ export function App() {
         <Route path="price-list" element={<ProtectedRoute roles={CASHIER_ROLES}><PriceListPage /></ProtectedRoute>} />
         <Route path="subscription" element={<ProtectedRoute staff><SubscriptionPage /></ProtectedRoute>} />
         <Route path="platform-billing" element={<ProtectedRoute platform><PlatformBillingPage /></ProtectedRoute>} />
+        <Route path="platform-observability" element={<ProtectedRoute platform><PlatformObservabilityPage /></ProtectedRoute>} />
         <Route path="visits" element={<ProtectedRoute roles={VISIT_ROLES}><VisitsPage /></ProtectedRoute>} />
         <Route path="work-queues/:department" element={<ProtectedRoute roles={VISIT_ROLES}><WorkQueuePage /></ProtectedRoute>} />
         <Route path="programmes" element={<ProtectedRoute roles={["nurse", "clinician"]}><ProgrammesPage /></ProtectedRoute>} />

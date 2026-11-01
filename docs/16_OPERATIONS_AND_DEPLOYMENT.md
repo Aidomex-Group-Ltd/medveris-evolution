@@ -60,6 +60,16 @@ A release artifact records commit, dependency lock hash, migration set, configur
 
 Liveness confirms process/service reachability without database details. Restricted readiness checks validate required dependencies. Track API latency/errors, authorization denials, authentication failures, database pool exhaustion, audit persistence failure, outbox age, dead-letter depth, export volume, credential verification backlog, device lag and model failure rates. Logs contain correlation IDs and minimal references, not clinical narratives or bearer tokens. Clinical device alerts and infrastructure alarms have different owners.
 
+### Platform observability dashboard (`/platform/observability`)
+
+Platform operators open **Governance → Observability** (or `/platform-observability`) for a read-only view of Cloudflare Workers Logs/Traces/metrics plus this deployment's outbox and integration health. The browser never talks to Cloudflare: every call is proxied by the API.
+
+1. **Token.** Create a Cloudflare API token with Account → Workers Logs read (and Account Analytics read if HTTP metrics are needed) scoped to this account. Store it as a Worker secret `CLOUDFLARE_API_TOKEN` in staging first; production can follow after a staging verification. Set `CLOUDFLARE_ACCOUNT_ID` to the account ID (`6337ed24a5f8ff4ec3f74517a55a7e6b` for the current account) and `CLOUDFLARE_OBSERVABILITY_ENABLED=true`.
+2. **Disabled-by-default.** Without the token every Cloudflare-backed endpoint returns `{ ok: false, source: "unavailable", error: "… not configured …" }` rather than empty metrics. Local counters (latency, breakers, outbox, integrations) are always live.
+3. **Privacy.** The proxy requests only roll-ups (invocation counts, outcomes, durations). Workers Logs are emitted through `safeFields` at write time; raw log bodies are never proxied. The token is never logged, returned, or exposed to the browser.
+4. **Caching.** Cloudflare responses are cached in-memory for at least 60 seconds (`CLOUDFLARE_CACHE_TTL_MS`). On a failed refresh the last successful snapshot is served with `stale: true`.
+5. **RBAC.** Endpoints under `/api/v1/platform/observability/*` require the `platform_operator` role (`platform_roles`). Staff without that role receive 403.
+
 Assign an on-call owner and escalation path before clinical use. Audit persistence failure blocks affected protected operations and prompts downtime procedure. An unavailable model, ledger anchor or email delivery must not appear as successful. Keep status messages truthful and avoid revealing sensitive incident details to unprivileged users.
 
 ## Backup and recovery

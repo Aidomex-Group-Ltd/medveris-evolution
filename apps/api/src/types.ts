@@ -9,6 +9,7 @@ import type { StorageAdapter } from "./lib/storage.js";
 import type { RequestAnnotations } from "./lib/observability.js";
 import type { RateLimiter } from "./lib/rate-limit.js";
 import type { RealtimePublisher } from "./realtime/publisher.js";
+import type { CloudflareObservabilityClient } from "./observability/cloudflare-client.js";
 
 export interface UserRecord {
   id: string;
@@ -100,6 +101,8 @@ export interface AppDeps {
   yoTransport?: FetchLike;
   /** Exchange-rate provider; absent means one is built from `config.fx`. Tests inject a test double. */
   fxProvider?: FxProvider | null;
+  /** Cloudflare observability proxy; absent means one is built from `config.cloudflare` per request. */
+  cloudflareObservability?: CloudflareObservabilityClient | null;
 }
 
 export interface AppVariables {
