@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { randomToken, sha256Hex } from "@medveris/auth";
+// z is imported locally from zod for schema validation
+import { z } from "zod";
 import { createInvitationSchema, dicomwebVerifySchema, updateMembershipSchema, uuidSchema } from "@medveris/contracts";
 import { assertMembershipAdmin, type ActorContext, type Role } from "@medveris/authz";
 import type { Tx } from "@medveris/db";
@@ -399,3 +401,173 @@ adminRoutes.post("/integrations/dicomweb/verify", async (c) => {
   const status = integrationStatus(deps.config, "dicomweb", (await loadVerifications(deps.sql, deps.config)).dicomweb);
   return c.json({ id, outcome: run.outcome, checks: run.checks, status });
 });
+
+/**
+ * Elevate a user to platform_operator role.
+ * Only an existing platform_operator may grant this role.
+ * Facility administrators and all other roles receive 403.
+ * Self-elevation and targets already holding platform_operator are rejected (409).
+ * Validates input with zod: userId must be a UUID, notes optional max 500 chars.
+ * Performs role change and audit write in one transaction.
+ * Does not return email; returns minimal data (userId, role, timestamp).
+ */
+adminRoutes.post(
+  "/platform-operator/elevate",
+  async (c) => {
+    const auth = c.get("auth")!;
+    const deps = c.get("deps");
+
+    // Validate input with zod
+    const body = await z.object({
+      userId: z.string().uuid(),
+      notes: z.string().max(500).optional(),
+    }).safeParse(c.req.query() || {});
+
+    if (!body.success) {
+      throw new ValidationError("Invalid input: userId must be a UUID, notes must be under 500 chars");
+    }
+
+    const userId = body.data.userId;
+    const notes = body.data.notes;
+
+    // Only platform_operator may grant this role
+    if (!auth.platformRoles.includes("platform_operator")) {
+      throw new ForbiddenError("Only platform_operator may elevate users to platform_operator");
+    }
+
+    // Use withStaffActor for transaction
+    const result = await withStaffActor(c, async (tx) => {
+      // Verify user exists
+      const [user] = await tx`select id, email from users where id = ${userId}`;
+      if (!user) {
+        throw new NotFoundError("User not found");
+      }
+
+      // Reject self-elevation
+      if (auth.user.id === userId) {
+        throw new ConflictError("Users may not elevate themselves to platform_operator");
+      }
+
+      // Reject if user already has platform_operator (409 - no overwrite)
+      const [existingRole] = await tx`select role from platform_roles where user_id = ${userId}`;
+      if (existingRole && existingRole.role === "platform_operator") {
+        throw new ConflictError("User already holds platform_operator role");
+      }
+
+      // Insert platform role (insert only, no upsert)
+      await tx`
+        insert into platform_roles (user_id, role)
+        values (${userId}, 'platform_operator')
+      `;
+
+      // Audit log - writeAudit with real signature
+      await writeAudit(tx, deps.config, {
+        tenantId: auth.activeTenant!.id,
+        actorKind: "staff",
+        actorUserId: auth.user.id,
+        actorRoles: auth.activeTenant!.roles,
+        action: "platform_operator.elevate",
+        resourceType: "PlatformRole",
+        resourceId: userId,
+        ...auditMeta(c),
+        metadata: { role: "platform_operator", elevatedBy: auth.user.id, notes }
+      });
+
+      return {
+        userId: user.id,
+        role: "platform_operator"
+      };
+    });
+
+    return c.json({
+      ok: true,
+      elevated: {
+        userId: result.userId,
+        role: result.role,
+        elevatedAt: new Date().toISOString()
+      }
+    });
+  }
+);
+
+/**
+ * Revoke a user's platform_operator role.
+ * Only an existing platform_operator may revoke this role.
+ * Self-revocation is rejected (409).
+ * Users without platform_operator role are rejected (403).
+ * The role is removed (delete), not overwritten.
+ * Validates input with zod: userId must be a UUID.
+ * Performs role removal and audit write in one transaction.
+ * Does not return email; returns minimal data (userId, role, timestamp).
+ */
+adminRoutes.post(
+  "/platform-operator/revoke",
+  async (c) => {
+    const auth = c.get("auth")!;
+    const deps = c.get("deps");
+
+    // Validate input with zod
+    const body = await z.object({
+      userId: z.string().uuid(),
+    }).safeParse(c.req.query() || {});
+
+    if (!body.success) {
+      throw new ValidationError("Invalid input: userId must be a UUID");
+    }
+
+    const userId = body.data.userId;
+
+    // Only platform_operator may revoke this role
+    if (!auth.platformRoles.includes("platform_operator")) {
+      throw new ForbiddenError("Only platform_operator may revoke platform_operator role");
+    }
+
+    // Use withStaffActor for transaction
+    const result = await withStaffActor(c, async (tx) => {
+      // Verify user exists and has platform_operator role
+      const [existingRole] = await tx`select role from platform_roles where user_id = ${userId}`;
+      if (!existingRole) {
+        throw new NotFoundError("User does not hold platform_operator role");
+      }
+
+      // Reject self-revocation
+      if (auth.user.id === userId) {
+        throw new ConflictError("Users may not revoke their own platform_operator role");
+      }
+
+      // Remove platform role
+      await tx`
+        delete from platform_roles
+        where user_id = ${userId}
+      `;
+
+      // Audit log
+      await writeAudit(tx, deps.config, {
+        tenantId: auth.activeTenant!.id,
+        actorKind: "staff",
+        actorUserId: auth.user.id,
+        actorRoles: auth.activeTenant!.roles,
+        action: "platform_operator.revoke",
+        resourceType: "PlatformRole",
+        resourceId: userId,
+        ...auditMeta(c),
+        metadata: { role: "platform_operator", revokedBy: auth.user.id }
+      });
+
+      return {
+        userId: existingRole.userId,
+        role: null as string | null,
+        revokedAt: new Date().toISOString()
+      };
+    });
+
+    return c.json({
+      ok: true,
+      revoked: {
+        userId: result.userId,
+        role: result.role,
+        revokedAt: result.revokedAt
+      }
+    });
+  }
+);
