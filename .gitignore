@@ -22,3 +22,4 @@ db.env
 seed.env
 backup-verification.json
 *.pem
+.aider*
