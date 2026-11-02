@@ -30,6 +30,18 @@ export function hasCsrfToken(): boolean {
   return csrfToken !== "";
 }
 
+function fallbackMessage(status: number): string {
+  if (status === 400 || status === 422) return "Some of the details are not valid. Check them and try again.";
+  if (status === 401) return "Please sign in and try again.";
+  if (status === 403) return "You do not have permission to do that.";
+  if (status === 404) return "We could not find what you were looking for.";
+  if (status === 409) return "That conflicts with something that already exists. Refresh and try again.";
+  if (status === 429) return "Too many attempts. Wait a moment and try again.";
+  if (status === 503) return "Medveris is temporarily unavailable. Try again shortly.";
+  if (status >= 500) return "Something went wrong on our side. Try again shortly.";
+  return `Request failed (${status})`;
+}
+
 export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<T> {
   const method = options.method ?? "GET";
   const headers: Record<string, string> = { accept: "application/json", ...(options.headers ?? {}) };
@@ -54,7 +66,7 @@ export async function api<T>(path: string, options: { method?: string; body?: un
     throw new ApiError(
       response.status,
       body.error?.code ?? "request_failed",
-      body.error?.message ?? `Request failed (${response.status})`,
+      body.error?.message ?? fallbackMessage(response.status),
       body.error?.correlationId,
       body.error?.details,
     );

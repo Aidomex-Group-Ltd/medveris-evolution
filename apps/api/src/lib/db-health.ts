@@ -13,6 +13,20 @@ const CONNECTION_CODES = new Set([
  */
 const UNAVAILABLE_SQLSTATES = /^(08\d{3}|57P0[1-3]|53300|25006)$/;
 
+/** Bounded, redacted error detail for server logs; never returned to clients. */
+export function databaseErrorSummary(error: unknown): { errorClass: string; errorCode: string | null; message: string } {
+  const record = (error ?? {}) as { name?: unknown; code?: unknown; message?: unknown };
+  const raw = typeof record.message === "string" ? record.message : String(error ?? "");
+  return {
+    errorClass: typeof record.name === "string" ? record.name : "Error",
+    errorCode: record.code === null || record.code === undefined ? null : String(record.code),
+    message: raw
+      .replace(/\/\/[^/\s@]+@/g, "//***@")
+      .replace(/\b(password|pwd|secret|token)\s*=\s*\S+/gi, "$1=***")
+      .slice(0, 300),
+  };
+}
+
 export function isDatabaseUnavailable(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const code = String((error as { code?: unknown }).code ?? "");
@@ -41,8 +55,8 @@ export class DatabaseUnavailableSignal extends Error {
   }
 }
 
-/** Paths answered without a database query; they neither trip nor close the breaker. */
-const DATABASE_FREE = new Set(["/api/v1/health/live", "/api/v1/public/config", "/api/v1/public/directory/map-config"]);
+/** Paths that must answer even while the primary is down; they neither trip nor close the breaker. */
+const DATABASE_FREE = new Set(["/api/health", "/api/v1/health/live", "/api/v1/public/config", "/api/v1/public/directory/map-config"]);
 
 export function needsDatabase(pathname: string): boolean {
   if (DATABASE_FREE.has(pathname)) return false;

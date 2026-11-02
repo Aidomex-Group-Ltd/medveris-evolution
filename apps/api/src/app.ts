@@ -1,11 +1,12 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { setCookie } from "hono/cookie";
 import { ShardRoutingError } from "@medveris/db";
+import { withTimeout } from "@medveris/platform";
 import { ZodError } from "zod";
 import { bodyLimit } from "hono/body-limit";
 import { authMiddleware, READ_YOUR_WRITES_COOKIE } from "./auth/middleware.js";
 import { httpCachePolicy } from "./lib/cache-policy.js";
-import { DATABASE_RETRY_AFTER_SECONDS, isDatabaseUnavailable } from "./lib/db-health.js";
+import { DATABASE_RETRY_AFTER_SECONDS, databaseErrorSummary, isDatabaseUnavailable } from "./lib/db-health.js";
 import { requestTelemetry, routeShape } from "./lib/observability.js";
 import { enforceRateLimit, RateLimitedError, requestAddress } from "./lib/rate-limit.js";
 import { AppError, nativeErrorBody } from "./lib/errors.js";
@@ -150,6 +151,19 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.use("*", authMiddleware(deps));
   app.use("*", readYourWrites());
   app.use("*", tenantWriteGuard());
+
+  // Cheap readiness probe: one SELECT 1 through Hyperdrive, no internals and no dependency names.
+  // Registered before the /api/* volume, metering and subscription guards so monitoring traffic
+  // still answers during an incident.
+  app.get("/api/health", async (c) => {
+    try {
+      await withTimeout("health.api", 2_000, () => c.get("deps").sql`select 1 as ok`);
+      return c.json({ status: "ok", db: "ok" });
+    } catch {
+      return c.json({ status: "unavailable", db: "unavailable" }, 503);
+    }
+  });
+
   app.use("/api/*", requestVolumeGuard());
   app.use("/api/*", usageMeter());
   app.use("/api/*", subscriptionGuard());
@@ -257,7 +271,12 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
       const state = (c.env as AppBindings | undefined)?.requestState;
       if (state) state.databaseUnavailable = true;
       const appError = new AppError(503, "database_unavailable", "The service is temporarily unavailable. Try again shortly.");
-      console.error(JSON.stringify({ event: "database_unavailable", correlationId: correlation, path: routeShape(c.req.path), errorCode: String((error as { code?: unknown }).code ?? "") }));
+      console.error(JSON.stringify({
+        event: "database_unavailable",
+        correlationId: correlation,
+        path: routeShape(c.req.path),
+        ...databaseErrorSummary(error),
+      }));
       c.header("retry-after", String(DATABASE_RETRY_AFTER_SECONDS));
       if (isFhirPath(c.req.path)) return fhirResponse(c, operationOutcome("error", "transient", appError.message), 503);
       return c.json(nativeErrorBody(c, appError), 503);

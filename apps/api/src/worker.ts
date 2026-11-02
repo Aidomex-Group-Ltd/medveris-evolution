@@ -8,7 +8,7 @@ import { createApp } from "./app.js";
 import { ResendEmailAdapter, UnconfiguredEmailAdapter } from "./lib/email.js";
 import { R2Storage, UnconfiguredStorage } from "./lib/storage.js";
 import { edgeCached, type CacheStore } from "./lib/edge-cache.js";
-import { DATABASE_RETRY_AFTER_SECONDS, DatabaseUnavailableSignal, needsDatabase, primaryDatabaseBreaker } from "./lib/db-health.js";
+import { DATABASE_RETRY_AFTER_SECONDS, DatabaseUnavailableSignal, databaseErrorSummary, isDatabaseUnavailable, needsDatabase, primaryDatabaseBreaker } from "./lib/db-health.js";
 import { CoordinatedRateLimiter, LocalRateLimiter } from "./lib/rate-limit.js";
 import { DurableRealtimePublisher } from "./realtime/publisher.js";
 import { handleRealtimeUpgrade, isRealtimeUpgrade } from "./realtime/upgrade.js";
@@ -49,6 +49,11 @@ const localLimiter = new LocalRateLimiter();
 function envString(env: WorkerEnv, key: string): string | undefined {
   const value = env[key];
   return typeof value === "string" ? value : undefined;
+}
+
+/** Cloudflare's Ray ID identifies one request across Worker logs without exposing request content. */
+function requestIdFrom(request: Request): string {
+  return request.headers.get("cf-ray") ?? crypto.randomUUID();
 }
 
 function runtimeConnectionString(env: WorkerEnv): string {
@@ -92,14 +97,15 @@ function getRuntime(env: WorkerEnv): Runtime {
   return runtime;
 }
 
-function misconfigured(): Response {
-  return new Response(
-    JSON.stringify({
-      resourceType: "OperationOutcome",
-      issue: [{ severity: "error", code: "exception", diagnostics: "The service is not configured correctly" }],
-    }),
-    { status: 503, headers: { "content-type": "application/fhir+json; charset=utf-8" } },
-  );
+function misconfigured(request: Request): Response {
+  const api = new URL(request.url).pathname.startsWith("/api/");
+  const body = api
+    ? { error: { code: "service_misconfigured", message: "The service is not configured correctly" } }
+    : { resourceType: "OperationOutcome", issue: [{ severity: "error", code: "exception", diagnostics: "The service is not configured correctly" }] };
+  return new Response(JSON.stringify(body), {
+    status: 503,
+    headers: { "content-type": api ? "application/json" : "application/fhir+json; charset=utf-8" },
+  });
 }
 
 function databaseUnavailable(retryAfterMs: number): Response {
@@ -127,13 +133,23 @@ async function serveApp(request: Request, env: WorkerEnv, ctx: WorkerContext, cu
     ? createSql(env.HYPERDRIVE_REPLICA.connectionString, { max: 3, connectTimeoutSeconds: 5 })
     : null;
   try {
-    if (!databaseVerified) {
+    // Readiness owns its own SELECT 1 so it can report an outage instead of being replaced by the
+    // generic misconfiguration response when the first connection attempt fails.
+    const healthPath = new URL(request.url).pathname === "/api/health";
+    if (!databaseVerified && !healthPath) {
       try {
         await assertExpectedDatabase(env, sql);
         databaseVerified = true;
       } catch (error) {
-        console.error(JSON.stringify({ event: "database_target_rejected", message: (error as Error).message }));
-        return misconfigured();
+        console.error(JSON.stringify({
+          event: "database_target_rejected",
+          requestId: requestIdFrom(request),
+          ...databaseErrorSummary(error),
+        }));
+        // A network, TLS or authentication failure is an outage, not a configuration mismatch.
+        // Rethrow so the breaker answers 503 with Retry-After and the real error stays visible.
+        if (isDatabaseUnavailable(error)) throw error;
+        return misconfigured(request);
       }
     }
     const options = {
@@ -167,8 +183,12 @@ async function handleFetch(request: Request, env: WorkerEnv, ctx: WorkerContext)
   try {
     current = getRuntime(env);
   } catch (error) {
-    console.error(JSON.stringify({ event: "worker_error", message: (error as Error).message }));
-    return misconfigured();
+    console.error(JSON.stringify({
+      event: "worker_error",
+      requestId: requestIdFrom(request),
+      ...databaseErrorSummary(error),
+    }));
+    return misconfigured(request);
   }
   if (isRealtimeUpgrade(request)) {
     const sql = createSql(runtimeConnectionString(env), { max: 1 });

@@ -109,7 +109,7 @@ export function WorkspaceSignup() {
   const [target, setTarget] = useState<FoundOrganization | null>(null);
   const [shareHistory, setShareHistory] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
-  const [failure, setFailure] = useState<{ message: string; action?: ReactNode } | null>(null);
+  const [failure, setFailure] = useState<{ title?: string; message: string; action?: ReactNode } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [created, setCreated] = useState<RegisterResult | null>(null);
 
@@ -249,6 +249,10 @@ export function WorkspaceSignup() {
         setFailure({ message: "Too many signup attempts from this network. Wait a minute, then submit again; nothing was created." });
         return;
       }
+      if (cause.status === 503) {
+        setFailure({ title: "Service temporarily unavailable", message: "Medveris cannot create workspaces right now. Nothing was created. Try again in a few minutes." });
+        return;
+      }
       const details = Array.isArray(cause.details) ? (cause.details as Array<{ path?: string; message?: string }>) : [];
       const first = details[0]?.path ?? "";
       if (first.startsWith("owner")) goTo("account");
@@ -312,7 +316,7 @@ export function WorkspaceSignup() {
 
       {steps.length ? <StepProgress steps={steps} current={stepIndex} /> : null}
       {!created ? <Notice tone="info" title="Free to start">Creating a workspace costs nothing and starts a free trial. There is no onboarding fee, and nothing is charged until an administrator reviews and accepts a paid plan.</Notice> : null}
-      {failure ? <ErrorState title="Not finished yet" message={failure.message} /> : null}
+      {failure ? <ErrorState title={failure.title ?? "We couldn't create your workspace"} message={failure.message} /> : null}
       {failure?.action ?? null}
 
       {step === "unit" ? (
