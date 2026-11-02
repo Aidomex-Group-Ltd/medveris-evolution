@@ -94,6 +94,19 @@ export interface AppConfig {
     timeoutMs: number;
     cacheTtlMs: number;
   };
+  /** Platform-operator grant workflow. */
+  platformRoles: {
+    /** Default grant duration when the request does not specify one. */
+    defaultGrantHours: number;
+    /** Maximum grant duration allowed, even when the request asks for longer. */
+    maxGrantHours: number;
+    /** A session is treated as recently MFA-verified when it verified within this many seconds. */
+    recentMfaSeconds: number;
+    /** In production, the platform is considered understaffed below this many active operators. */
+    minActiveOperators: number;
+    /** Legacy direct-elevate endpoint stays reachable only in these environments. */
+    legacyElevateEnvironments: string[];
+  };
   realtime: {
     enabled: boolean;
     /** Origins allowed to open WebSockets; always includes APP_ORIGIN. */

@@ -1,5 +1,3 @@
-import type { Context } from "hono";
-
 export class AppError extends Error {
   readonly status: number;
   readonly code: string;
@@ -49,21 +47,51 @@ export class DependencyError extends AppError {
   }
 }
 
-export function correlationId(c: Context): string {
-  const existing = c.get("correlationId" as never) as string | undefined;
-  if (existing) return existing;
-  const id = crypto.randomUUID();
-  c.set("correlationId" as never, id as never);
-  return id;
+/** Platform operator grant workflow errors. */
+export class MfaStepUpRequiredError extends AppError {
+  constructor(message = "Two-step verification is required for this action") {
+    super(403, "mfa_step_up_required", message);
+  }
 }
 
-export function nativeErrorBody(c: Context, error: AppError) {
-  return {
-    error: {
-      code: error.code,
-      message: error.message,
-      correlationId: correlationId(c),
-      ...(error.details !== undefined ? { details: error.details } : {}),
-    },
-  };
+export class StaleMfaError extends AppError {
+  constructor(message = "Two-step verification needs to be repeated because it has expired") {
+    super(403, "mfa_stale", message);
+  }
+}
+
+export class PlatformOperatorUnderstaffedError extends AppError {
+  constructor(message = "The platform does not have enough active platform operators to approve this request safely") {
+    super(409, "platform_operator_understaffed", message);
+  }
+}
+
+export class DuplicateRequestError extends AppError {
+  constructor(message = "A pending platform role request for that user already exists") {
+    super(409, "duplicate_request", message);
+  }
+}
+
+export class RequestAlreadyDecidedError extends AppError {
+  constructor(message = "That request has already been decided") {
+    super(409, "request_already_decided", message);
+  }
+}
+
+export class LastOperatorRevocationForbiddenError extends AppError {
+  constructor(message = "Revoking this grant would leave the platform without any active platform operator") {
+    super(409, "last_operator_revocation_forbidden", message);
+  }
+}
+
+export class MfaVerificationExpiredError extends AppError {
+  constructor(message = "Two-step verification has expired for this session; re-verify before continuing") {
+    super(403, "mfa_verification_expired", message);
+  }
+}
+
+export class SyntheticTargetInProductionError extends AppError {
+  constructor(message = "Platform access cannot be granted to a synthetic or demonstration account in production") {
+    super(403, "synthetic_target_in_production", message);
+  }
 }

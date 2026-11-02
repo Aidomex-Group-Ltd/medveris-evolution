@@ -1,214 +1,381 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  // Top level is for local `wrangler dev` only. Deploy staging with `npm run deploy:staging` and
-  // production with `npm run deploy:production`; both refuse placeholder IDs and verify the remote
-  // Hyperdrive configs, bucket and secrets before anything is uploaded.
-  "name": "medveris-local",
-  // Pins every remote command to the MedVeris account regardless of which account Wrangler is logged into.
-  "account_id": "6337ed24a5f8ff4ec3f74517a55a7e6b",
-  "main": "apps/api/src/worker.ts",
-  "compatibility_date": "2026-10-19",
-  "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": false,
-  "preview_urls": false,
-  "assets": {
-    "directory": "./apps/web/dist",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/fhir/*", "/terminology/*"]
-  },
-  "observability": {
-    "enabled": true,
-    "redact_query_string": true,
-    "logs": { "enabled": true, "invocation_logs": true },
-    "traces": { "enabled": true }
-  },
-  // Local connection strings come from CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
-  // and CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_JOBS; never commit them here.
-  "hyperdrive": [
-    { "binding": "HYPERDRIVE", "id": "local-only" },
-    { "binding": "HYPERDRIVE_JOBS", "id": "local-only" }
-  ],
-  "version_metadata": { "binding": "CF_VERSION_METADATA" },
-  // Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
-  "durable_objects": {
-    "bindings": [
-      { "name": "RATE_LIMITER", "class_name": "RateLimiterObject" },
-      { "name": "REALTIME", "class_name": "RealtimeHub" }
-    ]
-  },
-  "migrations": [{ "tag": "v1-scaling", "new_sqlite_classes": ["RateLimiterObject", "RealtimeHub"] }],
-  // The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
-  "queues": {
-    "producers": [
-      { "binding": "JOBS_QUEUE", "queue": "medveris-local-jobs" },
-      { "binding": "JOBS_DLQ", "queue": "medveris-local-jobs-dlq" }
-    ],
-    "consumers": [
-      { "queue": "medveris-local-jobs", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "max_concurrency": 2, "dead_letter_queue": "medveris-local-jobs-dlq" },
-      { "queue": "medveris-local-jobs-dlq", "max_batch_size": 10, "max_batch_timeout": 30, "max_retries": 3, "max_concurrency": 1 }
-    ]
-  },
-  "env": {
-    "staging": {
-      "name": "medveris-staging",
-      "workers_dev": true,
-      "preview_urls": false,
-      // Both Hyperdrive configs must be created with --caching-disabled: clinical and
-      // permission-dependent query results must never be served from a shared cache.
-      // HYPERDRIVE connects as medveris_runtime and HYPERDRIVE_JOBS as medveris_jobs, both to
-      // medveris_staging; `npm run deploy:staging:check` verifies this against the remote configs.
-      "hyperdrive": [
-        { "binding": "HYPERDRIVE", "id": "83900f032d264402bf1aaf495f4b0d23" },
-        { "binding": "HYPERDRIVE_JOBS", "id": "13b44b13563a4d3690caf6484acaff4e" }
-      ],
-      "r2_buckets": [
-        { "binding": "UPLOADS", "bucket_name": "medveris-staging-uploads" }
-      ],
-      // Blue-green releases (scripts/staging-deploy.mjs) read the answering version from this binding.
-      "version_metadata": { "binding": "CF_VERSION_METADATA" },
-      // Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
-      "durable_objects": {
-        "bindings": [
-          { "name": "RATE_LIMITER", "class_name": "RateLimiterObject" },
-          { "name": "REALTIME", "class_name": "RealtimeHub" }
-        ]
-      },
-      "migrations": [{ "tag": "v1-scaling", "new_sqlite_classes": ["RateLimiterObject", "RealtimeHub"] }],
-      // The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
-      "queues": {
-        "producers": [
-          { "binding": "JOBS_QUEUE", "queue": "medveris-staging-jobs" },
-          { "binding": "JOBS_DLQ", "queue": "medveris-staging-jobs-dlq" }
-        ],
-        "consumers": [
-          { "queue": "medveris-staging-jobs", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "max_concurrency": 2, "dead_letter_queue": "medveris-staging-jobs-dlq" },
-          { "queue": "medveris-staging-jobs-dlq", "max_batch_size": 10, "max_batch_timeout": 30, "max_retries": 3, "max_concurrency": 1 }
-        ]
-      },
-      "triggers": { "crons": ["*/5 * * * *"] },
-      "vars": {
-        "APP_ENV": "staging",
-        "APP_ORIGIN": "https://medveris-staging.aidomexgroupltd.workers.dev",
-        "EXPECTED_DATABASE_NAME": "medveris_staging",
-        "AUDIT_SIGNING_KEY_ID": "staging-key-1",
-        // medveris.online is the Resend-verified sending domain; RESEND_API_KEY is a Worker secret.
-        "EMAIL_ADAPTER": "resend",
-        "EMAIL_FROM": "Medveris <no-reply@medveris.online>",
-        "STORAGE_ADAPTER": "r2",
-        "TERMINOLOGY_MODE": "synthetic",
-        "DEV_SHOW_TOTP_SECRETS": "false",
-        "FHIR_EXTERNAL_WRITES_ENABLED": "false",
-        "FHIR_BULK_EXPORT_ENABLED": "false",
-        // The cron imports public content from the official sources seeded by migration 027.
-        "CONTENT_FEEDS_ENABLED": "true",
-        // Live updates are verified on synthetic staging data before any production use.
-        "REALTIME_ENABLED": "true",
-        // Yo! sandbox collections are configured entirely as Worker secrets (FEATURE_PAYMENTS, YO_MODE,
-        // YO_API_USERNAME, YO_API_PASSWORD, YO_PUBLIC_KEY, YO_NOTIFICATION_BASE_URL); none may be a var here.
-        "REQUEST_LOG_SAMPLE_RATE": "1",
-        // Statuses, reminders and banners only; growth features are not paused on staging.
-        "BILLING_ENFORCEMENT": "notify",
-        "USAGE_METERING": "true",
-        // LivePay payment provider. The API key and webhook secret are Worker secrets.
-        "LIVEPAY_ENDPOINT_URL": "https://medveris.online/webhook"
-      },
-      "secrets": {
-        "required": [
-          "SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY",
-          "FEATURE_PAYMENTS", "YO_MODE", "YO_API_USERNAME", "YO_API_PASSWORD", "YO_PUBLIC_KEY", "YO_NOTIFICATION_BASE_URL",
-          "LIVEPAY_API_KEY", "LIVEPAY_WEBHOOK_SECRET"
-        ]
-      }
-    },
-    "production": {
-      "name": "medveris-production",
-      // Keep workers.dev available as a verification origin alongside the production custom domain.
-      "workers_dev": true,
-      "preview_urls": false,
-      "routes": [
-        { "pattern": "medveris.online", "custom_domain": true }
-      ],
-      // Both configs need --caching-disabled and verify-full TLS on a PostgreSQL server that is separate
-      // from staging: HYPERDRIVE as medveris_runtime, HYPERDRIVE_JOBS as medveris_jobs, both on
-      // medveris_production (Aiven service medverispro).
-      "hyperdrive": [
-        { "binding": "HYPERDRIVE", "id": "c6e463fe4d6649a3a41c7c38fee16d3d" },
-        { "binding": "HYPERDRIVE_JOBS", "id": "770ba2f6008d4b7d97e9045f38d987fa" }
-      ],
-      "r2_buckets": [
-        { "binding": "UPLOADS", "bucket_name": "medveris-production-uploads" }
-      ],
-      "version_metadata": { "binding": "CF_VERSION_METADATA" },
-      // Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
-      "durable_objects": {
-        "bindings": [
-          { "name": "RATE_LIMITER", "class_name": "RateLimiterObject" },
-          { "name": "REALTIME", "class_name": "RealtimeHub" }
-        ]
-      },
-      "migrations": [{ "tag": "v1-scaling", "new_sqlite_classes": ["RateLimiterObject", "RealtimeHub"] }],
-      // The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
-      "queues": {
-        "producers": [
-          { "binding": "JOBS_QUEUE", "queue": "medveris-production-jobs" },
-          { "binding": "JOBS_DLQ", "queue": "medveris-production-jobs-dlq" }
-        ],
-        "consumers": [
-          { "queue": "medveris-production-jobs", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "max_concurrency": 2, "dead_letter_queue": "medveris-production-jobs-dlq" },
-          { "queue": "medveris-production-jobs-dlq", "max_batch_size": 10, "max_batch_timeout": 30, "max_retries": 3, "max_concurrency": 1 }
-        ]
-      },
-      "observability": {
-        "enabled": true,
-        "redact_query_string": true,
-        "logs": { "enabled": true, "invocation_logs": true },
-        "traces": { "enabled": true }
-      },
-      "triggers": { "crons": ["*/5 * * * *"] },
-      "vars": {
-        "APP_ENV": "production",
-        "APP_ORIGIN": "https://medveris.online",
-        "EXPECTED_DATABASE_NAME": "medveris_production",
-        "AUDIT_SIGNING_KEY_ID": "production-key-1",
-        "EMAIL_ADAPTER": "resend",
-        "EMAIL_FROM": "Medveris <no-reply@medveris.online>",
-        "STORAGE_ADAPTER": "r2",
-        // No licensed terminology service is contracted: coded entries report 503 instead of synthetic codes.
-        "TERMINOLOGY_MODE": "unavailable",
-        "DEV_SHOW_TOTP_SECRETS": "false",
-        "FHIR_EXTERNAL_WRITES_ENABLED": "false",
-        "FHIR_BULK_EXPORT_ENABLED": "false",
-        // Auto-published imports need content-governance approval before production use.
-        "CONTENT_FEEDS_ENABLED": "false",
-        "DIRECTORY_SPONSORED_LISTINGS": "false",
-        // PACS / DICOMweb: set FEATURE_DICOMWEB=true with DICOMWEB_BASE_URL and DICOMWEB_AUTH here,
-        // add the matching credentials to secrets.required, then put the values with `wrangler secret put`.
-        // The PACS stays unavailable until a platform operator records a passing conformance run.
-        // See docs/22_PACS_DICOMWEB_RUNBOOK.md.
-        "FEATURE_DICOMWEB": "false",
-        "FEATURE_LAB": "false",
-        "FEATURE_PHARMACY": "false",
-        "FEATURE_TELEMEDICINE": "false",
-        "FEATURE_DEVICES": "false",
-        "FEATURE_AI": "false",
-        // Yo! mobile money: set FEATURE_PAYMENTS=true and YO_MODE=production, and add YO_API_USERNAME,
-        // YO_API_PASSWORD and YO_PUBLIC_KEY to secrets.required (wrangler secret put) before enabling.
-        "FEATURE_PAYMENTS": "false",
-        "YO_MODE": "disabled",
-        // LivePay payment provider. The API key and webhook secret are Worker secrets.
-        "LIVEPAY_ENDPOINT_URL": "https://medveris.online/webhook",
-        "FEATURE_PUBLIC_HEALTH": "false",
-        "FEATURE_LEDGER_ANCHORING": "false",
-        // Off until staging failover and WebSocket verification are signed off.
-        "REALTIME_ENABLED": "false",
-        "REQUEST_LOG_SAMPLE_RATE": "0.1"
-      },
-      "secrets": {
-        "required": [
-          "SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY",
-          "LIVEPAY_API_KEY", "LIVEPAY_WEBHOOK_SECRET"
-        ]
-      }
-    }
-  }
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	// Top level is for local `wrangler dev` only. Deploy staging with `npm run deploy:staging` and
+	// production with `npm run deploy:production`; both refuse placeholder IDs and verify the remote
+	// Hyperdrive configs, bucket and secrets before anything is uploaded.
+	"name": "medveris-local",
+	// Pins every remote command to the MedVeris account regardless of which account Wrangler is logged into.
+	"account_id": "6337ed24a5f8ff4ec3f74517a55a7e6b",
+	"main": "apps/api/src/worker.ts",
+	"compatibility_date": "2026-10-19",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"workers_dev": false,
+	"preview_urls": false,
+	"assets": {
+		"directory": "./apps/web/dist",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/api/*",
+			"/fhir/*",
+			"/terminology/*"
+		]
+	},
+	"observability": {
+		"enabled": true,
+		"redact_query_string": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": true
+		},
+		"traces": {
+			"enabled": true
+		}
+	},
+	// Local connection strings come from CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+	// and CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_JOBS; never commit them here.
+	"hyperdrive": [
+		{
+			"binding": "HYPERDRIVE",
+			"id": "d9437ca9486d4e608c3d315fdc46f25f"
+		},
+		{
+			"binding": "HYPERDRIVE_JOBS",
+			"id": "21c6654b3c0545e39676597039b1d0ec"
+		}
+	],
+	"version_metadata": {
+		"binding": "CF_VERSION_METADATA"
+	},
+	// Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RATE_LIMITER",
+				"class_name": "RateLimiterObject"
+			},
+			{
+				"name": "REALTIME",
+				"class_name": "RealtimeHub"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1-scaling",
+			"new_sqlite_classes": [
+				"RateLimiterObject",
+				"RealtimeHub"
+			]
+		}
+	],
+	// The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
+	"queues": {
+		"producers": [
+			{
+				"binding": "JOBS_QUEUE",
+				"queue": "medveris-local-jobs"
+			},
+			{
+				"binding": "JOBS_DLQ",
+				"queue": "medveris-local-jobs-dlq"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "medveris-local-jobs",
+				"max_batch_size": 10,
+				"max_batch_timeout": 5,
+				"max_retries": 8,
+				"max_concurrency": 2,
+				"dead_letter_queue": "medveris-local-jobs-dlq"
+			},
+			{
+				"queue": "medveris-local-jobs-dlq",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30,
+				"max_retries": 3,
+				"max_concurrency": 1
+			}
+		]
+	},
+	"env": {
+		"staging": {
+			"name": "medveris-staging",
+			"workers_dev": true,
+			"preview_urls": false,
+			// Both Hyperdrive configs must be created with --caching-disabled: clinical and
+			// permission-dependent query results must never be served from a shared cache.
+			// HYPERDRIVE connects as medveris_runtime and HYPERDRIVE_JOBS as medveris_jobs, both to
+			// medveris_staging; `npm run deploy:staging:check` verifies this against the remote configs.
+			"hyperdrive": [
+				{
+					"binding": "HYPERDRIVE",
+					"id": "83900f032d264402bf1aaf495f4b0d23"
+				},
+				{
+					"binding": "HYPERDRIVE_JOBS",
+					"id": "13b44b13563a4d3690caf6484acaff4e"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "UPLOADS",
+					"bucket_name": "medveris-staging-uploads"
+				}
+			],
+			// Blue-green releases (scripts/staging-deploy.mjs) read the answering version from this binding.
+			"version_metadata": {
+				"binding": "CF_VERSION_METADATA"
+			},
+			// Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "RATE_LIMITER",
+						"class_name": "RateLimiterObject"
+					},
+					{
+						"name": "REALTIME",
+						"class_name": "RealtimeHub"
+					}
+				]
+			},
+			"migrations": [
+				{
+					"tag": "v1-scaling",
+					"new_sqlite_classes": [
+						"RateLimiterObject",
+						"RealtimeHub"
+					]
+				}
+			],
+			// The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
+			"queues": {
+				"producers": [
+					{
+						"binding": "JOBS_QUEUE",
+						"queue": "medveris-staging-jobs"
+					},
+					{
+						"binding": "JOBS_DLQ",
+						"queue": "medveris-staging-jobs-dlq"
+					}
+				],
+				"consumers": [
+					{
+						"queue": "medveris-staging-jobs",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 8,
+						"max_concurrency": 2,
+						"dead_letter_queue": "medveris-staging-jobs-dlq"
+					},
+					{
+						"queue": "medveris-staging-jobs-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 30,
+						"max_retries": 3,
+						"max_concurrency": 1
+					}
+				]
+			},
+			"triggers": {
+				"crons": [
+					"*/5 * * * *"
+				]
+			},
+			"vars": {
+				"APP_ENV": "staging",
+				"APP_ORIGIN": "https://medveris-staging.aidomexgroupltd.workers.dev",
+				"EXPECTED_DATABASE_NAME": "medveris_staging",
+				"AUDIT_SIGNING_KEY_ID": "staging-key-1",
+				// medveris.online is the Resend-verified sending domain; RESEND_API_KEY is a Worker secret.
+				"EMAIL_ADAPTER": "resend",
+				"EMAIL_FROM": "Medveris <no-reply@medveris.online>",
+				"STORAGE_ADAPTER": "r2",
+				"TERMINOLOGY_MODE": "synthetic",
+				"DEV_SHOW_TOTP_SECRETS": "false",
+				"FHIR_EXTERNAL_WRITES_ENABLED": "false",
+				"FHIR_BULK_EXPORT_ENABLED": "false",
+				// The cron imports public content from the official sources seeded by migration 027.
+				"CONTENT_FEEDS_ENABLED": "true",
+				// Live updates are verified on synthetic staging data before any production use.
+				"REALTIME_ENABLED": "true",
+				// Yo! sandbox collections are configured entirely as Worker secrets (FEATURE_PAYMENTS, YO_MODE,
+				// YO_API_USERNAME, YO_API_PASSWORD, YO_PUBLIC_KEY, YO_NOTIFICATION_BASE_URL); none may be a var here.
+				"REQUEST_LOG_SAMPLE_RATE": "1",
+				// Statuses, reminders and banners only; growth features are not paused on staging.
+				"BILLING_ENFORCEMENT": "notify",
+				"USAGE_METERING": "true",
+				// LivePay payment provider. The API key and webhook secret are Worker secrets.
+				"LIVEPAY_ENDPOINT_URL": "https://medveris.online/webhook"
+			},
+			"secrets": {
+				"required": [
+					"SESSION_SECRET",
+					"AUDIT_SIGNING_KEY",
+					"MFA_ENCRYPTION_KEY",
+					"RESEND_API_KEY",
+					"FEATURE_PAYMENTS",
+					"YO_MODE",
+					"YO_API_USERNAME",
+					"YO_API_PASSWORD",
+					"YO_PUBLIC_KEY",
+					"YO_NOTIFICATION_BASE_URL",
+					"LIVEPAY_API_KEY",
+					"LIVEPAY_WEBHOOK_SECRET"
+				]
+			}
+		},
+		"production": {
+			"name": "medveris-production",
+			// Keep workers.dev available as a verification origin alongside the production custom domain.
+			"workers_dev": true,
+			"preview_urls": false,
+			"routes": [
+				{
+					"pattern": "medveris.online",
+					"custom_domain": true
+				}
+			],
+			// Neon PostgreSQL production database (ep-long-rice-b543gbw4)
+			"hyperdrive": [
+				{
+					"binding": "HYPERDRIVE",
+					"id": "d9437ca9486d4e608c3d315fdc46f25f"
+				},
+				{
+					"binding": "HYPERDRIVE_JOBS",
+					"id": "21c6654b3c0545e39676597039b1d0ec"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "UPLOADS",
+					"bucket_name": "medveris-production-uploads"
+				}
+			],
+			"version_metadata": {
+				"binding": "CF_VERSION_METADATA"
+			},
+			// Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "RATE_LIMITER",
+						"class_name": "RateLimiterObject"
+					},
+					{
+						"name": "REALTIME",
+						"class_name": "RealtimeHub"
+					}
+				]
+			},
+			"migrations": [
+				{
+					"tag": "v1-scaling",
+					"new_sqlite_classes": [
+						"RateLimiterObject",
+						"RealtimeHub"
+					]
+				}
+			],
+			// The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
+			"queues": {
+				"producers": [
+					{
+						"binding": "JOBS_QUEUE",
+						"queue": "medveris-production-jobs"
+					},
+					{
+						"binding": "JOBS_DLQ",
+						"queue": "medveris-production-jobs-dlq"
+					}
+				],
+				"consumers": [
+					{
+						"queue": "medveris-production-jobs",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 8,
+						"max_concurrency": 2,
+						"dead_letter_queue": "medveris-production-jobs-dlq"
+					},
+					{
+						"queue": "medveris-production-jobs-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 30,
+						"max_retries": 3,
+						"max_concurrency": 1
+					}
+				]
+			},
+			"observability": {
+				"enabled": true,
+				"redact_query_string": true,
+				"logs": {
+					"enabled": true,
+					"invocation_logs": true
+				},
+				"traces": {
+					"enabled": true
+				}
+			},
+			"triggers": {
+				"crons": [
+					"*/5 * * * *"
+				]
+			},
+			"vars": {
+				"APP_ENV": "production",
+				"APP_ORIGIN": "https://medveris.online",
+				"EXPECTED_DATABASE_NAME": "neondb",
+				"AUDIT_SIGNING_KEY_ID": "production-key-1",
+				"EMAIL_ADAPTER": "resend",
+				"EMAIL_FROM": "Medveris <no-reply@medveris.online>",
+				"STORAGE_ADAPTER": "r2",
+				// No licensed terminology service is contracted: coded entries report 503 instead of synthetic codes.
+				"TERMINOLOGY_MODE": "unavailable",
+				"DEV_SHOW_TOTP_SECRETS": "false",
+				"FHIR_EXTERNAL_WRITES_ENABLED": "false",
+				"FHIR_BULK_EXPORT_ENABLED": "false",
+				// Auto-published imports need content-governance approval before production use.
+				"CONTENT_FEEDS_ENABLED": "false",
+				"DIRECTORY_SPONSORED_LISTINGS": "false",
+				// PACS / DICOMweb: set FEATURE_DICOMWEB=true with DICOMWEB_BASE_URL and DICOMWEB_AUTH here,
+				// add the matching credentials to secrets.required, then put the values with `wrangler secret put`.
+				// The PACS stays unavailable until a platform operator records a passing conformance run.
+				// See docs/22_PACS_DICOMWEB_RUNBOOK.md.
+				"FEATURE_DICOMWEB": "false",
+				"FEATURE_LAB": "false",
+				"FEATURE_PHARMACY": "false",
+				"FEATURE_TELEMEDICINE": "false",
+				"FEATURE_DEVICES": "false",
+				"FEATURE_AI": "false",
+				// Yo! mobile money: set FEATURE_PAYMENTS=true and YO_MODE=production, and add YO_API_USERNAME,
+				// YO_API_PASSWORD and YO_PUBLIC_KEY to secrets.required (wrangler secret put) before enabling.
+				"FEATURE_PAYMENTS": "false",
+				"YO_MODE": "disabled",
+				// LivePay payment provider. The API key and webhook secret are Worker secrets.
+				"LIVEPAY_ENDPOINT_URL": "https://medveris.online/webhook",
+				"FEATURE_PUBLIC_HEALTH": "false",
+				"FEATURE_LEDGER_ANCHORING": "false",
+				// Off until staging failover and WebSocket verification are signed off.
+				"REALTIME_ENABLED": "false",
+				"REQUEST_LOG_SAMPLE_RATE": "0.1"
+			},
+			"secrets": {
+				"required": [
+					"SESSION_SECRET",
+					"AUDIT_SIGNING_KEY",
+					"MFA_ENCRYPTION_KEY",
+					"RESEND_API_KEY",
+					"LIVEPAY_API_KEY",
+					"LIVEPAY_WEBHOOK_SECRET"
+				]
+			}
+		}
+	}
 }
