@@ -417,18 +417,15 @@ adminRoutes.post(
     const auth = c.get("auth")!;
     const deps = c.get("deps");
 
-    // Validate input with zod
-    const body = await z.object({
+    // Input comes from the JSON body only. Nothing is read from the query string,
+    // so a userId or note can never appear in a URL, referer or access log.
+    const body = await parseJson(c, z.object({
       userId: z.string().uuid(),
       notes: z.string().max(500).optional(),
-    }).safeParse(c.req.query() || {});
+    }));
 
-    if (!body.success) {
-      throw new ValidationError("Invalid input: userId must be a UUID, notes must be under 500 chars");
-    }
-
-    const userId = body.data.userId;
-    const notes = body.data.notes;
+    const userId = body.userId;
+    const notes = body.notes;
 
     // Only platform_operator may grant this role
     if (!auth.platformRoles.includes("platform_operator")) {
@@ -438,7 +435,7 @@ adminRoutes.post(
     // Use withStaffActor for transaction
     const result = await withStaffActor(c, async (tx) => {
       // Verify user exists
-      const [user] = await tx`select id, email from users where id = ${userId}`;
+      const [user] = await tx`select id from users where id = ${userId}`;
       if (!user) {
         throw new NotFoundError("User not found");
       }
@@ -506,16 +503,13 @@ adminRoutes.post(
     const auth = c.get("auth")!;
     const deps = c.get("deps");
 
-    // Validate input with zod
-    const body = await z.object({
+    // Input comes from the JSON body only. Nothing is read from the query string,
+    // so a userId can never appear in a URL, referer or access log.
+    const body = await parseJson(c, z.object({
       userId: z.string().uuid(),
-    }).safeParse(c.req.query() || {});
+    }));
 
-    if (!body.success) {
-      throw new ValidationError("Invalid input: userId must be a UUID");
-    }
-
-    const userId = body.data.userId;
+    const userId = body.userId;
 
     // Only platform_operator may revoke this role
     if (!auth.platformRoles.includes("platform_operator")) {

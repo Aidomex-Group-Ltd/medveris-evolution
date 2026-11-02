@@ -40,7 +40,6 @@ export function AboutPage() {
               licensing remain separate approvals — this software does not claim them. Patient records are never
               deleted because a subscription payment is late.
             </p>
-            <p className="mv-small"><Link to="/help#launch-risks">Review the launch-risk guidance before publishing publicly.</Link></p>
           </Card>
           <Card title="Talk to us">
             <p className="mv-small">Support is provided by {COMPANY.legalName}.</p>

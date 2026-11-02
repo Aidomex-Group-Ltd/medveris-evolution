@@ -31,7 +31,6 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:e2e": "playwright test",
-    "pacs:mock": "node scripts/fake-pacs.mjs",
     "smoke:workers": "node scripts/workers-smoke.mjs",
     "smoke:clinical": "node scripts/clinical-smoke.mjs",
     "verify:runtime": "node scripts/runtime-verify.mjs",
@@ -50,8 +49,7 @@
     "deploy:production:rollback": "node scripts/production-rollback.mjs",
     "domain:production:check": "node scripts/production-domain.mjs --check",
     "domain:production": "node scripts/production-domain.mjs",
-    "start": "node apps/api/dist/server.mjs",
-    "yo:check": "tsx scripts/yo-check.ts"
+    "start": "node apps/api/dist/server.mjs"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",

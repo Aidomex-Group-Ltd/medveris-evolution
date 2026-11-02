@@ -2,7 +2,7 @@
   "name": "Medveris",
   "short_name": "Medveris",
   "description": "Medveris synthetic outpatient care foundation",
-  "start_url": "/",
+  "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",

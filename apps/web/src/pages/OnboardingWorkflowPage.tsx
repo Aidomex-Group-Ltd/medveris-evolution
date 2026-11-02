@@ -791,7 +791,7 @@ export function OnboardingWorkflowPage() {
                     )}
 
                     <div className="mv-row" style={{ justifyContent: "flex-end", gap: 12, marginTop: 24 }}>
-                      <Button variant="ghost" type="button" onClick={() => navigate("/")}>
+                      <Button variant="ghost" type="button" onClick={() => navigate("/dashboard")}>
                         Cancel
                       </Button>
                       <Button type="submit" disabled={!isFormValid || action.busy !== null}>

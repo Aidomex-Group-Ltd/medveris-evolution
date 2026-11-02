@@ -24,7 +24,7 @@ function destination(me: MeResponse, mode: SignInMode, returnTo: string | null):
   if (returnTo) return returnTo;
   if (mode === "staff") return "/facility-staff";
   if (me.patientId) return "/portal";
-  return me.memberships.length > 1 && !me.activeTenant ? "/facility-staff" : "/";
+  return me.memberships.length > 1 && !me.activeTenant ? "/facility-staff" : "/dashboard";
 }
 
 export function LoginPage() {

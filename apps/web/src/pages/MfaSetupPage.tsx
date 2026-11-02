@@ -48,7 +48,7 @@ export function MfaSetupPage() {
 
   if (loading) return <LoadingState label="Restoring session" variant="page" />;
   if (!me) return <Navigate to="/login" replace />;
-  if (me.user.mfaEnrolled && me.user.mfaVerified && !recoveryCodes) return <Navigate to="/" replace />;
+  if (me.user.mfaEnrolled && me.user.mfaVerified && !recoveryCodes) return <Navigate to="/dashboard" replace />;
 
   async function start() {
     setBusy(true);

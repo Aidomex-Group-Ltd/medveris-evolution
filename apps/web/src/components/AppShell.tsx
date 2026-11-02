@@ -211,7 +211,7 @@ export function AppShell() {
       {navOpen ? <button type="button" className="mv-scrim" aria-label="Close navigation" tabIndex={-1} onClick={closeNavigation} /> : null}
       <aside id="app-sidebar" className={`mv-sidebar${navOpen ? " mv-sidebar--open" : ""}`}>
         <div className="mv-sidebar__head">
-          <NavLink to="/" className="mv-brand" aria-label="Medveris home">
+          <NavLink to="/dashboard" className="mv-brand" aria-label="Medveris home">
             <BrandMark />
             <span>Medveris<small>Outpatient foundation</small></span>
           </NavLink>
@@ -276,7 +276,7 @@ export function AppShell() {
           >
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
-          <NavLink to="/" className="mv-mobile-brand" aria-label="Medveris home">
+          <NavLink to="/dashboard" className="mv-mobile-brand" aria-label="Medveris home">
             <BrandMark />
             <span>Medveris</span>
           </NavLink>

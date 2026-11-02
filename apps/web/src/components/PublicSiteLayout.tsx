@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { BrandMark } from "./BrandMark";
-import { COMPANY, LAUNCH_RISK_ITEMS } from "../content/company";
+import { COMPANY } from "../content/company";
 
 const links = [
   { to: "/about", label: "About us" },
   { to: "/help", label: "Help & support" },
-  { to: "/help#launch-risks", label: `Launch risks (${LAUNCH_RISK_ITEMS.length})` },
   { to: "/contacts", label: "Contacts" },
 ];
 

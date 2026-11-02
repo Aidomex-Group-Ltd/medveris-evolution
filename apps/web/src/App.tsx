@@ -2,6 +2,7 @@ import { lazy, Suspense, type ComponentType } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { EmptyState, LoadingState, PageHeader } from "@medveris/ui";
 import { AppShell } from "./components/AppShell";
+import { RootGate } from "./pages/landing/RootGate";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
@@ -103,7 +104,7 @@ function NotFoundPage() {
   return (
     <div className="mv-stack">
       <PageHeader title="Not found" description="The requested workspace does not exist or is not available in this release." />
-      <EmptyState title="Check the address" description="Use the navigation to return to an available workspace." action={<Link to="/">Return to overview</Link>} />
+      <EmptyState title="Check the address" description="Use the navigation to return to an available workspace." action={<Link to="/dashboard">Return to overview</Link>} />
     </div>
   );
 }
@@ -126,8 +127,9 @@ export function App() {
       <Route path="/facility-staff" element={<FacilityStaffPage />} />
       <Route path="/directory" element={<DirectoryPage />} />
       <Route path="/directory/:publicId" element={<DirectoryDetailPage />} />
+      <Route path="/" element={<RootGate />} />
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
-        <Route index element={<DashboardPage />} />
+        <Route path="dashboard" element={<DashboardPage />} />
         <Route path="patients" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><PatientsPage /></ProtectedRoute>} />
         <Route path="queues" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><QueuesPage /></ProtectedRoute>} />
         <Route path="appointments" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><AppointmentsPage /></ProtectedRoute>} />
