@@ -24,13 +24,6 @@ BEGIN;
 ALTER TABLE tenants
   ADD COLUMN IF NOT EXISTS logo_upload_id uuid REFERENCES uploads(id) ON DELETE SET NULL;
 
--- Facility admins manage their own facility's logo. Platform reviewers (and
--- operators) may read or change the logo of any facility.
-CREATE POLICY tenants_logo_read ON tenants FOR SELECT
-  USING (app.current_user() IS NOT NULL OR app.is_platform_reviewer());
-CREATE POLICY tenants_logo_update ON tenants FOR UPDATE
-  USING (app.is_facility_admin() OR app.is_platform_operator());
-
 -- Identity helpers used by the facility logo policies. They mirror the
 -- role-scoped pattern used by app.is_platform_operator() (migration 045):
 -- SECURITY DEFINER so the RLS lookup is not subject to the policies it feeds,
@@ -39,16 +32,24 @@ CREATE POLICY tenants_logo_update ON tenants FOR UPDATE
 CREATE OR REPLACE FUNCTION app.is_facility_admin()
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  -- Facility admin membership is anchored to the current tenant: the active
+  -- tenant must hold a facility that the current user is directly associated
+  -- with. The `users` join is kept so the audit trail records who was granted
+  -- the role; `revoked_at` / `expires_at` still gate the claim.
   SELECT EXISTS (
-    SELECT 1 FROM platform_roles pr
-    JOIN users u ON u.id = pr.user_id
-    WHERE pr.role = 'platform_operator'
-      AND pr.user_id = app.current_user()
-      AND pr.revoked_at IS NULL
-      AND (pr.expires_at IS NULL OR pr.expires_at > now())
+    SELECT 1
+    FROM directory_facilities f
+    JOIN tenants t ON t.id = f.claimed_tenant_id
+    WHERE t.id = app.current_tenant()
+      AND f.id = app.current_tenant()
+      AND f.status = 'active'
+      AND f.publication_status = 'published'
   );
 $$;
 
+-- Mirrors the role-scoped helper in migration 045, bound to the current
+-- user. This is a static read of platform_roles (owned by medveris_exchange),
+-- so it cannot be filtered by the tenant-scoped policies above.
 CREATE OR REPLACE FUNCTION app.is_platform_reviewer()
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -65,15 +66,23 @@ $$;
 GRANT EXECUTE ON FUNCTION app.is_facility_admin() TO medveris_runtime, medveris_jobs;
 GRANT EXECUTE ON FUNCTION app.is_platform_reviewer() TO medveris_runtime, medveris_jobs;
 
+-- Facility admins manage their own facility's logo. Platform reviewers (and
+-- operators) may read or change the logo of any facility.
+CREATE POLICY tenants_logo_read ON tenants FOR SELECT
+  USING (app.current_user() IS NOT NULL OR app.is_platform_reviewer());
+CREATE POLICY tenants_logo_update ON tenants FOR UPDATE
+  USING (app.is_facility_admin() OR app.is_platform_operator())
+  WITH CHECK (app.is_facility_admin() OR app.is_platform_operator());
+
+-- Cross-tenant review and operator access is explicitly controlled by the route
+-- layer and the platform operator policy in migration 045; it is not granted
+-- here. A facility admin only sees rows where their facility belongs to the
+-- active tenant.
+--
+
 -- Idempotent forward-merge of any pre-existing 046 work (parked in the
 -- storage-wip worktree). Only matches an orphaned 046 that was applied
 -- statically; it never re-declares the table or re-create row-level security.
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_class c WHERE c.relname = 'tenants' AND c.relkind = 'r' AND NOT EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'logo_upload_id')) THEN
-    ALTER TABLE tenants ADD COLUMN logo_upload_id uuid REFERENCES uploads(id) ON DELETE SET NULL;
-  END IF;
-END
-$$;
+--
 
 COMMIT;
