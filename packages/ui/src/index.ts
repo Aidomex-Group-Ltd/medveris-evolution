@@ -6,6 +6,8 @@ export {
   EmptyState,
   ErrorState,
   Field,
+  FriendlyError,
+  FriendlyErrorToast,
   Input,
   LoadingState,
   Notice,
@@ -17,4 +19,4 @@ export {
   Tabs,
   Textarea,
 } from "./primitives";
-export type { LoadingStateProps } from "./primitives";
+export type { FriendlyErrorProps, LoadingStateProps } from "./primitives";

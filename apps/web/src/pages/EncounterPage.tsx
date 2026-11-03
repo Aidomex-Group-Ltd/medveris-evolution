@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Badge, Button, Card, DataList, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Tabs, Textarea } from "@medveris/ui";
-import { api, errorMessage } from "../lib/api";
+import { Badge, Button, Card, DataList, EmptyState, Field, FriendlyError, Input, LoadingState, Notice, PageHeader, Select, Tabs, Textarea } from "@medveris/ui";
+import { api } from "../lib/api";
+import { describeError } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { useQuery } from "../lib/useQuery";
 import type { Coding, EncounterDetail } from "../lib/types";
@@ -20,7 +21,7 @@ export function EncounterPage() {
   const [tab, setTab] = useState<"summary" | "notes" | "requests">("summary");
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [message, setMessage] = useState<string | null>(null);
   const roles = me?.activeTenant?.roles ?? [];
   const clinical = roles.some((role) => ["nurse", "clinician"].includes(role));
@@ -44,14 +45,14 @@ export function EncounterPage() {
       setMessage(`Encounter moved to ${state}.`);
       detail.reload();
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError(cause);
     } finally {
       setBusy(null);
     }
   }
 
   if (detail.loading && !detail.data) return <LoadingState label="Opening authorized chart" variant="page" />;
-  if (detail.error) return <ErrorState message={detail.error} onRetry={detail.reload} />;
+  if (detail.error) return <FriendlyError {...describeError(detail.cause)} onRetry={detail.reload} onBack={() => navigate(-1)} />;
   if (!data) return <EmptyState title="Encounter not found" description="The encounter is unavailable in this facility context." />;
 
   const encounter = data.encounter;
@@ -75,7 +76,7 @@ export function EncounterPage() {
         <div className="mv-row"><Badge tone={encounter.state === "in-progress" ? "info" : encounter.state === "triaged" ? "warning" : "neutral"}>{encounter.state}</Badge><Badge tone={data.allergies.length ? "danger" : "warning"}>Allergy: {allergyText}</Badge></div>
       </div>
 
-      {error ? <ErrorState message={error} /> : null}
+      {error ? <FriendlyError {...describeError(error)} /> : null}
       {message ? <Notice tone="success">{message}</Notice> : null}
 
       <Tabs label="Chart sections" value={tab} onChange={setTab} options={[
@@ -172,7 +173,7 @@ function ObservationForm({ encounterId, onSaved }: { encounterId: string; onSave
   const [value, setValue] = useState("");
   const [unit, setUnit] = useState("mm[Hg]");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!coding) return;
@@ -184,14 +185,14 @@ function ObservationForm({ encounterId, onSaved }: { encounterId: string; onSave
       setValue("");
       onSaved();
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError(cause);
     } finally {
       setBusy(false);
     }
   }
   return (
     <form className="mv-stack" style={{ marginTop: 14 }} onSubmit={submit}>
-      {error ? <ErrorState message={error} /> : null}
+      {error ? <FriendlyError {...describeError(error)} /> : null}
       <CodingPicker field="observation" label="Add validated observation (LOINC)" value={coding} onChange={setCoding} />
       {coding ? <div className="mv-form-grid"><Field label="Value"><Input type="number" step="any" value={value} onChange={(e) => setValue(e.target.value)} required /></Field><Field label="UCUM unit"><Select value={unit} onChange={(e) => setUnit(e.target.value)}>{UNITS.map((code) => <option key={code}>{code}</option>)}</Select></Field></div> : null}
       <Button type="submit" variant="secondary" disabled={!coding || busy || value === ""}>{busy ? "Saving…" : "Add observation"}</Button>
@@ -203,7 +204,7 @@ function FollowUpForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
   const [dueDate, setDueDate] = useState("");
   const [instructions, setInstructions] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -214,14 +215,14 @@ function FollowUpForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
       setInstructions("");
       onSaved();
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError(cause);
     } finally {
       setBusy(false);
     }
   }
   return (
     <form className="mv-stack" style={{ marginTop: 14 }} onSubmit={submit}>
-      {error ? <ErrorState message={error} /> : null}
+      {error ? <FriendlyError {...describeError(error)} /> : null}
       <Field label="Follow-up date"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required /></Field>
       <Field label="Instructions"><Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} required /></Field>
       <Button type="submit" variant="secondary" disabled={busy}>{busy ? "Saving…" : "Schedule follow-up"}</Button>
@@ -234,7 +235,7 @@ function ReferralForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
   const [reason, setReason] = useState("");
   const [priority, setPriority] = useState("routine");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -246,7 +247,7 @@ function ReferralForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
       setPriority("routine");
       onSaved();
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError(cause);
     } finally {
       setBusy(false);
     }
@@ -254,7 +255,7 @@ function ReferralForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
   return (
     <form className="mv-stack" style={{ marginTop: 14 }} onSubmit={submit}>
       <Notice tone="info">This records a local referral. It is not sent to the destination facility.</Notice>
-      {error ? <ErrorState message={error} /> : null}
+      {error ? <FriendlyError {...describeError(error)} /> : null}
       <Field label="Destination facility or service" htmlFor="referral-destination"><Input id="referral-destination" value={toFacility} onChange={(event) => setToFacility(event.target.value)} required maxLength={300} /></Field>
       <Field label="Referral reason" htmlFor="referral-reason"><Textarea id="referral-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={4000} /></Field>
       <Field label="Priority" htmlFor="referral-priority"><Select id="referral-priority" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></Select></Field>

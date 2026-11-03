@@ -283,6 +283,16 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
     }
     if (error instanceof RateLimitedError) c.header("retry-after", String(error.retryAfterSeconds));
     if (error instanceof AppError) {
+      // One structured line per failed request, keyed by the same reference the client
+      // shows. Messages are only logged outside production and never carry user input.
+      console.error(JSON.stringify({
+        event: "request_error",
+        correlationId: correlation,
+        status: error.status,
+        code: error.code,
+        path: routeShape(c.req.path),
+        ...(deps.config.appEnv === "production" ? {} : { message: error.message }),
+      }));
       if (isFhirPath(c.req.path)) {
         const code = error.status === 401 ? "login" : error.status === 403 ? "forbidden" : error.status === 404 ? "not-found" : error.status === 409 ? "conflict" : error.status === 422 ? "invalid" : error.status === 429 ? "throttled" : error.status >= 500 ? "transient" : "processing";
         return fhirResponse(c, operationOutcome("error", code, error.message), error.status);

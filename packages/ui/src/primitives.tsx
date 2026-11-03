@@ -270,14 +270,86 @@ export function LoadingState({ label = "Loading", variant = "list", rows = 4 }: 
   );
 }
 
-export function ErrorState({ title = "Unable to load", message, onRetry }: { title?: string; message: string; onRetry?: () => void }) {
+export interface FriendlyErrorProps {
+  title?: string;
+  message: string;
+  tone?: "neutral" | "warning";
+  /** Short, human hints (never field paths or machine codes). */
+  hints?: string[];
+  /** The request reference, shown small and muted under a disclosure. */
+  reference?: string;
+  onRetry?: () => void;
+  retryLabel?: string;
+  onBack?: () => void;
+  backLabel?: string;
+}
+
+/**
+ * The calm, plain-language error surface: a soft neutral/amber card, an icon, one short
+ * sentence and one clear action. The machine reference lives in a muted disclosure so it
+ * can be shared with support without shouting at the person using the app.
+ */
+export function FriendlyError({
+  title = "Something needs another look",
+  message,
+  tone = "neutral",
+  hints = [],
+  reference,
+  onRetry,
+  retryLabel = "Try again",
+  onBack,
+  backLabel = "Go back",
+}: FriendlyErrorProps) {
   return (
-    <div className="mv-alert mv-alert--danger" role="alert">
-      <strong>{title}</strong>
-      <p>{message}</p>
-      {onRetry ? <Button variant="secondary" size="sm" onClick={onRetry}>Retry</Button> : null}
+    <div className={`mv-friendly mv-friendly--${tone}`} role="alert" aria-live="polite">
+      <span className="mv-friendly__icon" aria-hidden="true">i</span>
+      <div className="mv-friendly__body">
+        <strong className="mv-friendly__title">{title}</strong>
+        <p className="mv-friendly__message">{message}</p>
+        {hints.length ? (
+          <ul className="mv-friendly__hints">
+            {hints.map((hint) => <li key={hint}>{hint}</li>)}
+          </ul>
+        ) : null}
+        {onRetry || onBack ? (
+          <div className="mv-friendly__actions">
+            {onRetry ? <Button variant="secondary" size="sm" onClick={onRetry}>{retryLabel}</Button> : null}
+            {onBack ? <Button variant="ghost" size="sm" onClick={onBack}>{backLabel}</Button> : null}
+          </div>
+        ) : null}
+        {reference ? (
+          <details className="mv-friendly__details">
+            <summary>Details</summary>
+            <code className="mv-friendly__reference">{reference}</code>
+          </details>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+/** Compact toast variant for failures that happen after an action rather than on load. */
+export function FriendlyErrorToast({ title, message, tone = "warning", reference }: Pick<FriendlyErrorProps, "title" | "message" | "tone" | "reference">) {
+  return (
+    <div className={`mv-friendly mv-friendly--toast mv-friendly--${tone}`} role="status" aria-live="polite">
+      <span className="mv-friendly__icon" aria-hidden="true">i</span>
+      <div className="mv-friendly__body">
+        {title ? <strong className="mv-friendly__title">{title}</strong> : null}
+        <p className="mv-friendly__message">{message}</p>
+        {reference ? (
+          <details className="mv-friendly__details">
+            <summary>Details</summary>
+            <code className="mv-friendly__reference">{reference}</code>
+          </details>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Backwards-compatible wrapper: existing pages get the friendly surface automatically. */
+export function ErrorState({ title = "Something needs another look", message, onRetry }: { title?: string; message: string; onRetry?: () => void }) {
+  return <FriendlyError title={title} message={message} onRetry={onRetry} />;
 }
 
 export function Notice({ tone = "info", title, children }: { tone?: Tone; title?: string; children: ReactNode }) {
