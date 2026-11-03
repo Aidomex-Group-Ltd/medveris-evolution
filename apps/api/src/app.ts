@@ -62,6 +62,7 @@ import { billingRoutes } from "./routes/billing.js";
 import { subscriptionCheckoutRoutes } from "./routes/subscription-checkout.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { subscriptionGuard, usageMeter } from "./lib/billing-middleware.js";
+import { facilityLogoRoutes } from "./routes/facility-logo.js";
 
 function isFhirPath(path: string): boolean {
   return path.startsWith("/fhir/") || path.startsWith("/terminology/fhir/");
@@ -208,6 +209,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", notificationRoutes);
   app.route("/api/v1", programmeRoutes);
   app.route("/api/v1", telehealthRoutes);
+  app.route("/api/v1", facilityLogoRoutes);
   app.route("/api/v1", deviceRoutes);
   app.route("/api/v1", aiRoutes);
   app.route("/api/v1", emergencyRoutes);

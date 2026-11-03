@@ -4,6 +4,7 @@ import { claimOutboxEvent, failOutboxEvent, outboxMetrics, reclaimStaleOutbox, t
 import { checkpointAllTenants, type CheckpointResult } from "./integrity.js";
 import { handleEvent, relayOutbox, type QueueProducer, type RealtimeSink, type RelayResult } from "./queue.js";
 import { runBillingCycle, type BillingCycleResult } from "./billing.js";
+import { maybeExpireStaleGrants, type GrantExpiryResult } from "./grants.js";
 
 export interface JobsCycleResult {
   processed: number;
@@ -16,6 +17,8 @@ export interface JobsCycleResult {
   billingError: string | null;
   notifications: number | null;
   notificationsError: string | null;
+  grants: GrantExpiryResult | null;
+  grantsError: string | null;
 }
 
 /** Subscription lifecycle work is daily or hourly in nature; running it every few minutes is enough. */
@@ -110,10 +113,11 @@ export async function runJobsCycle(
   }
   const billing = await maybeRunBilling(sql);
   const notifications = await maybeScanNotifications(sql);
+  const grants = await maybeExpireStaleGrants(sql, signingKey, keyId);
   try {
     const checkpoints = await checkpointAllTenants(sql, signingKey, keyId);
-    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing, ...notifications };
+    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing, ...notifications, ...grants };
   } catch (error) {
-    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message, ...billing, ...notifications };
+    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message, ...billing, ...notifications, ...grants };
   }
 }

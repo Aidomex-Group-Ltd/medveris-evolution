@@ -240,3 +240,58 @@ describe("HTTP guards", () => {
     expect(body.error.code).toBe("mfa_stale");
   });
 });
+
+describe("scheduled grant expiry sweep", () => {
+  // The sweep is implemented in the jobs package so the worker's scheduled handler can run it
+  // as the system actor. It mirrors apps/api/src/lib/platform-roles.ts::expireStaleGrants so the
+  // jobs package stays dependency-light.
+  const { maybeExpireStaleGrants } = require("../../apps/jobs/src/grants.js");
+
+  it("soft-revokes expired grants and writes a system audit row", async () => {
+    await cleanup();
+    try {
+      await asBootstrap(async (tx) => {
+        await tx`
+          insert into platform_roles (user_id, role, granted_at, expires_at)
+          values (${CLINICIAN}, 'platform_operator', now() - interval '2 hours', now() - interval '1 minute')
+        `;
+      });
+      const before = await asUser(CLINICIAN, (tx) => tx`select app.is_platform_operator() as op`);
+      expect(before[0]?.op).toBe(true);
+
+      const result = await maybeExpireStaleGrants(sql, config.auditSigningKey, config.auditSigningKeyId, Date.now());
+      expect(result.revoked).toBe(1);
+      expect(result.error).toBeNull();
+
+      const after = await asUser(CLINICIAN, (tx) => tx`select app.is_platform_operator() as op`);
+      expect(after[0]?.op).toBe(false);
+
+      const rows = await asBootstrap((tx) => tx`
+        select action, metadata from audit_events
+         where action = 'platform_operator.expire' and metadata->>'revoked' = '1'
+         order by occurred_at desc limit 1
+      `);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.action).toBe("platform_operator.expire");
+      expect(Number(rows[0]?.metadata?.revoked ?? 0)).toBe(1);
+
+      const grant = await asBootstrap((tx) => tx`
+        select revoked_reason from platform_roles where user_id = ${CLINICIAN} and role = 'platform_operator'
+      `);
+      expect(grant[0]?.revokedReason).toBe("grant-expired");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("is a no-op when no grants have expired", async () => {
+    await cleanup();
+    try {
+      const result = await maybeExpireStaleGrants(sql, config.auditSigningKey, config.auditSigningKeyId, Date.now());
+      expect(result.revoked).toBe(0);
+      expect(result.error).toBeNull();
+    } finally {
+      await cleanup();
+    }
+  });
+});

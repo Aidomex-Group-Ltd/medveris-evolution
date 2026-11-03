@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { uuidSchema } from "@medveris/contracts";
 import { Badge, Button, Card, DataList, EmptyState, Field, FriendlyError, Input, LoadingState, Notice, PageHeader, Select, Tabs, Textarea } from "@medveris/ui";
 import { api } from "../lib/api";
 import { describeError } from "../lib/errorMessages";
@@ -17,7 +18,11 @@ export function EncounterPage() {
   const { id } = useParams();
   const { me } = useAuth();
   const navigate = useNavigate();
-  const detail = useQuery<EncounterDetail>(id ? `/encounters/${id}` : null);
+  // Guard against a malformed or non-UUID id: let the router's 404 boundary
+  // own the page instead of sending a non-UUID id to the API (which would
+  // return 422 "Request validation failed" via the global ZodError handler).
+  const encounterPath = typeof id === "string" && uuidSchema.safeParse(id).success ? `/encounters/${id}` : null;
+  const detail = useQuery<EncounterDetail>(encounterPath);
   const [tab, setTab] = useState<"summary" | "notes" | "requests">("summary");
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);

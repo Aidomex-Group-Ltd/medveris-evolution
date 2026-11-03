@@ -243,6 +243,9 @@ export default {
       if (result.checkpointError) {
         console.error(JSON.stringify({ event: "checkpoint_failed", message: result.checkpointError }));
       }
+      if (result.grants?.error) {
+        console.error(JSON.stringify({ event: "grant_expiry_failed", message: result.grants.error }));
+      }
       console.log(JSON.stringify({
         event: "jobs_cycle",
         processed: result.processed,
@@ -250,6 +253,7 @@ export default {
         relayFailed: result.relay?.failed ?? 0,
         reclaimed: result.reclaimed.processing + result.reclaimed.queued,
         checkpoints: result.checkpoints.map((checkpoint) => ({ tenant: checkpoint.tenantId, batch: checkpoint.batchNumber, count: checkpoint.eventCount })),
+        grantsRevoked: result.grants?.revoked ?? 0,
       }));
       if (config.contentFeedsEnabled) {
         try {
