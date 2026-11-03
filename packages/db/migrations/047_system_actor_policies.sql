@@ -16,9 +16,6 @@ CREATE POLICY integration_clients_platform ON integration_clients FOR INSERT WIT
 CREATE POLICY integration_clients_platform_update ON integration_clients FOR UPDATE USING (
   app.is_platform_operator()
   OR (app.actor_kind() = 'system' AND tenant_id = app.current_tenant())
-) WITH CHECK (
-  app.is_platform_operator()
-  OR (app.actor_kind() = 'system' AND tenant_id = app.current_tenant())
 );
 
 DROP POLICY IF EXISTS sponsored_payments_read ON sponsored_payments;
@@ -33,7 +30,7 @@ CREATE POLICY sponsored_payments_read ON sponsored_payments FOR SELECT USING (
 DROP POLICY IF EXISTS sponsored_payments_platform_update ON sponsored_payments;
 CREATE POLICY sponsored_payments_platform_update ON sponsored_payments FOR UPDATE USING (
   app.is_platform_operator() OR app.actor_kind() = 'system'
-) WITH CHECK (app.is_platform_operator() OR app.actor_kind() = 'system');
+);
 
 DROP POLICY IF EXISTS sponsored_payments_provider_insert ON sponsored_payments;
 CREATE POLICY sponsored_payments_provider_insert ON sponsored_payments FOR INSERT WITH CHECK (
@@ -59,20 +56,8 @@ CREATE POLICY sponsored_campaigns_provider_write_insert ON sponsored_campaigns F
   OR (created_by = app.current_user() AND EXISTS (
     SELECT 1 FROM directory_facilities f where f.id = facility_id AND f.claimed_tenant_id = app.current_tenant() AND app.has_any_role(ARRAY['facility_admin'])
   ))
-) WITH CHECK (
-  app.is_platform_operator()
-  OR app.actor_kind() = 'system'
-  OR (created_by = app.current_user() AND EXISTS (
-    SELECT 1 FROM directory_facilities f where f.id = facility_id AND f.claimed_tenant_id = app.current_tenant() AND app.has_any_role(ARRAY['facility_admin'])
-  ))
 );
 CREATE POLICY sponsored_campaigns_provider_write_update ON sponsored_campaigns FOR UPDATE USING (
-  app.is_platform_operator()
-  OR app.actor_kind() = 'system'
-  OR (created_by = app.current_user() AND EXISTS (
-    SELECT 1 FROM directory_facilities f WHERE f.id = facility_id AND f.claimed_tenant_id = app.current_tenant() AND app.has_any_role(ARRAY['facility_admin'])
-  ))
-) WITH CHECK (
   app.is_platform_operator()
   OR app.actor_kind() = 'system'
   OR (created_by = app.current_user() AND EXISTS (

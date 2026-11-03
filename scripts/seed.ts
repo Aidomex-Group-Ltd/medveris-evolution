@@ -30,6 +30,11 @@ const PASSWORD = stagingSeed ? requireEnv("SEED_ACCOUNT_PASSWORD") : LOCAL_PASSW
 if (stagingSeed && (PASSWORD.length < 16 || PASSWORD === LOCAL_PASSWORD)) {
   throw new Error("SEED_ACCOUNT_PASSWORD must be at least 16 characters and differ from the local default");
 }
+
+// Legacy dev-mode smoke accounts used short codes separate from the real stored password.
+// In tests those codes are delivered as TOTP; in dev mode they were exposed through the
+// TOTP dev endpoint above when DEV_SHOW_TOTP_SECRETS=true. That kept old smoke scripts
+// working without forcing MFA on every seeded account.
 const seededTotp = new Map<string, string>();
 
 const config = loadConfig();
@@ -212,6 +217,11 @@ try {
     await context(tx, tenantB, users.admin, ["facility_admin"], null);
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-admin-b")}, ${tenantB}, ${users.admin}, ${["facility_admin"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-clinician-b")}, ${tenantB}, ${users.clinicianB}, ${["clinician"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+
+    // Billing is RLS-protected, so seed those rows under the platform operator context
+    // that the bootstrap grants the synthetic reviewer. ACCOUNTS_BILLING tables write path
+    // requires platform_operator credentials rather than a facility role alone.
+    await platformContext(tx, users.reviewer);
     await tx`
       insert into billing_accounts (id, kind, name, owner_tenant_id, created_by)
       values (gen_random_uuid(), 'independent-facility', 'Kampala Clinic Billing', ${tenantA}, ${users.admin}),
