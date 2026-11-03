@@ -56,6 +56,12 @@ async function maybeScanNotifications(sql: Sql): Promise<{ notifications: number
   }
 }
 
+async function maybeRunGrants(sql: Sql, signingKey: string, keyId: string): Promise<{ grants: GrantExpiryResult | null; grantsError: string | null }> {
+  const result = await maybeExpireStaleGrants(sql, signingKey, keyId);
+  return { grants: result, grantsError: result.error };
+}
+
+
 export interface JobsCycleOptions {
   maxEvents?: number;
   /** With a queue, events are relayed to it; without one they are handled in-process. */
@@ -113,7 +119,7 @@ export async function runJobsCycle(
   }
   const billing = await maybeRunBilling(sql);
   const notifications = await maybeScanNotifications(sql);
-  const grants = await maybeExpireStaleGrants(sql, signingKey, keyId);
+  const grants = await maybeRunGrants(sql, signingKey, keyId);
   try {
     const checkpoints = await checkpointAllTenants(sql, signingKey, keyId);
     return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing, ...notifications, ...grants };

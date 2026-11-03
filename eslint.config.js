@@ -12,6 +12,8 @@ export default tseslint.config(
       "**/.mail-sink/**",
       "**/playwright-report/**",
       "**/test-results/**",
+      "**/.worktree/**",
+      ".worktree",
     ],
   },
   ...tseslint.configs.recommended,

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod/v4";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
-import { auditMeta, parseJson } from "../lib/http.js";
+import { parseJson } from "../lib/http.js";
 import { requestAudit } from "../lib/actor.js";
 import { enforceRateLimit, requestAddress } from "../lib/rate-limit.js";
 import { writeAudit } from "../lib/audit.js";
@@ -32,7 +32,7 @@ facilityLogoRoutes.post("/logo", async (c) => {
   const auth = requireStaff(c);
   const deps = c.get("deps");
 
-  await enforceRateLimit(c, "facility.logo.upload", auth.user.id, requestAddress(c));
+  await enforceRateLimit(c, "upload", auth.user.id, requestAddress(c));
 
   const body = await parseJson(c, logoSchema);
   const { bytes, detectedType } = decodeAndVerifyLogo(body);
@@ -42,7 +42,7 @@ facilityLogoRoutes.post("/logo", async (c) => {
   const id = crypto.randomUUID();
   const objectKeyPath = objectKey(auth.activeTenant!.id);
   const sha256 = await new Promise<string>((resolve, reject) => {
-    crypto.subtle.digest("SHA-256", bytes).then((d) => {
+    crypto.subtle.digest("SHA-256", bytes.buffer as ArrayBuffer).then((d) => {
       resolve([...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join(""));
     }).catch(reject);
   });
@@ -87,8 +87,6 @@ facilityLogoRoutes.post("/logo", async (c) => {
            where id = ${result.id} and tenant_id = ${auth.activeTenant!.id} and scan_status = 'quarantined'`;
   });
 
-  await writeAudit(c.get("deps").config, audit);
-
   return c.json({
     ok: true,
     logo: {
@@ -104,7 +102,6 @@ facilityLogoRoutes.post("/logo", async (c) => {
 
 facilityLogoRoutes.get("/logo", async (c) => {
   const auth = requireStaff(c);
-  const deps = c.get("deps");
 
   const upload = await withStaffActor(c, async (tx) => {
     const rows = await tx`select u.id, u.tenant_id, u.object_key, u.sha256, u.status, u.scan_status
@@ -137,9 +134,9 @@ facilityLogoRoutes.delete("/logo", async (c) => {
   const auth = requireStaff(c);
   const deps = c.get("deps");
 
-  await enforceRateLimit(c, "facility.logo.delete", auth.user.id, requestAddress(c));
+  await enforceRateLimit(c, "upload", auth.user.id, requestAddress(c));
 
-  const result = await withStaffActor(c, async (tx) => {
+  await withStaffActor(c, async (tx) => {
     const [row] = await tx`select u.id, u.object_key from uploads u
                            where u.id = (select logo_upload_id from tenants where id = ${auth.activeTenant!.id})
                              and u.status = 'available' for update`;
@@ -151,8 +148,6 @@ facilityLogoRoutes.delete("/logo", async (c) => {
     await writeAudit(tx, deps.config, requestAudit(c, "facility.logo.removed", {
       resourceType: "FacilityLogo", resourceId: row.id, metadata: { tenantId: auth.activeTenant!.id },
     }));
-
-    return row.id;
   });
 
   // In a real deployment this calls adapter.delete; with object storage the

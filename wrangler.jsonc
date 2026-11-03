@@ -38,11 +38,11 @@
 	"hyperdrive": [
 		{
 			"binding": "HYPERDRIVE",
-			"id": "d9437ca9486d4e608c3d315fdc46f25f"
+			"id": "local-only"
 		},
 		{
 			"binding": "HYPERDRIVE_JOBS",
-			"id": "21c6654b3c0545e39676597039b1d0ec"
+			"id": "local-only"
 		}
 	],
 	"version_metadata": {

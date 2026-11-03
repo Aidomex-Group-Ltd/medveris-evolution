@@ -10,7 +10,7 @@ import { checkScalingConfig } from "./staging-gate.mjs";
 export const PRODUCTION = Object.freeze({
   env: "production",
   worker: "medveris-production",
-  database: "medveris_production",
+  database: "neondb",
   runtimeRole: "medveris_runtime",
   jobsRole: "medveris_jobs",
   bucket: "medveris-production-uploads",

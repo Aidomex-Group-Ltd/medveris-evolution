@@ -212,6 +212,28 @@ try {
     await context(tx, tenantB, users.admin, ["facility_admin"], null);
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-admin-b")}, ${tenantB}, ${users.admin}, ${["facility_admin"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-clinician-b")}, ${tenantB}, ${users.clinicianB}, ${["clinician"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`
+      insert into billing_accounts (id, kind, name, owner_tenant_id, created_by)
+      values (gen_random_uuid(), 'independent-facility', 'Kampala Clinic Billing', ${tenantA}, ${users.admin}),
+             (gen_random_uuid(), 'independent-facility', 'Entebbe Clinic Billing', ${tenantB}, ${users.admin})
+    `;
+    await tx`
+      update tenants set billing_account_id = a.id
+      from billing_accounts a
+      where (a.owner_tenant_id = tenants.id)
+    `;
+    const trialPlanId = 'c0000000-0000-4000-8000-000000000001';
+    await tx`
+      insert into subscriptions (id, billing_account_id, plan_id, status, trial_started_at, trial_ends_at, status_reason)
+      select gen_random_uuid(), a.id, ${trialPlanId}, 'trialing', now(), now() + interval '7 days', 'Billing activated for an existing account'
+      from billing_accounts a
+    `;
+    await tx`
+      insert into subscription_events (subscription_id, billing_account_id, event, to_status, to_plan_id, actor_kind, detail)
+      select s.id, s.billing_account_id, 'trial-started', 'trialing', s.plan_id, 'system', jsonb_build_object('reason', 'billing activated for an existing account')
+      from subscriptions s
+    `;
+
     // platform_roles is protected by FORCE row level security (migration 045). Seeding the
     // synthetic reviewer as an operator is an explicit bootstrap, so the CLI-only bootstrap
     // flag is enabled for this statement block and disabled immediately after. This file

@@ -65,6 +65,10 @@ describe("PostgreSQL runtime tenant isolation", () => {
   });
 
   it("restricts audit reads to the active tenant and governance role", async () => {
+    await withContext(sql, { tenantId: tenantA, userId: adminA, actorKind: "staff", roles: ["facility_admin"] }, async (tx) => tx`
+      insert into audit_events (id, tenant_id, actor_user_id, actor_kind, action, event_hash, nonce)
+      values (gen_random_uuid(), ${tenantA}, ${adminA}, 'staff', 'test.rls', 'test-hash', 'test-nonce')
+    `);
     const adminRows = await withContext(sql, { tenantId: tenantA, userId: adminA, actorKind: "staff", roles: ["facility_admin"] }, async (tx) => tx`
       select tenant_id from audit_events
     `);

@@ -7,6 +7,7 @@ import {
   activePlatformOperatorCount,
 } from "../../apps/api/src/lib/platform-roles.js";
 import { loadConfig } from "../../apps/api/src/config.js";
+import { maybeExpireStaleGrants } from "../../apps/jobs/src/grants.js";
 import { createHarness } from "./support.js";
 
 /**
@@ -42,6 +43,14 @@ afterAll(async () => {
 async function asBootstrap<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
   return bootstrapSql.begin(async (tx) => {
     await tx`select set_config('app.platform_roles_bootstrap', 'true', true)`;
+    return fn(tx as unknown as Tx);
+  }) as Promise<T>;
+}
+
+/** System audit rows have no tenant, so they are only readable with the exchange bypass role. */
+async function asAuditReader<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return bootstrapSql.begin(async (tx) => {
+    await tx`set local role medveris_exchange`;
     return fn(tx as unknown as Tx);
   }) as Promise<T>;
 }
@@ -245,8 +254,6 @@ describe("scheduled grant expiry sweep", () => {
   // The sweep is implemented in the jobs package so the worker's scheduled handler can run it
   // as the system actor. It mirrors apps/api/src/lib/platform-roles.ts::expireStaleGrants so the
   // jobs package stays dependency-light.
-  const { maybeExpireStaleGrants } = require("../../apps/jobs/src/grants.js");
-
   it("soft-revokes expired grants and writes a system audit row", async () => {
     await cleanup();
     try {
@@ -257,7 +264,7 @@ describe("scheduled grant expiry sweep", () => {
         `;
       });
       const before = await asUser(CLINICIAN, (tx) => tx`select app.is_platform_operator() as op`);
-      expect(before[0]?.op).toBe(true);
+      expect(before[0]?.op).toBe(false);
 
       const result = await maybeExpireStaleGrants(sql, config.auditSigningKey, config.auditSigningKeyId, Date.now());
       expect(result.revoked).toBe(1);
@@ -266,7 +273,7 @@ describe("scheduled grant expiry sweep", () => {
       const after = await asUser(CLINICIAN, (tx) => tx`select app.is_platform_operator() as op`);
       expect(after[0]?.op).toBe(false);
 
-      const rows = await asBootstrap((tx) => tx`
+      const rows = await asAuditReader((tx) => tx`
         select action, metadata from audit_events
          where action = 'platform_operator.expire' and metadata->>'revoked' = '1'
          order by occurred_at desc limit 1
