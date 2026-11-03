@@ -168,11 +168,11 @@ npm run dev           # Runs API (port 8787) and Web (port 5173) concurrently
 ```
 
 ### Access Credentials (after seed)
-- **Patient:** `patient@medveris.local` / `Medveris!2026`
-- **Clinician:** `clinician@medveris.local` / `Medveris!2026` (requires TOTP)
-- **Admin:** `admin@medveris.local` / `Medveris!2026` (requires TOTP)
-- **Reception:** `reception@medveris.local` / `Medveris!2026` (requires TOTP)
-- **Nurse:** `nurse@medveris.local` / `Medveris!2026` (requires TOTP)
+- **Patient:** `patient@medveris.local` / *(password printed by `npm run db:seed`)*
+- **Clinician:** `clinician@medveris.local` / *(password printed by `npm run db:seed`)* (requires TOTP)
+- **Admin:** `admin@medveris.local` / *(password printed by `npm run db:seed`)* (requires TOTP)
+- **Reception:** `reception@medveris.local` / *(password printed by `npm run db:seed`)* (requires TOTP)
+- **Nurse:** `nurse@medveris.local` / *(password printed by `npm run db:seed`)* (requires TOTP)
 
 ### Test Environment
 - Open: <http://localhost:5173>

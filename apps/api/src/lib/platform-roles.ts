@@ -1,87 +1,38 @@
 import type { Tx } from "@medveris/db";
 import { writeAudit } from "./audit.js";
-import { auditMeta } from "./http.js";
-import type { AppEnv } from "../types.js";
 import type { AppConfig } from "../config.js";
-import { NotFoundError, ForbiddenError, ConflictError, ValidationError, DependencyError, MfaStepUpRequiredError, StaleMfaError, PlatformOperatorUnderstaffedError, DuplicateRequestError, RequestAlreadyDecidedError, LastOperatorRevocationForbiddenError, MfaVerificationExpiredError, SyntheticTargetInProductionError } from "./errors.js";
+import {
+  ConflictError,
+  DuplicateRequestError,
+  ForbiddenError,
+  LastOperatorRevocationForbiddenError,
+  NotFoundError,
+  PlatformOperatorUnderstaffedError,
+  RequestAlreadyDecidedError,
+  SyntheticTargetInProductionError,
+  ValidationError,
+} from "./errors.js";
 
 export const MAX_REQUEST_REASON_LENGTH = 500;
 export const MIN_REQUEST_REASON_LENGTH = 10;
 
 export const LEGACY_ELEVATE_ACTION = "platform_operator.legacy_elevate";
 export const LEGACY_REVOKE_ACTION = "platform_operator.legacy_revoke";
-
 export const REQUEST_ACTION = "platform_operator.request";
 export const APPROVE_ACTION = "platform_operator.approve";
 export const DENY_ACTION = "platform_operator.deny";
 export const CANCEL_ACTION = "platform_operator.cancel";
-export const GRANT_ACTION = "platform_operator.grant";
 export const REVOKE_ACTION = "platform_operator.revoke";
 export const EXPIRE_ACTION = "platform_operator.expire";
 export const BREAK_GLASS_GRANT_ACTION = "platform_operator.break_glass_grant";
 
 export const BREAK_GLASS_SOURCE = "cli";
-export const BREAK_GLASS_DURATION_HOURS = 7 * 24; // default break-glass grant window
+export const BREAK_GLASS_DURATION_HOURS = 7 * 24;
 
-export async function resolveUserForResource(
-  tx: Tx,
-  email: string | null,
-  userId: string | null,
-): Promise<{
-  id: string;
-  displayName: string;
-  emailVerified: boolean;
-  mfaEnrolled: boolean;
-  totpEnrolled: boolean;
-  status: string;
-  isSynthetic: boolean;
-}> {
-  const lower = (email ?? "").trim().toLowerCase();
-  if (!lower && !userId) {
-    throw new ValidationError("Email or user id is required");
-  }
-
-  let rows: Array<{
-    id: string;
-    display_name: string;
-    email_verified_at: Date | null;
-    mfa_enrolled_at: Date | null;
-    totp_secret_enc: string | null;
-    status: string;
-    created_at: Date;
-  }>;
-
-  if (userId) {
-    rows = await tx`
-      select id, display_name, email_verified_at, mfa_enrolled_at, totp_secret_enc, status, created_at
-        from users
-       where id = ${userId}
-       limit 1
-    `;
-  } else {
-    rows = await tx`
-      select id, display_name, email_verified_at, mfa_enrolled_at, totp_secret_enc, status, created_at
-        from users
-       where lower(email) = ${lower}
-       limit 1
-    `;
-  }
-
-  if (!rows.length) {
-    throw new NotFoundError("No eligible account matches that email or user id");
-  }
-
-  const row = rows[0];
-  return {
-    id: row.id,
-    displayName: row.display_name,
-    emailVerified: Boolean(row.email_verified_at),
-    mfaEnrolled: Boolean(row.mfa_enrolled_at),
-    totpEnrolled: Boolean(row.totp_secret_enc),
-    status: row.status,
-    isSynthetic: row.created_at instanceof Date &&
-      row.created_at.toISOString().includes("1970") ? true : false, // placeholder; real synthetic detection uses seeded markers
-  };
+/** Structured audit context handed in by the route (never a live Hono context). */
+export interface PlatformAuditMeta {
+  correlationId?: string;
+  ipAddress?: string | null;
 }
 
 export interface EligibleUser {
@@ -93,145 +44,234 @@ export interface EligibleUser {
   status: string;
 }
 
-export async function checkEligibility(tx: Tx, userId: string, appEnv: string, callerIsSynthetic: boolean): Promise<EligibleUser> {
-  const [row] = await tx`
-    select id, display_name, email_verified_at, mfa_enrolled_at, totp_secret_enc, status, created_at
-      from users
-     where id = ${userId}
-     limit 1
+function reasonLengthError(): ValidationError {
+  return new ValidationError(
+    `Reason must be between ${MIN_REQUEST_REASON_LENGTH} and ${MAX_REQUEST_REASON_LENGTH} characters`,
+  );
+}
+
+function assertReason(reason: string): string {
+  const trimmed = reason.trim();
+  if (trimmed.length < MIN_REQUEST_REASON_LENGTH || trimmed.length > MAX_REQUEST_REASON_LENGTH) {
+    throw reasonLengthError();
+  }
+  return trimmed;
+}
+
+/**
+ * Resolves the nominated account by email or id. Only the columns the workflow needs are
+ * selected; email is never returned to the client.
+ */
+export async function resolveUserForResource(
+  tx: Tx,
+  email: string | null,
+  userId: string | null,
+): Promise<EligibleUser> {
+  const lower = (email ?? "").trim().toLowerCase();
+  if (!lower && !userId) throw new ValidationError("Email or user id is required");
+
+  const rows = userId
+    ? await tx`
+        select id, display_name, email_verified_at, mfa_enrolled_at, totp_secret_enc, status
+          from users where id = ${userId} limit 1
+      `
+    : await tx`
+        select id, display_name, email_verified_at, mfa_enrolled_at, totp_secret_enc, status
+          from users where lower(email) = ${lower} limit 1
+      `;
+
+  const row = rows[0];
+  if (!row) throw new NotFoundError("No eligible account matches that email or user id");
+
+  return {
+    id: row.id as string,
+    displayName: row.displayName as string,
+    emailVerified: Boolean(row.emailVerifiedAt),
+    mfaEnrolled: Boolean(row.mfaEnrolledAt),
+    totpEnrolled: Boolean(row.totpSecretEnc),
+    status: row.status as string,
+  };
+}
+
+/**
+ * A platform operator must be an active, verified account with a strong second factor.
+ * Synthetic/demo accounts and patient accounts can never hold platform access in production.
+ */
+export async function checkEligibility(tx: Tx, userId: string, appEnv: string): Promise<EligibleUser> {
+  const rows = await tx`
+    select id, display_name, email_verified_at, mfa_enrolled_at, totp_secret_enc, status, email
+      from users where id = ${userId} limit 1
   `;
+  const row = rows[0];
   if (!row) throw new NotFoundError("User not found");
   if (row.status !== "active") throw new ForbiddenError("The account is not active or is disabled");
-  if (!row.email_verified_at) throw new ForbiddenError("The account email has not been verified");
-  if (!row.mfa_enrolled_at) throw new ForbiddenError("MFA must be enrolled before the account can be granted platform access");
-  if (!row.totp_secret_enc) throw new ForbiddenError("Platform access requires a stronger MFA method than email codes");
-  if (!callerIsSynthetic && appEnv === "production") {
-    // Synthetic-seeded accounts are identified by the migration/seeding markers, not by guessing.
-    const synthetic = await tx`
-      select 1 from patient_accounts where user_id = ${userId} limit 1
-    `;
-    if (synthetic.length) throw new ForbiddenError("Platform access cannot be granted to a synthetic or demonstration account in production");
+  if (!row.emailVerifiedAt) throw new ForbiddenError("The account email has not been verified");
+  if (!row.mfaEnrolledAt) {
+    throw new ForbiddenError("MFA must be enrolled before the account can be granted platform access");
+  }
+  if (!row.totpSecretEnc) {
+    throw new ForbiddenError("Platform access requires a stronger MFA method than email codes");
+  }
+  if (appEnv === "production") {
+    const email = String(row.email ?? "").toLowerCase();
+    if (email.endsWith(".test") || email.endsWith(".local") || email.endsWith(".example")) {
+      throw new SyntheticTargetInProductionError();
+    }
+    const patient = await tx`select 1 from patient_accounts where user_id = ${userId} limit 1`;
+    if (patient.length) {
+      throw new SyntheticTargetInProductionError("A patient account cannot also hold platform access");
+    }
   }
   return {
-    id: row.id,
-    displayName: row.display_name,
+    id: row.id as string,
+    displayName: row.displayName as string,
     emailVerified: true,
     mfaEnrolled: true,
-    totpEnrolled: Boolean(row.totp_secret_enc),
-    status: row.status,
+    totpEnrolled: true,
+    status: row.status as string,
   };
 }
 
 export async function activePlatformOperatorCount(tx: Tx): Promise<number> {
-  const [row] = await tx`
+  const rows = await tx`
     select count(*)::int as n
       from platform_roles
      where role = 'platform_operator'
        and revoked_at is null
        and (expires_at is null or expires_at > now())
   `;
-  return Number(row?.n ?? 0);
+  return Number(rows[0]?.n ?? 0);
 }
 
-export async function revokeSessionsForUser(tx: Tx, sql: Parameters<Tx>[0] extends infer T ? T : never, userId: string, reason: string): Promise<void> {
-  // Revoke active sessions for the target user so privilege changes take effect immediately.
+/** Ending a session immediately makes a privilege change take effect. */
+export async function revokeSessionsForUser(tx: Tx, userId: string, reason: string): Promise<void> {
   await tx`
     update sessions set revoked_at = now(), revoked_reason = ${reason}
-      where user_id = ${userId} and revoked_at is null
+     where user_id = ${userId} and revoked_at is null
   `;
+}
+
+async function hasActiveOperatorGrant(tx: Tx, userId: string): Promise<boolean> {
+  const rows = await tx`
+    select 1 from platform_roles
+     where user_id = ${userId}
+       and role = 'platform_operator'
+       and revoked_at is null
+       and (expires_at is null or expires_at > now())
+     limit 1
+  `;
+  return rows.length > 0;
+}
+
+export interface CreateRequestInput {
+  email?: string | null;
+  userId?: string | null;
+  reason: string;
+  durationHours: number | null;
+  actorUserId: string;
 }
 
 export async function createPlatformRoleRequest(
   tx: Tx,
   config: AppConfig,
-  c: Parameters<(api: any) => any>[0], // placeholder; real signature passes context
-  email: string,
-  reason: string,
-  durationHours: number | null,
-  actorUserId: string,
-): Promise<{ requestId: string; targetUserId: string }> {
-  const meta = auditMeta(c);
-  const ctx = c.get("auth")!;
-  const target = await resolveUserForResource(tx, email, null);
-  if (target.status !== "active") throw new ForbiddenError("The nominated account is not eligible");
-  if (!target.emailVerified) throw new ForbiddenError("The nominated account email must be verified");
-  if (!target.totpEnrolled) throw new ForbiddenError("The nominated account must have a strong MFA method enrolled");
-
-  if (reason.length < MIN_REQUEST_REASON_LENGTH || reason.length > MAX_REQUEST_REASON_LENGTH) {
-    throw new ValidationError(`Reason must be between ${MIN_REQUEST_REASON_LENGTH} and ${MAX_REQUEST_REASON_LENGTH} characters`);
+  meta: PlatformAuditMeta,
+  input: CreateRequestInput,
+): Promise<{ requestId: string; targetUserId: string; expiresAt: Date }> {
+  const reason = assertReason(input.reason);
+  const target = await resolveUserForResource(tx, input.email ?? null, input.userId ?? null);
+  await checkEligibility(tx, target.id, config.appEnv);
+  if (await hasActiveOperatorGrant(tx, target.id)) {
+    throw new ConflictError("That account already holds an active platform operator grant");
   }
 
-  const expiresAt = durationHours
-    ? new Date(Date.now() + Math.min(Math.max(durationHours, 1), config.platformRoles.maxGrantHours) * 3600_000)
-    : new Date(Date.now() + config.platformRoles.defaultGrantHours * 3600_000);
+  if (input.durationHours !== null && (!Number.isFinite(input.durationHours) || input.durationHours < 1)) {
+    throw new ValidationError("durationHours must be a positive number of hours");
+  }
+  const hours = input.durationHours === null
+    ? config.platformRoles.defaultGrantHours
+    : Math.min(input.durationHours, config.platformRoles.maxGrantHours);
+  const expiresAt = new Date(Date.now() + hours * 3_600_000);
 
   const requestId = crypto.randomUUID();
-  await tx`
+  const inserted = await tx`
     insert into platform_role_requests (id, role, target_user_id, requested_by, reason, status, expires_at, created_at)
-    values (${requestId}, 'platform_operator', ${target.id}, ${actorUserId}, ${reason}, 'pending', ${expiresAt}, now())
-    on conflict on constraint platform_role_requests_target_pending do nothing
+    values (${requestId}, 'platform_operator', ${target.id}, ${input.actorUserId}, ${reason}, 'pending', ${expiresAt}, now())
+    on conflict (target_user_id, role) where status = 'pending' do nothing
+    returning id
   `;
+  if (!inserted.length) {
+    throw new DuplicateRequestError();
+  }
+
   await writeAudit(tx, config, {
     actorKind: "staff",
-    actorUserId,
+    actorUserId: input.actorUserId,
     action: REQUEST_ACTION,
     resourceType: "PlatformRoleRequest",
     resourceId: requestId,
-    ...meta,
-    metadata: { targetUserId: target.id, reasonLength: reason.length, requestedDurationHours: durationHours },
+    correlationId: meta.correlationId,
+    ipAddress: meta.ipAddress ?? null,
+    metadata: { targetUserId: target.id, reasonLength: reason.length, requestedDurationHours: input.durationHours },
   });
 
-  return { requestId, targetUserId: target.id };
+  return { requestId, targetUserId: target.id, expiresAt };
 }
 
 export async function approvePlatformRoleRequest(
   tx: Tx,
   config: AppConfig,
-  c: Parameters<(api: any) => any>[0],
+  meta: PlatformAuditMeta,
   requestId: string,
   actorUserId: string,
   decisionNote: string,
-): Promise<{ targetUserId: string; grantedBy: string; expiresAt: Date }> {
-  const meta = auditMeta(c);
-  const ctx = c.get("auth")!;
-
-  const [request] = await tx`
-    select id, target_user_id, requested_by, reason, status, expires_at, decided_by, decided_at
+): Promise<{ targetUserId: string; expiresAt: Date }> {
+  const rows = await tx`
+    select id, target_user_id, requested_by, status, expires_at, decided_by
       from platform_role_requests
-     where id = ${requestId}
-       and status = 'pending'
+     where id = ${requestId} and status = 'pending'
      for update
   `;
+  const request = rows[0];
   if (!request) throw new NotFoundError("Request not found, already decided, or expired");
-
-  if (request.decided_by) throw new ConflictError("Request already has a decision");
-  if (request.requested_by === actorUserId) throw new ForbiddenError("You cannot approve your own request");
-  if (request.target_user_id === actorUserId) throw new ForbiddenError("You cannot approve a request that nominates you");
-
-  const eligibility = await checkEligibility(tx, request.target_user_id, ctx.activeTenant?.id ?? "", false);
-  if (!eligibility.emailVerified) throw new ForbiddenError("The nominated account email must be verified before approval");
-  if (!eligibility.totpEnrolled) throw new ForbiddenError("The nominated account must have a strong MFA method enrolled");
-
-  const count = await activePlatformOperatorCount(tx);
-  if (count < (config.platformRoles.minActiveOperators ?? 2)) {
-    throw new DependencyError("There are too few active platform operators to approve this request safely");
+  if (new Date(request.expiresAt as Date).getTime() <= Date.now()) {
+    throw new RequestAlreadyDecidedError("That request has expired");
+  }
+  if (request.requestedBy === actorUserId) {
+    throw new ForbiddenError("You cannot approve your own request");
+  }
+  if (request.targetUserId === actorUserId) {
+    throw new ForbiddenError("You cannot approve a request that nominates you");
   }
 
-  const expiresAt = new Date(request.expires_at);
-  const grantedBy = actorUserId;
-  await tx`
-    insert into platform_roles (user_id, role, granted_by, approved_by, request_id, granted_at, expires_at)
-    values (${eligibility.id}, 'platform_operator', ${request.requested_by}, ${actorUserId}, ${request.id}, now(), ${expiresAt})
-    on conflict (user_id, role) where role = 'platform_operator' do nothing
-  `;
+  const targetUserId = request.targetUserId as string;
+  await checkEligibility(tx, targetUserId, config.appEnv);
+  if (await hasActiveOperatorGrant(tx, targetUserId)) {
+    throw new ConflictError("That account already holds an active platform operator grant");
+  }
+  if ((await activePlatformOperatorCount(tx)) < 1) {
+    throw new PlatformOperatorUnderstaffedError();
+  }
 
-  await tx`
+  const expiresAt = new Date(request.expiresAt as Date);
+  const granted = await tx`
+    insert into platform_roles (user_id, role, granted_by, approved_by, request_id, granted_at, expires_at)
+    values (${targetUserId}, 'platform_operator', ${request.requestedBy}, ${actorUserId}, ${request.id}, now(), ${expiresAt})
+    on conflict (user_id, role) where role = 'platform_operator' do nothing
+    returning user_id
+  `;
+  if (!granted.length) {
+    throw new ConflictError("That account already holds a platform operator grant");
+  }
+
+  const decided = await tx`
     update platform_role_requests
        set status = 'approved', decided_by = ${actorUserId}, decided_at = now(), decision_note = ${decisionNote}
-     where id = ${requestId}
+     where id = ${requestId} and status = 'pending'
+    returning id
   `;
+  if (!decided.length) throw new RequestAlreadyDecidedError();
 
-  await revokeSessionsForUser(tx, tx, eligibility.id, "platform-operator-granted");
+  await revokeSessionsForUser(tx, targetUserId, "platform-operator-granted");
 
   await writeAudit(tx, config, {
     actorKind: "staff",
@@ -239,42 +279,42 @@ export async function approvePlatformRoleRequest(
     action: APPROVE_ACTION,
     resourceType: "PlatformRoleRequest",
     resourceId: requestId,
-    ...meta,
-    metadata: { targetUserId: eligibility.id, decisionNote, expiresAt: expiresAt.toISOString() },
+    correlationId: meta.correlationId,
+    ipAddress: meta.ipAddress ?? null,
+    metadata: { targetUserId, decisionNote, expiresAt: expiresAt.toISOString() },
   });
 
-  return { targetUserId: eligibility.id, grantedBy, expiresAt };
+  return { targetUserId, expiresAt };
 }
 
 export async function denyPlatformRoleRequest(
   tx: Tx,
   config: AppConfig,
-  c: Parameters<(api: any) => any>[0],
+  meta: PlatformAuditMeta,
   requestId: string,
   actorUserId: string,
   decisionNote: string,
 ): Promise<void> {
-  const meta = auditMeta(c);
-  const ctx = c.get("auth")!;
-
-  const [request] = await tx`
-    select id, target_user_id, requested_by, status, decided_by
+  const rows = await tx`
+    select id, target_user_id, requested_by, status
       from platform_role_requests
-     where id = ${requestId}
-       and status = 'pending'
+     where id = ${requestId} and status = 'pending'
      for update
   `;
+  const request = rows[0];
   if (!request) throw new NotFoundError("Request not found, already decided, or expired");
+  if (request.requestedBy === actorUserId) throw new ForbiddenError("You cannot deny your own request");
+  if (request.targetUserId === actorUserId) {
+    throw new ForbiddenError("You cannot deny a request that nominates you");
+  }
 
-  if (request.decided_by === actorUserId) throw new ForbiddenError("You cannot deny a request you created");
-  if (request.requested_by === actorUserId) throw new ForbiddenError("You cannot deny your own request");
-  if (request.target_user_id === actorUserId) throw new ForbiddenError("You cannot deny a request that nominates you");
-
-  await tx`
+  const updated = await tx`
     update platform_role_requests
        set status = 'denied', decided_by = ${actorUserId}, decided_at = now(), decision_note = ${decisionNote}
-     where id = ${requestId}
+     where id = ${requestId} and status = 'pending'
+    returning id
   `;
+  if (!updated.length) throw new RequestAlreadyDecidedError();
 
   await writeAudit(tx, config, {
     actorKind: "staff",
@@ -282,37 +322,39 @@ export async function denyPlatformRoleRequest(
     action: DENY_ACTION,
     resourceType: "PlatformRoleRequest",
     resourceId: requestId,
-    ...meta,
-    metadata: { targetUserId: request.target_user_id, decisionNote },
+    correlationId: meta.correlationId,
+    ipAddress: meta.ipAddress ?? null,
+    metadata: { targetUserId: request.targetUserId, decisionNote },
   });
 }
 
 export async function cancelPlatformRoleRequest(
   tx: Tx,
   config: AppConfig,
-  c: Parameters<(api: any) => any>[0],
+  meta: PlatformAuditMeta,
   requestId: string,
   actorUserId: string,
   reason: string,
 ): Promise<void> {
-  const meta = auditMeta(c);
-  const ctx = c.get("auth")!;
-
-  const [request] = await tx`
+  const rows = await tx`
     select id, target_user_id, requested_by, status
       from platform_role_requests
-     where id = ${requestId}
-       and status = 'pending'
+     where id = ${requestId} and status = 'pending'
+     for update
   `;
+  const request = rows[0];
   if (!request) throw new NotFoundError("Request not found, already decided, or expired");
+  if (request.requestedBy !== actorUserId) {
+    throw new ForbiddenError("Only the requester can cancel this request");
+  }
 
-  if (request.requested_by !== actorUserId) throw new ForbiddenError("Only the requester can cancel this request");
-
-  await tx`
+  const updated = await tx`
     update platform_role_requests
        set status = 'cancelled', decided_by = ${actorUserId}, decided_at = now(), decision_note = ${reason}
-     where id = ${requestId}
+     where id = ${requestId} and status = 'pending'
+    returning id
   `;
+  if (!updated.length) throw new RequestAlreadyDecidedError();
 
   await writeAudit(tx, config, {
     actorKind: "staff",
@@ -320,46 +362,48 @@ export async function cancelPlatformRoleRequest(
     action: CANCEL_ACTION,
     resourceType: "PlatformRoleRequest",
     resourceId: requestId,
-    ...meta,
-    metadata: { targetUserId: request.target_user_id, reason },
+    correlationId: meta.correlationId,
+    ipAddress: meta.ipAddress ?? null,
+    metadata: { targetUserId: request.targetUserId, reason },
   });
 }
 
 export async function revokePlatformRoleGrant(
   tx: Tx,
   config: AppConfig,
-  c: Parameters<(api: any) => any>[0],
+  meta: PlatformAuditMeta,
   targetUserId: string,
-  actorUserId: string,
+  actorUserId: string | null,
   reason: string,
 ): Promise<void> {
-  const meta = auditMeta(c);
-  const ctx = c.get("auth")!;
+  const trimmed = assertReason(reason);
+  if (actorUserId !== null && actorUserId === targetUserId) {
+    throw new ForbiddenError("You cannot revoke your own platform access");
+  }
 
-  if (ctx.user.id === targetUserId) throw new ForbiddenError("You cannot revoke your own platform access");
-
-  const [row] = await tx`
-    select user_id, role, granted_by, approved_by, request_id, granted_at, expires_at, revoked_at
+  const rows = await tx`
+    select user_id, role, revoked_at
       from platform_roles
-     where user_id = ${targetUserId}
-       and role = 'platform_operator'
+     where user_id = ${targetUserId} and role = 'platform_operator'
+     for update
   `;
+  const row = rows[0];
   if (!row) throw new NotFoundError("The nominated account does not hold a platform operator grant");
+  if (row.revokedAt !== null) throw new ConflictError("That grant has already been revoked");
 
-  const activeCount = await activePlatformOperatorCount(tx);
-  if (activeCount <= 1 && row.revoked_at === null) {
-    throw new ConflictError("Revoking this grant would leave the platform with no active operator");
+  if ((await activePlatformOperatorCount(tx)) <= 1) {
+    throw new LastOperatorRevocationForbiddenError();
   }
 
   await tx`
     update platform_roles
-       set revoked_at = now(), revoked_by = ${actorUserId}, revoked_reason = ${reason}
+       set revoked_at = now(), revoked_by = ${actorUserId}, revoked_reason = ${trimmed}
      where user_id = ${targetUserId}
        and role = 'platform_operator'
        and revoked_at is null
   `;
 
-  await revokeSessionsForUser(tx, tx, targetUserId, "platform-operator-revoked");
+  await revokeSessionsForUser(tx, targetUserId, "platform-operator-revoked");
 
   await writeAudit(tx, config, {
     actorKind: "staff",
@@ -367,63 +411,151 @@ export async function revokePlatformRoleGrant(
     action: REVOKE_ACTION,
     resourceType: "PlatformRole",
     resourceId: targetUserId,
-    ...meta,
-    metadata: { targetUserId, reason },
+    correlationId: meta.correlationId,
+    ipAddress: meta.ipAddress ?? null,
+    metadata: { targetUserId, reason: trimmed },
   });
 }
 
+/** Soft-revokes grants whose expiry has passed. Run by the scheduled sweep. */
 export async function expireStaleGrants(tx: Tx, config: AppConfig): Promise<number> {
   const before = await activePlatformOperatorCount(tx);
-  await tx`
+  const revoked = await tx`
     update platform_roles
        set revoked_at = now(), revoked_reason = 'grant-expired'
      where role = 'platform_operator'
        and revoked_at is null
        and expires_at is not null
        and expires_at <= now()
+    returning user_id
   `;
   const after = await activePlatformOperatorCount(tx);
-  // Emit a single audit entry summarizing the sweep, not one per affected row.
-  await writeAudit(tx, config, {
-    actorKind: "system",
-    action: EXPIRE_ACTION,
-    ...auditMeta({} as any),
-    metadata: { activeBefore: before, activeAfter: after },
-  });
-  return after;
+  if (revoked.length) {
+    await writeAudit(tx, config, {
+      actorKind: "system",
+      action: EXPIRE_ACTION,
+      resourceType: "PlatformRole",
+      metadata: { activeBefore: before, activeAfter: after, revoked: revoked.length },
+    });
+  }
+  return revoked.length;
+}
+
+/**
+ * Break-glass is a CLI-only bootstrap path. In production it must be requested with an extra
+ * explicit flag so no script or scheduled job can silently grant platform access.
+ */
+export function assertBreakGlassAllowed(appEnv: string, args: readonly string[]): void {
+  if (appEnv !== "production") return;
+  if (!args.includes("--allow-production")) {
+    throw new ForbiddenError("Break-glass grants in production require the explicit --allow-production flag");
+  }
+  if (!args.some((arg) => arg.startsWith("--reason="))) {
+    throw new ValidationError("Break-glass grants in production require an explicit --reason=");
+  }
 }
 
 export async function breakGlassGrant(
   tx: Tx,
   config: AppConfig,
-  sql: Parameters<Tx>[0] extends infer T ? T : never,
   targetUserId: string,
   reason: string,
-  actorUserId: string,
-  appEnv: string,
-): Promise<{ requestId: string; expiresAt: Date }> {
-  if (appEnv === "production") {
-    throw new DependencyError("Break-glass grant is disabled in production");
+  actorUserId: string | null,
+  options: { allowProduction: boolean; hours?: number },
+): Promise<{ expiresAt: Date }> {
+  if (config.appEnv === "production" && !options.allowProduction) {
+    throw new ForbiddenError("Break-glass grants in production require the explicit --allow-production flag");
   }
-  const eligibility = await checkEligibility(tx, targetUserId, appEnv, true);
-  if (!eligibility.emailVerified) throw new ForbiddenError("The nominated account email must be verified");
-  if (!eligibility.totpEnrolled) throw new ForbiddenError("The nominated account must have a strong MFA method enrolled");
+  const trimmed = assertReason(reason);
+  await checkEligibility(tx, targetUserId, config.appEnv);
+  if (await hasActiveOperatorGrant(tx, targetUserId)) {
+    throw new ConflictError("That account already holds an active platform operator grant");
+  }
 
-  const requestId = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + BREAK_GLASS_DURATION_HOURS * 3600_000);
+  const hours = Math.min(options.hours ?? BREAK_GLASS_DURATION_HOURS, config.platformRoles.maxGrantHours);
+  const expiresAt = new Date(Date.now() + hours * 3_600_000);
+
   await tx`
     insert into platform_roles (user_id, role, granted_by, approved_by, request_id, granted_at, expires_at)
-    values (${eligibility.id}, 'platform_operator', ${actorUserId}, null, ${requestId}, now(), ${expiresAt})
+    values (${targetUserId}, 'platform_operator', ${actorUserId}, null, null, now(), ${expiresAt})
     on conflict (user_id, role) where role = 'platform_operator' do nothing
+  `;
+
+  await writeAudit(tx, config, {
+    actorKind: "system",
+    actorUserId,
+    action: BREAK_GLASS_GRANT_ACTION,
+    resourceType: "PlatformRole",
+    resourceId: targetUserId,
+    metadata: { targetUserId, source: BREAK_GLASS_SOURCE, reason: trimmed, expiresAt: expiresAt.toISOString() },
+  });
+
+  return { expiresAt };
+}
+
+/** Legacy direct elevate, kept only behind the synthetic-environment gate. */
+export async function legacyGrantPlatformRole(
+  tx: Tx,
+  config: AppConfig,
+  meta: PlatformAuditMeta,
+  targetUserId: string,
+  actorUserId: string,
+  notes: string | null,
+): Promise<void> {
+  await checkEligibility(tx, targetUserId, config.appEnv);
+  if (await hasActiveOperatorGrant(tx, targetUserId)) {
+    throw new ConflictError("User already holds platform_operator role");
+  }
+  await tx`
+    insert into platform_roles (user_id, role, granted_by, granted_at, expires_at)
+    values (${targetUserId}, 'platform_operator', ${actorUserId}, now(), now() + interval '24 hours')
   `;
   await writeAudit(tx, config, {
     actorKind: "staff",
     actorUserId,
-    action: BREAK_GLASS_GRANT_ACTION,
+    action: LEGACY_ELEVATE_ACTION,
     resourceType: "PlatformRole",
-    resourceId: eligibility.id,
-    ...auditMeta({} as any),
-    metadata: { targetUserId: eligibility.id, source: BREAK_GLASS_SOURCE, reason, expiresAt: expiresAt.toISOString() },
+    resourceId: targetUserId,
+    correlationId: meta.correlationId,
+    ipAddress: meta.ipAddress ?? null,
+    metadata: { role: "platform_operator", elevatedBy: actorUserId, notes },
   });
-  return { requestId, expiresAt };
+}
+
+/** Legacy direct revoke: soft-revokes instead of deleting the audit-relevant row. */
+export async function legacyRevokePlatformRole(
+  tx: Tx,
+  config: AppConfig,
+  meta: PlatformAuditMeta,
+  targetUserId: string,
+  actorUserId: string,
+): Promise<void> {
+  const rows = await tx`
+    select user_id from platform_roles
+     where user_id = ${targetUserId} and role = 'platform_operator' and revoked_at is null
+     for update
+  `;
+  if (!rows.length) throw new NotFoundError("User does not hold platform_operator role");
+  if (actorUserId === targetUserId) {
+    throw new ConflictError("Users may not revoke their own platform_operator role");
+  }
+  if ((await activePlatformOperatorCount(tx)) <= 1) {
+    throw new LastOperatorRevocationForbiddenError();
+  }
+  await tx`
+    update platform_roles
+       set revoked_at = now(), revoked_by = ${actorUserId}, revoked_reason = 'legacy-revoke'
+     where user_id = ${targetUserId} and role = 'platform_operator' and revoked_at is null
+  `;
+  await revokeSessionsForUser(tx, targetUserId, "platform-operator-revoked");
+  await writeAudit(tx, config, {
+    actorKind: "staff",
+    actorUserId,
+    action: LEGACY_REVOKE_ACTION,
+    resourceType: "PlatformRole",
+    resourceId: targetUserId,
+    correlationId: meta.correlationId,
+    ipAddress: meta.ipAddress ?? null,
+    metadata: { role: "platform_operator", revokedBy: actorUserId },
+  });
 }

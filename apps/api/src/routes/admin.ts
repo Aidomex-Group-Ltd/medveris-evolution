@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { randomToken, sha256Hex } from "@medveris/auth";
 // z is imported locally from zod for schema validation
 import { z } from "zod";
@@ -8,8 +8,9 @@ import type { Tx } from "@medveris/db";
 import { isPlatformOperator, requireStaff, withPlatformActor, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError, MfaStepUpRequiredError, StaleMfaError, PlatformOperatorUnderstaffedError, DuplicateRequestError, RequestAlreadyDecidedError, LastOperatorRevocationForbiddenError, MfaVerificationExpiredError, SyntheticTargetInProductionError } from "../lib/errors.js";
-import { createPlatformRoleRequest, approvePlatformRoleRequest, denyPlatformRoleRequest, cancelPlatformRoleRequest, revokePlatformRoleGrant, resolveUserForResource, activePlatformOperatorCount, BREAK_GLASS_SOURCE, REQUEST_ACTION, APPROVE_ACTION, DENY_ACTION, CANCEL_ACTION, GRANT_ACTION, REVOKE_ACTION, BREAK_GLASS_GRANT_ACTION, LEGACY_ELEVATE_ACTION, LEGACY_REVOKE_ACTION } from "../lib/platform-roles.js";
+import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, MfaStepUpRequiredError, StaleMfaError, correlationId } from "../lib/errors.js";
+import type { AppConfig } from "../config.js";
+import { createPlatformRoleRequest, approvePlatformRoleRequest, denyPlatformRoleRequest, cancelPlatformRoleRequest, revokePlatformRoleGrant, legacyGrantPlatformRole, legacyRevokePlatformRole } from "../lib/platform-roles.js";
 import { adminInvitationStatus, assertInvitable, INVITATION_TTL_MS, invitationEmail } from "../services/invitations.js";
 import { integrationStatus, listIntegrations } from "../integrations/registry.js";
 import { dicomwebClientFor } from "../integrations/dicomweb.js";
@@ -404,165 +405,161 @@ adminRoutes.post("/integrations/dicomweb/verify", async (c) => {
 });
 
 /**
- * Elevate a user to platform_operator role.
- * Only an existing platform_operator may grant this role.
- * Facility administrators and all other roles receive 403.
- * Self-elevation and targets already holding platform_operator are rejected (409).
- * Validates input with zod: userId must be a UUID, notes optional max 500 chars.
- * Performs role change and audit write in one transaction.
- * Does not return email; returns minimal data (userId, role, timestamp).
+ * Legacy direct elevate/revoke are retired. They remain reachable only when the running
+ * environment is explicitly listed in PLATFORM_ROLE_LEGACY_ELEVATE_ENVIRONMENTS (never
+ * production), so existing synthetic tooling keeps working while the four-eyes workflow
+ * is the only path everywhere else.
  */
+function legacyElevateAllowed(config: AppConfig): boolean {
+  if (config.appEnv === "production") return false;
+  return config.platformRoles.legacyElevateEnvironments.includes(config.appEnv);
+}
+
+/** Privilege changes require a second factor verified within the last few minutes. */
+function requireStepUp(c: Context<AppEnv>): void {
+  const auth = c.get("auth")!;
+  const config = c.get("deps").config;
+  if (!auth.user.mfaEnrolledAt) {
+    throw new MfaStepUpRequiredError("Enrol two-step verification before managing platform access");
+  }
+  const verifiedAt = auth.session.mfaVerifiedAt;
+  if (!verifiedAt || Date.now() - verifiedAt.getTime() > config.platformRoles.recentMfaSeconds * 1000) {
+    throw new StaleMfaError();
+  }
+}
+
+function platformMeta(c: Context<AppEnv>) {
+  return {
+    correlationId: correlationId(c),
+    ipAddress: c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+  };
+}
+
 adminRoutes.post(
   "/platform-operator/elevate",
   async (c) => {
-    const auth = c.get("auth")!;
     const deps = c.get("deps");
-
-    // Input comes from the JSON body only. Nothing is read from the query string,
-    // so a userId or note can never appear in a URL, referer or access log.
+    if (!legacyElevateAllowed(deps.config)) {
+      throw new AppError(
+        410,
+        "legacy_elevate_disabled",
+        "Direct elevation has been retired. Request platform access through the approval workflow.",
+      );
+    }
+    requireStepUp(c);
+    const auth = c.get("auth")!;
     const body = await parseJson(c, z.object({
       userId: z.string().uuid(),
       notes: z.string().max(500).optional(),
     }));
-
-    const userId = body.userId;
-    const notes = body.notes;
-
-    // Only platform_operator may grant this role
-    if (!auth.platformRoles.includes("platform_operator")) {
-      throw new ForbiddenError("Only platform_operator may elevate users to platform_operator");
+    if (auth.user.id === body.userId) {
+      throw new ConflictError("Users may not elevate themselves to platform_operator");
     }
-
-    // Use withStaffActor for transaction
-    const result = await withStaffActor(c, async (tx) => {
-      // Verify user exists
-      const [user] = await tx`select id from users where id = ${userId}`;
-      if (!user) {
-        throw new NotFoundError("User not found");
-      }
-
-      // Reject self-elevation
-      if (auth.user.id === userId) {
-        throw new ConflictError("Users may not elevate themselves to platform_operator");
-      }
-
-      // Reject if user already has platform_operator (409 - no overwrite)
-      const [existingRole] = await tx`select role from platform_roles where user_id = ${userId}`;
-      if (existingRole && existingRole.role === "platform_operator") {
-        throw new ConflictError("User already holds platform_operator role");
-      }
-
-      // Insert platform role (insert only, no upsert)
-      await tx`
-        insert into platform_roles (user_id, role)
-        values (${userId}, 'platform_operator')
-      `;
-
-      // Audit log - writeAudit with real signature
-      await writeAudit(tx, deps.config, {
-        tenantId: auth.activeTenant!.id,
-        actorKind: "staff",
-        actorUserId: auth.user.id,
-        actorRoles: auth.activeTenant!.roles,
-        action: "platform_operator.elevate",
-        resourceType: "PlatformRole",
-        resourceId: userId,
-        ...auditMeta(c),
-        metadata: { role: "platform_operator", elevatedBy: auth.user.id, notes }
-      });
-
-      return {
-        userId: user.id,
-        role: "platform_operator"
-      };
-    });
-
+    await withPlatformActor(c, (tx) =>
+      legacyGrantPlatformRole(tx, deps.config, platformMeta(c), body.userId, auth.user.id, body.notes ?? null));
     return c.json({
       ok: true,
-      elevated: {
-        userId: result.userId,
-        role: result.role,
-        elevatedAt: new Date().toISOString()
-      }
+      elevated: { userId: body.userId, role: "platform_operator", elevatedAt: new Date().toISOString() },
     });
-  }
+  },
 );
 
-/**
- * Revoke a user's platform_operator role.
- * Only an existing platform_operator may revoke this role.
- * Self-revocation is rejected (409).
- * Users without platform_operator role are rejected (403).
- * The role is removed (delete), not overwritten.
- * Validates input with zod: userId must be a UUID.
- * Performs role removal and audit write in one transaction.
- * Does not return email; returns minimal data (userId, role, timestamp).
- */
 adminRoutes.post(
   "/platform-operator/revoke",
   async (c) => {
-    const auth = c.get("auth")!;
     const deps = c.get("deps");
-
-    // Input comes from the JSON body only. Nothing is read from the query string,
-    // so a userId can never appear in a URL, referer or access log.
-    const body = await parseJson(c, z.object({
-      userId: z.string().uuid(),
-    }));
-
-    const userId = body.userId;
-
-    // Only platform_operator may revoke this role
-    if (!auth.platformRoles.includes("platform_operator")) {
-      throw new ForbiddenError("Only platform_operator may revoke platform_operator role");
+    if (!legacyElevateAllowed(deps.config)) {
+      throw new AppError(
+        410,
+        "legacy_elevate_disabled",
+        "Direct revocation has been retired. Revoke platform access through the approval workflow.",
+      );
     }
-
-    // Use withStaffActor for transaction
-    const result = await withStaffActor(c, async (tx) => {
-      // Verify user exists and has platform_operator role
-      const [existingRole] = await tx`select role from platform_roles where user_id = ${userId}`;
-      if (!existingRole) {
-        throw new NotFoundError("User does not hold platform_operator role");
-      }
-
-      // Reject self-revocation
-      if (auth.user.id === userId) {
-        throw new ConflictError("Users may not revoke their own platform_operator role");
-      }
-
-      // Remove platform role
-      await tx`
-        delete from platform_roles
-        where user_id = ${userId}
-      `;
-
-      // Audit log
-      await writeAudit(tx, deps.config, {
-        tenantId: auth.activeTenant!.id,
-        actorKind: "staff",
-        actorUserId: auth.user.id,
-        actorRoles: auth.activeTenant!.roles,
-        action: "platform_operator.revoke",
-        resourceType: "PlatformRole",
-        resourceId: userId,
-        ...auditMeta(c),
-        metadata: { role: "platform_operator", revokedBy: auth.user.id }
-      });
-
-      return {
-        userId: existingRole.userId,
-        role: null as string | null,
-        revokedAt: new Date().toISOString()
-      };
-    });
-
+    requireStepUp(c);
+    const auth = c.get("auth")!;
+    const body = await parseJson(c, z.object({ userId: z.string().uuid() }));
+    await withPlatformActor(c, (tx) =>
+      legacyRevokePlatformRole(tx, deps.config, platformMeta(c), body.userId, auth.user.id));
     return c.json({
       ok: true,
-      revoked: {
-        userId: result.userId,
-        role: result.role,
-        revokedAt: result.revokedAt
-      }
+      revoked: { userId: body.userId, role: null, revokedAt: new Date().toISOString() },
     });
-  }
+  },
 );
+
+const requestIdParam = z.object({ id: z.string().uuid() });
+
+adminRoutes.get("/platform-operator/requests", async (c) => {
+  const requests = await withPlatformActor(c, async (tx) => tx`
+    select id, target_user_id, requested_by, status, reason,
+           created_at, expires_at, decided_by, decided_at, decision_note
+      from platform_role_requests
+     order by created_at desc
+     limit 100
+  `);
+  return c.json({ requests });
+});
+
+adminRoutes.post("/platform-operator/requests", async (c) => {
+  requireStepUp(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const body = await parseJson(c, z.object({
+    email: z.string().email().optional(),
+    userId: z.string().uuid().optional(),
+    reason: z.string().min(10).max(500),
+    durationHours: z.number().int().min(1).max(24 * 30).nullable().optional(),
+  }).refine((value) => Boolean(value.email || value.userId), { message: "email or userId is required" }));
+
+  const result = await withPlatformActor(c, (tx) => createPlatformRoleRequest(tx, deps.config, platformMeta(c), {
+    email: body.email ?? null,
+    userId: body.userId ?? null,
+    reason: body.reason,
+    durationHours: body.durationHours ?? null,
+    actorUserId: auth.user.id,
+  }));
+  return c.json(result, 201);
+});
+
+adminRoutes.post("/platform-operator/requests/:id/approve", async (c) => {
+  requireStepUp(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const { id } = requestIdParam.parse(c.req.param());
+  const body = await parseJson(c, z.object({ note: z.string().max(500).optional() }));
+  const result = await withPlatformActor(c, (tx) =>
+    approvePlatformRoleRequest(tx, deps.config, platformMeta(c), id, auth.user.id, body.note ?? ""));
+  return c.json(result);
+});
+
+adminRoutes.post("/platform-operator/requests/:id/deny", async (c) => {
+  requireStepUp(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const { id } = requestIdParam.parse(c.req.param());
+  const body = await parseJson(c, z.object({ note: z.string().max(500).optional() }));
+  await withPlatformActor(c, (tx) =>
+    denyPlatformRoleRequest(tx, deps.config, platformMeta(c), id, auth.user.id, body.note ?? ""));
+  return c.json({ ok: true });
+});
+
+adminRoutes.post("/platform-operator/requests/:id/cancel", async (c) => {
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const { id } = requestIdParam.parse(c.req.param());
+  const body = await parseJson(c, z.object({ reason: z.string().min(10).max(500) }));
+  await withPlatformActor(c, (tx) =>
+    cancelPlatformRoleRequest(tx, deps.config, platformMeta(c), id, auth.user.id, body.reason));
+  return c.json({ ok: true });
+});
+
+adminRoutes.post("/platform-operator/grants/:userId/revoke", async (c) => {
+  requireStepUp(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const { userId } = z.object({ userId: z.string().uuid() }).parse(c.req.param());
+  const body = await parseJson(c, z.object({ reason: z.string().min(10).max(500) }));
+  await withPlatformActor(c, (tx) =>
+    revokePlatformRoleGrant(tx, deps.config, platformMeta(c), userId, auth.user.id, body.reason));
+  return c.json({ ok: true });
+});

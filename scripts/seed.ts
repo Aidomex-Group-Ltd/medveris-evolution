@@ -33,7 +33,11 @@ if (stagingSeed && (PASSWORD.length < 16 || PASSWORD === LOCAL_PASSWORD)) {
 const seededTotp = new Map<string, string>();
 
 const config = loadConfig();
-const sql = createSql(requireEnv("DATABASE_URL"), { max: 5 });
+// Seeding is a synthetic-only administrative operation (assertSyntheticEnvironment above
+// refuses production) and it has to bootstrap the first platform operator, which RLS
+// deliberately prevents runtime sessions from doing. It therefore connects as the
+// migration role. Integration tests still exercise every policy through runtime.
+const sql = createSql(requireEnv("MIGRATION_DATABASE_URL"), { max: 5 });
 
 const tenantA = "11111111-1111-4111-8111-111111111111";
 const tenantB = "22222222-2222-4222-8222-222222222222";
@@ -208,8 +212,26 @@ try {
     await context(tx, tenantB, users.admin, ["facility_admin"], null);
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-admin-b")}, ${tenantB}, ${users.admin}, ${["facility_admin"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-clinician-b")}, ${tenantB}, ${users.clinicianB}, ${["clinician"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
-    await tx`insert into platform_roles (user_id, role) values (${users.reviewer}, 'credential_reviewer') on conflict do nothing`;
-    await tx`insert into platform_roles (user_id, role) values (${users.reviewer}, 'platform_operator') on conflict do nothing`;
+    // platform_roles is protected by FORCE row level security (migration 045). Seeding the
+    // synthetic reviewer as an operator is an explicit bootstrap, so the CLI-only bootstrap
+    // flag is enabled for this statement block and disabled immediately after. This file
+    // refuses to run outside a synthetic environment (assertSyntheticEnvironment above), so
+    // a real operator is never created here; the grant also expires after 24 hours.
+    await tx`select set_config('app.platform_roles_bootstrap', 'true', true)`;
+    await tx`insert into platform_roles (user_id, role) values (${users.reviewer}, 'credential_reviewer') on conflict (user_id, role) do nothing`;
+    // Explicit 24 hour expiry, never a permanent grant: the seeded reviewer is an operator
+    // only long enough to publish the onboarding catalogue and exercise operator screens.
+    await tx`
+      insert into platform_roles (user_id, role, granted_by, approved_by, request_id, granted_at, expires_at)
+      values (${users.reviewer}, 'platform_operator', null, null, null, now(), now() + interval '24 hours')
+      on conflict (user_id, role) do update
+        set granted_at = excluded.granted_at,
+            expires_at = excluded.expires_at,
+            revoked_at = null,
+            revoked_by = null,
+            revoked_reason = null
+    `;
+    await tx`select set_config('app.platform_roles_bootstrap', 'false', true)`;
 
     await platformContext(tx, users.reviewer);
     await tx`

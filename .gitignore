@@ -23,3 +23,8 @@ seed.env
 backup-verification.json
 *.pem
 .aider*
+
+# Local secrets / tooling leftovers
+.pgcredentials
+data/
+.worktree/

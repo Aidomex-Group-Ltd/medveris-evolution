@@ -33,3 +33,7 @@ This file separates harmless local-development gaps from items that block produc
 - Add per-tenant rate limits and abuse detection.
 - Add automated checks that every protected read writes audit evidence before returning content.
 - Add dependency and container scanning.
+- The platform operator expiry sweep (`expireStaleGrants`) exists but is not yet scheduled
+  by the jobs runner; expired grants are still treated as inactive by
+  `app.is_platform_operator()` and the service layer, so the gap is bookkeeping of the
+  `revoked_reason = 'grant-expired'` audit row, not access.

@@ -15,6 +15,7 @@
     "db:setup": "tsx scripts/db-setup.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "platform:operator": "tsx scripts/platform-operator.ts",
     "db:reset:synthetic": "tsx scripts/db-reset-synthetic.ts",
     "secrets:local": "tsx scripts/setup-secrets.ts local",
     "secrets:staging": "tsx scripts/setup-secrets.ts staging",

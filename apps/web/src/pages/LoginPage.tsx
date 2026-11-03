@@ -208,7 +208,7 @@ export function LoginPage() {
           </Card>
           {environment.synthetic ? (
             <Card title="Synthetic demo accounts">
-              <p className="mv-small mv-muted">Password: <span className="mv-inline-code">Medveris!2026</span>. Staff accounts require MFA; use the local development code button.</p>
+              <p className="mv-small mv-muted">The password for these accounts is printed by <span className="mv-inline-code">npm run db:seed</span> and is never bundled with the application. Staff accounts require MFA; use the local development code button.</p>
               <ul className="mv-small" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
                 <li>clinician@medveris.local — clinician, Kampala</li>
                 <li>admin@medveris.local — facility administrator</li>

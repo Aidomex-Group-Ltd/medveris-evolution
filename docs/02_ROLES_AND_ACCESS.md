@@ -57,3 +57,56 @@ Audit actor, active role, purpose, target reference, decision, reason code, poli
 ## Standard endpoint authorization
 
 FHIR scopes, patient references and DICOM study UIDs do not confer access independently. Apply the same permissions to FHIR read/search/history, included resources, terminology entitlements and DICOMweb metadata/frames/bulk data as to native screens. Distinguish a terminology-content entitlement from permission to read a patient's chart. Integration clients receive explicit resource/action/tenant scopes and current grant checks. Keep audit and consent resources more restrictive than ordinary clinical data. AT28 and AT33 test these boundaries.
+
+## Platform operator access (four-eyes)
+
+`platform_operator` is the only role that spans facilities. It is never granted by
+direct elevation. A grant needs a written request, an independent approver, an expiry and
+an audit event; the helper `app.is_platform_operator()` answers for the **current
+authenticated user only** (session variable `app.user_id`) and is false when there is no
+user context.
+
+### Bootstrap the first operator
+
+1. Ensure the target account is active, email-verified and has TOTP enrolled. Email-code
+   MFA is refused for platform access.
+2. Run the break-glass CLI against the local database with the migration role:
+
+   ```
+   npm run platform:operator -- grant --user <uuid> --reason "initial platform bootstrap"
+   ```
+
+3. In production the CLI additionally refuses to run without `--allow-production` **and**
+   an explicit `--reason=`. `--hours` is capped by `PLATFORM_ROLE_MAX_GRANT_HOURS`.
+4. Subsequent grants go through the approval workflow in Admin: request, independent
+   approval, expiry, soft revocation (`revoked_at`, never a row delete).
+
+Relevant environment variables (see `.env.example`):
+`PLATFORM_ROLE_DEFAULT_GRANT_HOURS`, `PLATFORM_ROLE_MAX_GRANT_HOURS`,
+`PLATFORM_ROLE_RECENT_MFA_SECONDS`, `PLATFORM_ROLE_MIN_ACTIVE_OPERATORS`,
+`PLATFORM_ROLE_LEGACY_ELEVATE_ENVIRONMENTS`.
+
+### Threat model
+
+Prevents:
+
+- a single compromised operator account granting itself or others permanent access
+  (independent approval plus a hard expiry);
+- an insider self-grant (a requester cannot approve their own request, a nominee cannot
+  approve the request that names them, and the database rejects `approved_by = granted_by`);
+- stale permanent access (grants expire and revocation is soft and audited);
+- account enumeration through the request flow (unknown accounts return a generic
+  not-found response and email addresses are never returned to the client).
+
+Does not prevent:
+
+- compromise of two operator accounts acting together (four-eyes only raises the cost);
+- an actor with database superuser or `BYPASSRLS` access, who can read or change
+  `platform_roles` directly. Protect database credentials and backups accordingly;
+- a live session acting on cached privileges between a revocation and session expiry —
+  every grant and revocation ends that user's sessions, so the window is bounded by the
+  transaction.
+
+The legacy `/platform-operator/elevate` and `/revoke` endpoints are retired (410 Gone) and
+can only be re-enabled for environments explicitly listed in
+`PLATFORM_ROLE_LEGACY_ELEVATE_ENVIRONMENTS`; `production` is refused at config load.

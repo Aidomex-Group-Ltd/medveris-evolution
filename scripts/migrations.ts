@@ -1,5 +1,6 @@
+import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import type { Client } from "pg";
 
 export interface Migration {
@@ -43,7 +44,54 @@ export function stripTransactionWrapper(version: string, sql: string): string {
   return sql.slice(first.index! + first[0].length, last.index);
 }
 
-export async function loadMigrations(dir = resolve(process.cwd(), "packages/db/migrations")): Promise<Migration[]> {
+const MIGRATIONS_DIRECTORY = resolve(process.cwd(), "packages/db/migrations");
+const IGNORED_TREE_DIRECTORIES = new Set(["node_modules", ".git", ".wrangler", ".freebuff", ".worktree", "dist", "build", "coverage", "test-results", ".data", ".mail-sink"]);
+
+/**
+ * Migration files are only applied from the loaded directory. A `.sql` file in
+ * any other `migrations/` folder (for example `apps/api/src/db/migrations`) is
+ * silently ignored by the runner, so it must fail instead of being forgotten.
+ */
+export async function misplacedMigrations(root = process.cwd(), loadedDir = MIGRATIONS_DIRECTORY): Promise<string[]> {
+  const loaded = resolve(loadedDir);
+  const found: string[] = [];
+  async function walk(dir: string): Promise<void> {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (IGNORED_TREE_DIRECTORIES.has(entry.name) || entry.name.startsWith(".aider")) continue;
+      const child = resolve(dir, entry.name);
+      if (child === loaded) continue;
+      if (entry.name === "migrations") {
+        const files = (await readdir(child)).filter((file) => file.endsWith(".sql")).sort();
+        for (const file of files) found.push(relative(root, resolve(child, file)) || file);
+        continue;
+      }
+      await walk(child);
+    }
+  }
+  await walk(root);
+  return found.sort();
+}
+
+export async function assertMigrationsInLoadedDirectory(root = process.cwd(), loadedDir = MIGRATIONS_DIRECTORY): Promise<void> {
+  const misplaced = await misplacedMigrations(root, loadedDir);
+  if (!misplaced.length) return;
+  throw new Error(
+    `Migration files exist outside the loaded directory ${relative(root, loadedDir) || loadedDir}: ${misplaced.join(", ")}. `
+    + "Move them into the loaded directory (and renumber without collisions) before migrating.",
+  );
+}
+
+export async function loadMigrations(dir = MIGRATIONS_DIRECTORY): Promise<Migration[]> {
+  // The guard only makes sense for the real project layout; an explicit custom
+  // directory is used by tests and does not describe this repository.
+  if (resolve(dir) === MIGRATIONS_DIRECTORY) await assertMigrationsInLoadedDirectory(process.cwd(), dir);
   const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
   const migrations: Migration[] = [];
   for (const file of files) {

@@ -1,3 +1,5 @@
+import type { Context } from "hono";
+
 export class AppError extends Error {
   readonly status: number;
   readonly code: string;
@@ -94,4 +96,19 @@ export class SyntheticTargetInProductionError extends AppError {
   constructor(message = "Platform access cannot be granted to a synthetic or demonstration account in production") {
     super(403, "synthetic_target_in_production", message);
   }
+}
+
+export function correlationId(c: Context<any>): string {
+  return c.get("correlationId") ?? crypto.randomUUID();
+}
+
+export function nativeErrorBody(c: Context<any>, err: AppError) {
+  return {
+    error: {
+      code: err.code,
+      message: err.message,
+      correlationId: correlationId(c),
+      details: err.details,
+    },
+  };
 }

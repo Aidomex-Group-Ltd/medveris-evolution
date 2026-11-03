@@ -91,3 +91,26 @@ Budget database/backup capacity, private object storage, imaging/PACS, media min
 ## Standards services operation
 
 Provision separate FHIR facade/engine configuration, profile-package registry, licensed terminology service/releases, value-set/map versions and private PACS endpoints. Monitor FHIR validation failures, unresolved mappings, terminology query failures, PACS backlog, partial STOW failures and imaging reconciliation. Back up local value sets, reviewed maps, profile packages and external identifier links in addition to clinical data and images. Rehearse terminology upgrades with historical-code compatibility and rollback; do not silently replace releases. Configure entitlement-aware terminology caches separately from forbidden shared clinical caching. Each vendor API requires tested timeout, retries, quotas, circuit breaker and reconciliation.
+
+## Platform operator bootstrap and break-glass
+
+`platform_roles` is protected by FORCE row level security, so the runtime role can never
+grant itself platform access. The scheduled expiry sweep and the four-eyes approval
+workflow in `apps/api/src/routes/admin.ts` are the normal paths; the CLI is only for
+bootstrapping the first operator or recovering when no operator can sign in.
+
+```
+npm run platform:operator -- list
+npm run platform:operator -- grant --user <uuid> --reason "..." [--hours 24] [--actor <uuid>]
+npm run platform:operator -- revoke --user <uuid> --reason "..." [--actor <uuid>]
+```
+
+- The CLI connects with `MIGRATION_DATABASE_URL` and sets the session-local
+  `app.platform_roles_bootstrap` flag; no API route sets it.
+- Production requires `--allow-production` and `--reason=`; both are checked before any
+  database work. Grants are capped by `PLATFORM_ROLE_MAX_GRANT_HOURS` (default 168, hard
+  ceiling 30 days).
+- Every grant and revocation revokes the target's sessions so the change takes effect
+  immediately, and writes an audit event (`platform_operator.*`).
+- Inspect state with `select user_id, role, granted_at, expires_at, revoked_at from
+  platform_roles order by granted_at desc;` — never select other user columns.

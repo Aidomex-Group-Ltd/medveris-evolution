@@ -78,7 +78,7 @@ CREATE TABLE platform_role_requests (
   CHECK (expires_at > created_at)
 );
 
-CREATE UNIQUE INDEX platform_role_requests_one_pending
+CREATE UNIQUE INDEX IF NOT EXISTS platform_role_requests_one_pending
   ON platform_role_requests (target_user_id, role)
   WHERE status = 'pending';
 
@@ -103,9 +103,6 @@ CREATE POLICY platform_role_requests_write ON platform_role_requests FOR ALL
   USING (app.is_platform_operator()) WITH CHECK (app.is_platform_operator());
 
 -- Prevent the same target from having more than one pending request at a time.
-CREATE UNIQUE INDEX platform_role_requests_one_pending
-  ON platform_role_requests (target_user_id, role)
-  WHERE status = 'pending';
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON platform_role_requests TO medveris_runtime;
 

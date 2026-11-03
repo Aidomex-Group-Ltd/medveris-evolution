@@ -92,3 +92,21 @@ Create these as Workers Observability saved queries on `medveris-staging` (then 
 | Worker restart | Deploy a new version while WebSocket clients are connected | Clients reconnect and resume or resync; no duplicate events shown |
 | External dependency timeout | Point `TERMINOLOGY_PROVIDER_URL` at a slow synthetic endpoint on staging | 503 after the timeout, breaker opens after 5 failures |
 | Backup restore | Restore staging into an isolated service | Counts, referential integrity, signed versions and audit chain verified; record actual RTO/RPO |
+
+## Break-glass: no platform operator can sign in
+
+1. Confirm the incident is genuine (all operators locked out, expired, or unavailable) and
+   record who authorised the recovery and why.
+2. Pick an existing active account with verified email and TOTP enrolled. Do not create an
+   account ad hoc and do not reuse a patient account.
+3. From a trusted workstation with production secrets loaded, run
+   `npm run platform:operator -- grant --user <uuid> --reason="..." --allow-production --hours 24`
+   using `MIGRATION_DATABASE_URL`. The CLI refuses production without both flag and reason.
+4. Sign in, run the normal four-eyes workflow to restore durable operator coverage, and
+   revoke the temporary break-glass grant.
+5. Review `platform_operator.*` audit events and the sessions ended by the change. Record
+   the recovery and the temporary grant duration in the incident log.
+
+`platform_roles` has FORCE row level security: the runtime role cannot grant itself access,
+so never "fix" an incident by disabling RLS or by granting the runtime role table write
+access.

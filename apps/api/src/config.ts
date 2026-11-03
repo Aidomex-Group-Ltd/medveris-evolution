@@ -383,9 +383,22 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
   }
   const minZoom = Math.max(0, Math.min(integer(env.MAP_MIN_ZOOM, 3), 22));
   const maxZoom = Math.max(minZoom, Math.min(integer(env.MAP_MAX_ZOOM, 19), 22));
+  const maxGrantHours = Math.max(1, Math.min(integer(env.PLATFORM_ROLE_MAX_GRANT_HOURS, 168), 24 * 30));
+  const defaultGrantHours = Math.max(1, Math.min(integer(env.PLATFORM_ROLE_DEFAULT_GRANT_HOURS, 24), maxGrantHours));
+  const legacyElevateEnvironments = list(env.PLATFORM_ROLE_LEGACY_ELEVATE_ENVIRONMENTS).map((value) => value.toLowerCase());
+  if (legacyElevateEnvironments.includes("production")) {
+    throw new Error("PLATFORM_ROLE_LEGACY_ELEVATE_ENVIRONMENTS must never include production");
+  }
   return {
     appEnv,
     origin,
+    platformRoles: {
+      defaultGrantHours,
+      maxGrantHours,
+      recentMfaSeconds: Math.max(30, integer(env.PLATFORM_ROLE_RECENT_MFA_SECONDS, 300)),
+      minActiveOperators: Math.max(1, integer(env.PLATFORM_ROLE_MIN_ACTIVE_OPERATORS, 2)),
+      legacyElevateEnvironments,
+    },
     sessionSecret: sessionSecret || TEST_SESSION_SECRET,
     sessionTtlMinutes: integer(env.SESSION_TTL_MINUTES, 480),
     auditSigningKey: auditSigningKey || TEST_AUDIT_SIGNING_KEY,
