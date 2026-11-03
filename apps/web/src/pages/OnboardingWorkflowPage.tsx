@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, ErrorState, Field, Input, LoadingState, Notice, PageHeader, SearchSelect, Select, Textarea } from "@medveris/ui";
+import { groupedCadres } from "@medveris/domain";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useQuery } from "../lib/useQuery";
@@ -8,7 +9,12 @@ import { useAction } from "../lib/useAction";
 
 // Types for the onboarding workflow
 interface CatalogueDepartment { code: string; name: string; description?: string; sortOrder: number }
-interface CatalogueCadre { code: string; name: string; category: string; regulatorCodes: string[]; requiresRegistration: boolean }
+interface CatalogueCadre {
+  code: string; name: string; category: string; regulatorCodes: string[]; requiresRegistration: boolean;
+  /** Null until a reviewed ISCO-08 mapping exists; never inferred on this screen. */
+  isco08Code?: string | null;
+  isco08Reviewed?: boolean;
+}
 interface CatalogueJobTitle {
   code: string; name: string; cadreCode: string; seniority: string;
   departmentCodes: string[]; requiresCredential: boolean;
@@ -132,6 +138,9 @@ export function OnboardingWorkflowPage() {
     const categories = accountTypeToCadres[form.accountType] ?? [];
     return (catalogue.data?.cadres ?? []).filter(c => categories.includes(c.category));
   }, [form.accountType, catalogue.data]);
+
+  // Display-only grouping for the searchable picker. Selecting a cadre never grants a role or permission.
+  const cadreGroups = useMemo(() => groupedCadres(filteredCadres), [filteredCadres]);
 
   const filteredTitles = useMemo(() => {
     if (!form.cadreCode && !form.accountType) return catalogue.data?.titles ?? [];
@@ -540,21 +549,26 @@ export function OnboardingWorkflowPage() {
                 </Card>
 
                 <Card title="Professional Cadre" description="Select your professional category. This determines which roles and permissions are relevant to you.">
-                  <Field label="Professional Cadre" htmlFor="cadre">
-                    <Select
+                  <Field label="Professional Cadre" htmlFor="cadre" hint="Search by cadre name. Groups are display labels only; a cadre does not grant access by itself.">
+                    <SearchSelect
                       id="cadre"
                       value={form.cadreCode ?? ""}
-                      onChange={(e) => handleCadreChange(e.target.value)}
-                      required={!form.customTitle}
-                    >
-                      <option value="">Select your cadre...</option>
-                      {filteredCadres.map((cadre) => (
-                        <option key={cadre.code} value={cadre.code}>
-                          {cadre.name} ({cadre.category}){cadre.requiresRegistration ? " *" : ""}
-                        </option>
-                      ))}
-                      <option value="other">Other - Request a custom title</option>
-                    </Select>
+                      onChange={handleCadreChange}
+                      placeholder="Search professional cadres..."
+                      aria-label="Professional cadre"
+                      emptyMessage="No cadre matches that search"
+                      groups={[
+                        ...cadreGroups.map((group) => ({
+                          label: group.label,
+                          options: group.cadres.map((cadre) => ({
+                            value: cadre.code,
+                            label: cadre.name,
+                            description: cadre.requiresRegistration ? "Regulator registration required" : "No statutory registration recorded",
+                          })),
+                        })),
+                        { label: "Not listed", options: [{ value: "other", label: "Other - request a custom title" }] },
+                      ]}
+                    />
                   </Field>
                   {form.cadreCode === "other" && (
                     <CustomTitleSection

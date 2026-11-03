@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { Fragment, useId, useMemo, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 
@@ -42,8 +42,14 @@ export interface SearchOption {
   disabled?: boolean;
 }
 
+export interface SearchOptionGroup {
+  label: string;
+  options: SearchOption[];
+}
+
 export function SearchSelect({
-  options,
+  options = [],
+  groups,
   value,
   onChange,
   placeholder = "Search…",
@@ -52,7 +58,9 @@ export function SearchSelect({
   emptyMessage = "No matches",
   "aria-label": ariaLabel,
 }: {
-  options: SearchOption[];
+  options?: SearchOption[];
+  /** Optional headings; search still matches across every group. */
+  groups?: SearchOptionGroup[];
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -66,14 +74,23 @@ export function SearchSelect({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const selected = options.find((option) => option.value === value);
-  const filtered = useMemo(() => {
+  const groupedOptions = useMemo(() => groups ?? [{ label: "", options }], [groups, options]);
+  const selected = useMemo(
+    () => groupedOptions.flatMap((group) => group.options).find((option) => option.value === value),
+    [groupedOptions, value],
+  );
+  const filteredGroups = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return options;
-    return options.filter((option) =>
-      `${option.label} ${option.description ?? ""} ${option.value}`.toLowerCase().includes(needle),
-    );
-  }, [options, query]);
+    return groupedOptions
+      .map((group) => ({
+        label: group.label,
+        options: group.options.filter((option) =>
+          !needle || `${option.label} ${option.description ?? ""} ${option.value}`.toLowerCase().includes(needle),
+        ),
+      }))
+      .filter((group) => group.options.length > 0);
+  }, [groupedOptions, query]);
+  const filtered = useMemo(() => filteredGroups.flatMap((group) => group.options), [filteredGroups]);
 
   function commit(option: SearchOption | undefined) {
     if (!option || option.disabled) return;
@@ -141,22 +158,30 @@ export function SearchSelect({
       ) : null}
       {open ? (
         <ul id={listId} className="mv-search-select__list" role="listbox" aria-label={ariaLabel ?? "Options"}>
-          {filtered.length ? filtered.map((option, index) => (
-            <li
-              key={option.value}
-              role="option"
-              aria-selected={option.value === value}
-              aria-disabled={option.disabled || undefined}
-              className={`mv-search-select__option${index === active ? " is-active" : ""}`}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                commit(option);
-              }}
-              onMouseEnter={() => setActive(index)}
-            >
-              <strong>{option.label}</strong>
-              {option.description ? <span className="mv-small mv-muted">{option.description}</span> : null}
-            </li>
+          {filtered.length ? filteredGroups.map((group) => (
+            <Fragment key={group.label || "options"}>
+              {group.label ? <li className="mv-search-select__group" role="presentation">{group.label}</li> : null}
+              {group.options.map((option) => {
+                const index = filtered.indexOf(option);
+                return (
+                  <li
+                    key={option.value}
+                    role="option"
+                    aria-selected={option.value === value}
+                    aria-disabled={option.disabled || undefined}
+                    className={`mv-search-select__option${index === active ? " is-active" : ""}`}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      commit(option);
+                    }}
+                    onMouseEnter={() => setActive(index)}
+                  >
+                    <strong>{option.label}</strong>
+                    {option.description ? <span className="mv-small mv-muted">{option.description}</span> : null}
+                  </li>
+                );
+              })}
+            </Fragment>
           )) : <li className="mv-search-select__option mv-muted" role="presentation">{emptyMessage}</li>}
         </ul>
       ) : null}

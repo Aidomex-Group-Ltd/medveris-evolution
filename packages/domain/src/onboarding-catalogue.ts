@@ -42,6 +42,16 @@ export interface OnboardingCatalogueCadre {
   description?: string;
   regulatorCodes: string[];
   requiresRegistration: boolean;
+  /**
+   * ISCO-08 unit-group code, or null when no reviewed mapping exists. Shipping
+   * null is deliberate: an empty code is honest, a guessed one is not.
+   */
+  isco08Code: string | null;
+  /**
+   * True only after a person has reviewed the ISCO-08 mapping. An unreviewed
+   * cadre never grants a role, permission or credential by itself.
+   */
+  isco08Reviewed: boolean;
 }
 
 export interface OnboardingCatalogueJobTitle {
@@ -124,7 +134,10 @@ export const UGANDA_DEPARTMENTS: OnboardingCatalogueDepartment[] = [
   { code: "OTHER", name: "Other or unlisted service", description: "Facility-defined service area pending review.", sortOrder: 99 },
 ];
 
-export const UGANDA_CADRES: OnboardingCatalogueCadre[] = [
+type CadreSeed = Omit<OnboardingCatalogueCadre, "isco08Code" | "isco08Reviewed">;
+
+/** Seed rows carry no ISCO-08 mapping; the export below attaches the empty, unreviewed state. */
+const CADRE_SEED: CadreSeed[] = [
   { code: "MED-OFF", name: "Medical officer", category: "medical", regulatorCodes: ["UMDPC"], requiresRegistration: true, description: "Registered medical practitioner." },
   { code: "SPEC-PHYS", name: "Specialist physician", category: "medical", regulatorCodes: ["UMDPC"], requiresRegistration: true },
   { code: "CONSULTANT", name: "Consultant", category: "medical", regulatorCodes: ["UMDPC"], requiresRegistration: true },
@@ -195,6 +208,58 @@ export const UGANDA_CADRES: OnboardingCatalogueCadre[] = [
   { code: "SOCIAL-AIDE", name: "Patient support aide", category: "support", regulatorCodes: ["NONE"], requiresRegistration: false },
   { code: "STUDENT", name: "Student or intern", category: "trainee", regulatorCodes: ["NONE"], requiresRegistration: false, description: "Supervised, limited access only." },
 ];
+
+/**
+ * Every bundled cadre ships with `isco08Code: null` and `isco08Reviewed: false`.
+ * Filling the codes later is a reviewed data change (seed or administrator
+ * path), never an inference made while someone registers.
+ */
+export const UGANDA_CADRES: OnboardingCatalogueCadre[] = CADRE_SEED.map((cadre) => ({
+  ...cadre,
+  isco08Code: null,
+  isco08Reviewed: false,
+}));
+
+/**
+ * Broad WHO-style display groups for the cadre picker. These are labels only:
+ * they group the existing categories for readability and deliberately carry no
+ * role, permission or privilege meaning.
+ */
+export const CADRE_GROUPS = [
+  { code: "medical-dental", label: "Medical and dental practitioners", categories: ["medical", "clinical", "dental", "eye-ent", "emergency", "anaesthesia"] },
+  { code: "nursing-midwifery", label: "Nursing and midwifery", categories: ["nursing", "midwifery"] },
+  { code: "pharmacy", label: "Pharmacy and medicines", categories: ["pharmacy"] },
+  { code: "laboratory-blood", label: "Laboratory and blood services", categories: ["laboratory"] },
+  { code: "imaging", label: "Radiology and medical imaging", categories: ["radiology"] },
+  { code: "allied-health", label: "Allied health, rehabilitation and public health", categories: ["rehabilitation", "nutrition", "mental-health", "public-health"] },
+  { code: "health-information", label: "Health information and records", categories: ["health-information", "data"] },
+  { code: "leadership-administration", label: "Leadership, administration and finance", categories: ["administration", "administrative", "finance", "education", "research", "governance", "quality"] },
+  { code: "technical-support", label: "Technical, support and facility services", categories: ["technical", "support", "mortuary", "security"] },
+  { code: "training", label: "Students and trainees", categories: ["trainee"] },
+] as const;
+
+export interface CadreGroupable {
+  code: string;
+  name: string;
+  category: string;
+}
+
+export interface CadrePickerGroup<T extends CadreGroupable = OnboardingCatalogueCadre> {
+  code: string;
+  label: string;
+  cadres: T[];
+}
+
+/** Groups cadres for display, preserving the catalogue order inside each group. */
+export function groupedCadres<T extends CadreGroupable>(cadres: readonly T[]): CadrePickerGroup<T>[] {
+  const groups: CadrePickerGroup<T>[] = CADRE_GROUPS.map((group) => ({ code: group.code, label: group.label, cadres: [] }));
+  const other: CadrePickerGroup<T> = { code: "other", label: "Other and unlisted cadres", cadres: [] };
+  for (const cadre of cadres) {
+    const index = CADRE_GROUPS.findIndex((group) => (group.categories as readonly string[]).includes(cadre.category));
+    (index === -1 ? other : groups[index]!).cadres.push(cadre);
+  }
+  return [...groups, other].filter((group) => group.cadres.length > 0);
+}
 
 export const UGANDA_JOB_TITLES: OnboardingCatalogueJobTitle[] = [
   { code: "MED-OFF-STD", name: "Medical Officer", cadreCode: "MED-OFF", seniority: "standard", departmentCodes: ["OPD", "EMERG", "WARD", "MAT", "PED", "CRIT"], requiresCredential: true, privilegeCodes: ["CLIN-ASSESS", "CLIN-SIGN", "PRESCRIBE", "ORDER-DIAG"], suggestedSystemRoles: ["clinician"] },
@@ -621,7 +686,17 @@ export function parseOnboardingCatalogue(value: unknown): OnboardingCatalogue {
   for (const key of ["regulators", "departments", "cadres", "jobTitles", "specialties"] as const) {
     if (!Array.isArray(candidate[key])) throw new DomainError(`Catalogue ${key} must be an array`);
   }
-  const catalogue = candidate as OnboardingCatalogue;
+  const candidateCatalogue = candidate as OnboardingCatalogue;
+  // Older published catalogues have no ISCO fields. Normalise them into a new
+  // object (never mutate the caller's payload); a reviewed mapping requires
+  // both a code and the flag.
+  const catalogue: OnboardingCatalogue = {
+    ...candidateCatalogue,
+    cadres: candidateCatalogue.cadres.map((cadre) => {
+      const code = typeof cadre.isco08Code === "string" && cadre.isco08Code.trim() ? cadre.isco08Code.trim() : null;
+      return { ...cadre, isco08Code: code, isco08Reviewed: cadre.isco08Reviewed === true && code !== null };
+    }),
+  };
   const issues = catalogueIntegrityIssues(catalogue);
   if (issues.length) throw new DomainError(`Catalogue integrity check failed: ${issues.join("; ")}`);
   return catalogue;

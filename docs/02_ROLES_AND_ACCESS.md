@@ -110,3 +110,21 @@ Does not prevent:
 The legacy `/platform-operator/elevate` and `/revoke` endpoints are retired (410 Gone) and
 can only be re-enabled for environments explicitly listed in
 `PLATFORM_ROLE_LEGACY_ELEVATE_ENVIRONMENTS`; `production` is refused at config load.
+
+## Cadres and ISCO-08 (unmapped by design)
+
+The onboarding cadre picker groups `UGANDA_CADRES` under display groups. Every cadre
+ships with `isco08Code: null` and `isco08Reviewed: false`, the catalogue parser drops a
+review flag that has no code, and a cadre carries no role or permission field — a job
+title never grants access. Tests in `tests/unit/onboarding-cadres.test.ts` enforce this.
+
+Do not invent codes. To map a cadre later:
+
+1. Source the code from the official ISCO-08 structure published by the ILO (or the UBOS
+   national adaptation), and record the edition/URL used.
+2. Add the code together with a reviewer identity and review date in a dedicated reviewed
+   mapping file, keeping the raw source text.
+3. Flip `isco08Reviewed` to `true` **only** in the same change that adds a verified code,
+   and extend the test to assert every reviewed cadre has a non-empty code from the
+   approved edition.
+4. Review as a domain change: no code change may alter a user's roles or permissions.

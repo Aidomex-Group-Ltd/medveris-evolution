@@ -321,3 +321,14 @@ button, input, select, textarea { font: inherit; }
 }
 .mv-search-select__option.is-active { background: var(--mv-brand-soft, rgba(20, 100, 200, 0.12)); }
 .mv-search-select__option[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+.mv-search-select__group {
+  position: sticky; top: 0; padding: 8px 10px 2px;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--mv-text-muted);
+  background: var(--mv-surface);
+}
+
+.mv-nav__area-label {
+  margin: 14px 12px 4px; font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--mv-text-muted);
+}
