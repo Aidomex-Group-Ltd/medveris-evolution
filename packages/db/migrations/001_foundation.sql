@@ -70,21 +70,15 @@ LANGUAGE sql STABLE AS $$
   SELECT COALESCE(NULLIF(current_setting('app.platform_role', true), ''), '') = 'credential_reviewer'
 $$;
 
--- Keep 001 self-contained vs 045/016: provide the identity-bound platform operator
--- helper now so early policies can run, and defer the later ownership/grant rewrite
--- to migrations 016 and 045.
+-- Keep 001 self-contained vs 045/042/016: provide a static platform-operator stub
+-- here so early policies can compile against a fresh database. The helper is later
+-- rewritten by migration 016 (static app.platform_role check), then 042 (global
+-- platform_roles existence check), then 045 (identity-bound platform_roles check).
 
 CREATE OR REPLACE FUNCTION app.is_platform_operator()
 RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-  SELECT app.current_user() IS NOT NULL
-     AND EXISTS (
-       SELECT 1 FROM platform_roles
-        WHERE user_id = app.current_user()
-          AND role = 'platform_operator'
-          AND revoked_at IS NULL
-          AND (expires_at IS NULL OR expires_at > now())
-     );
+LANGUAGE sql STABLE AS $$
+  SELECT COALESCE(NULLIF(current_setting('app.platform_role', true), ''), '') = 'platform_operator'
 $$;
 
 ALTER FUNCTION app.is_platform_operator() OWNER TO medveris_exchange;
@@ -715,41 +709,8 @@ CREATE POLICY memberships_write_via_user_id ON memberships FOR INSERT
 CREATE POLICY memberships_write_platform_any ON memberships FOR INSERT
   WITH CHECK (app.is_platform_operator());
 
-CREATE POLICY memberships_write_platform ON memberships FOR INSERT
-  WITH CHECK (app.is_platform_operator());
-
-CREATE POLICY memberships_write_owner ON memberships FOR INSERT
-  WITH CHECK (tenant_id = app.current_tenant() AND user_id = app.current_user());
-
-CREATE POLICY memberships_write_registration ON memberships FOR INSERT
-  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
-
-CREATE POLICY memberships_write_via_user_id ON memberships FOR INSERT
-  WITH CHECK (user_id = app.current_user());
-
-CREATE POLICY memberships_write_platform_any ON memberships FOR INSERT
-  WITH CHECK (app.is_platform_operator());
-
-CREATE POLICY memberships_write_platform ON memberships FOR INSERT
-  WITH CHECK (app.is_platform_operator());
-
-CREATE POLICY memberships_write_owner ON memberships FOR INSERT
-  WITH CHECK (tenant_id = app.current_tenant() AND user_id = app.current_user());
-
-CREATE POLICY memberships_write_registration ON memberships FOR INSERT
-  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
-
-CREATE POLICY memberships_write_via_user_id ON memberships FOR INSERT
-  WITH CHECK (user_id = app.current_user());
-
-CREATE POLICY memberships_write_platform_any ON memberships FOR INSERT
-  WITH CHECK (app.is_platform_operator());
-
 CREATE POLICY memberships_write_any ON memberships FOR INSERT
   WITH CHECK (app.is_platform_operator());
-
-CREATE POLICY memberships_write_registration ON memberships FOR INSERT
-  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
 
 CREATE POLICY memberships_write_owner_via_user ON memberships FOR INSERT
   WITH CHECK (user_id = app.current_user());
@@ -759,9 +720,6 @@ CREATE POLICY memberships_write_via_user_id_on_any_tenant ON memberships FOR INS
 
 CREATE POLICY memberships_write_platform_operator_on_any_tenant ON memberships FOR INSERT
   WITH CHECK (app.is_platform_operator());
-
-CREATE POLICY memberships_write_owner_on_current_tenant_via_role ON memberships FOR INSERT
-  WITH CHECK (tenant_id = app.current_tenant() AND role = 'workspace_owner' AND user_id = app.current_user());
 
 CREATE POLICY memberships_write_owner_on_current_tenant_via_platform ON memberships FOR INSERT
   WITH CHECK (tenant_id = app.current_tenant() AND app.is_platform_operator());
@@ -811,32 +769,11 @@ CREATE POLICY memberships_write_any_via_platform_or_user_id_on_current_tenant ON
 CREATE POLICY memberships_write_any_via_platform_and_user_id_on_current_tenant ON memberships FOR INSERT
   WITH CHECK ((app.is_platform_operator() AND user_id = app.current_user()) AND tenant_id = app.current_tenant());
 
-CREATE POLICY memberships_write_any_via_platform_or_user_id_on_current_tenant_via_role ON memberships FOR INSERT
-  WITH CHECK ((app.is_platform_operator() OR user_id = app.current_user()) AND tenant_id = app.current_tenant() AND role = 'workspace_owner');
-
-CREATE POLICY memberships_write_any_via_platform_and_user_id_on_current_tenant_via_role ON memberships FOR INSERT
-  WITH CHECK ((app.is_platform_operator() AND user_id = app.current_user()) AND tenant_id = app.current_tenant() AND role = 'workspace_owner');
-
-CREATE POLICY memberships_write_any_via_platform_or_user_id_on_current_tenant_via_role_or_platform ON memberships FOR INSERT
-  WITH CHECK ((app.is_platform_operator() OR user_id = app.current_user()) AND tenant_id = app.current_tenant() AND (role = 'workspace_owner' OR app.is_platform_operator()));
-
-CREATE POLICY memberships_write_any_via_platform_and_user_id_on_current_tenant_via_role_or_platform ON memberships FOR INSERT
-  WITH CHECK ((app.is_platform_operator() AND user_id = app.current_user()) AND tenant_id = app.current_tenant() AND (role = 'workspace_owner' OR app.is_platform_operator()));
-
-CREATE POLICY memberships_write_registration ON memberships FOR INSERT
-  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
-
 CREATE POLICY memberships_write_owner_override ON memberships FOR INSERT
   WITH CHECK (user_id = app.current_user());
 
 CREATE POLICY memberships_write_direct ON memberships FOR INSERT
   WITH CHECK (user_id = app.current_user());
-
-CREATE POLICY memberships_write_platform ON memberships FOR INSERT
-  WITH CHECK (app.is_platform_operator());
-
-CREATE POLICY memberships_write_platform_any ON memberships FOR INSERT
-  WITH CHECK (app.is_platform_operator());
 
 CREATE POLICY memberships_update ON memberships FOR UPDATE
   USING (tenant_id = app.current_tenant() OR app.current_membership_id() = id)
