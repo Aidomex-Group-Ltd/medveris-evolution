@@ -11,14 +11,14 @@ const PLATFORM_KIT = [
   ["Price list", "owned catalogue of services, procedures, supplies and pharmacy items"],
   ["Staff seats", "included per plan before per-seat add-ons apply"],
   ["Storage", "included flat kit with per-plan allowance"],
-  ["AI seats", "included AI seats per plan"],
+  ["Workers AI", "in-platform AI assistance included on every plan"],
 ] as const;
 
 const PLANS = [
-  { code: "basic", name: "Basic", description: "Low-consumption accounts", monthlyPriceMinor: 1500, storageGb: 10, seats: 10, aiSeats: 10, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
-  { code: "standard", name: "Standard", description: "Medium-consumption accounts", monthlyPriceMinor: 3000, storageGb: 50, seats: 50, aiSeats: 50, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
-  { code: "advanced", name: "Professional", description: "High-consumption accounts", monthlyPriceMinor: 10000, storageGb: 200, seats: 250, aiSeats: 250, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
-  { code: "enterprise", name: "Enterprise", description: "Custom kit with a contract", monthlyPriceMinor: null, storageGb: null, seats: null, aiSeats: null, usageOverages: true, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: true },
+  { code: "basic", name: "Basic", description: "Low-consumption accounts", monthlyPriceMinor: 1500, storageGb: 10, seats: 10, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
+  { code: "standard", name: "Standard", description: "Medium-consumption accounts", monthlyPriceMinor: 3000, storageGb: 50, seats: 50, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
+  { code: "professional", name: "Professional", description: "High-consumption accounts", monthlyPriceMinor: 10000, storageGb: 200, seats: 250, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
+  { code: "enterprise", name: "Enterprise", description: "Custom kit with a contract", monthlyPriceMinor: null, storageGb: null, seats: null, usageOverages: true, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: true },
 ];
 
 function Logo({ text }: { text: string }) {
@@ -41,6 +41,11 @@ function MenuIcon({ open }: { open: boolean }) {
 }
 
 export function PricingPage() {
+  // Intentional illustrative catalog for the public pricing page.
+  // The active plan catalogue for signed-in accounts lives in the billing console:
+  // subscription_plans (draft/approved) via /platform/billing/plans, and the
+  // facility price list via /platform/price-lists. Prices here are fixed tier
+  // examples for marketing, not live contract prices.
   const approved = PLANS.filter((plan) => plan.monthlyPriceMinor != null && !plan.contractRequired);
   const draft = PLANS.filter((plan) => plan.contractRequired);
 
@@ -90,11 +95,10 @@ export function PricingPage() {
           <div className="pricing-shell pricing-hero-inner">
             <div className="pricing-hero-copy">
               <p className="pricing-eyebrow">Platform pricing</p>
-              <h1>One platform, three fixed prices.</h1>
-              <p className="pricing-lead">
+              <h1>One platform, three fixed prices.</h1>                <p className="pricing-lead">
                 Medveris gives every account the same full kit: core clinical, point of sale, the price list, staff
-                seats, storage and AI seats. Prices are flat per month, set in USD, and are reusable by every
-                workspace one account pays for.
+                seats, storage and in-platform AI assistance. Prices are flat per month, set in USD, and are reusable
+                by every workspace one account pays for.
               </p>
               <div className="pricing-actions">
                 <a className="pricing-btn pricing-btn--primary pricing-btn--lg" href="#plans">
@@ -140,7 +144,6 @@ export function PricingPage() {
                         <th scope="col">Price</th>
                         <th scope="col">Included seats</th>
                         <th scope="col">Storage</th>
-                        <th scope="col">AI seats</th>
                         <th scope="col">Best for</th>
                       </tr>
                     </thead>
@@ -151,7 +154,6 @@ export function PricingPage() {
                           <td className="pricing-money">{cents(plan.monthlyPriceMinor)} / month</td>
                           <td className="pricing-small">{plan.name === "Basic" ? "10" : plan.name === "Standard" ? "50" : plan.name === "Professional" ? "250" : "custom"}</td>
                           <td className="pricing-small">{plan.name === "Basic" ? "10 GB" : plan.name === "Standard" ? "50 GB" : plan.name === "Professional" ? "200 GB" : "custom"}</td>
-                          <td className="pricing-small">{plan.name === "Basic" ? "10" : plan.name === "Standard" ? "50" : plan.name === "Professional" ? "250" : "custom"}</td>
                           <td className="pricing-small">{plan.description}</td>
                         </tr>
                       ))}
@@ -184,11 +186,12 @@ export function PricingPage() {
                   </div>
                 </div>
                 <div className="pricing-note" style={{ marginTop: "16px" }}>
-                  <p><strong>How AI seats are priced</strong></p>
+                  <p><strong>What’s included</strong></p>
                   <p className="pricing-small pricing-muted">
-                    The flat monthly plan price never charges per seat. AI seats are counted on the account and
-                    billed monthly at a fixed rate once a plan is accepted. Staff seats are included up to the plan
-                    allowance and cost a fixed rate per seat beyond it.
+                    Every plan includes the full platform kit — core clinical, point of sale, the price list, staff
+                    seats up to the plan allowance, storage up to the plan allowance, and in-platform Workers AI
+                    assistance. There is no per-seat AI price and no AI allowance tier; AI is part of the flat plan,
+                    not a separate line item.
                   </p>
                 </div>
               </PricingCard>
@@ -214,8 +217,9 @@ export function PricingPage() {
                         <td>{label}</td>
                         {["Basic", "Standard", "Professional"].map((planName) => (
                           <td key={planName} className="pricing-small">
-                            {planName === "Basic" ? "10" : planName === "Standard" ? "50" : "250"} seats
-                          </td>
+                            {planName === "Basic" ? "10 seats" : planName === "Standard" ? "50 seats" : "250 seats"}</td>
+                          <td key={planName} className="pricing-small">
+                            {planName === "Basic" ? "10 GB" : planName === "Standard" ? "50 GB" : "200 GB"}</td>
                         ))}
                       </tr>
                     ))}
@@ -224,12 +228,6 @@ export function PricingPage() {
                       <td>10 GB</td>
                       <td>50 GB</td>
                       <td>200 GB</td>
-                    </tr>
-                    <tr>
-                      <td>AI seats</td>
-                      <td>10</td>
-                      <td>50</td>
-                      <td>250</td>
                     </tr>
                     <tr>
                       <td>Monthly price</td>
@@ -278,12 +276,12 @@ export function PricingPage() {
                     </div>
                     <div className="pricing-spread">
                       <dt>Features</dt>
-                      <dd className="pricing-small">{plan.features.join(", ") || "Full platform kit"}</dd>
+                      <dd className="pricing-small">Full platform kit — core clinical, point of sale, price list, staff seats, storage and in-platform Workers AI.</dd>
                     </div>
                     {plan.contractRequired ? (
                       <div className="pricing-spread">
                         <dt>pricing</dt>
-                        <dd className="pricing-small">Contract required — custom seats, storage and AI allowance.</dd>
+                        <dd className="pricing-small">Contract required — custom seats and storage allowance.</dd>
                       </div>
                     ) : null}
                   </dl>
@@ -300,29 +298,27 @@ export function PricingPage() {
                   </div>
                 </PricingCard>
               ))}
-            </div>
-
-            <PricingCard
-              title="Availability"
-              description="Flat prices are fixed by policy. They only take effect once a plan version is approved, and a draft price never appears on a bill."
-            >
-              <div className="pricing-stack">
-                {approved.map((plan) => (
-                  <div key={plan.code} className="pricing-row" style={{ gap: "12px" }}>
-                    <div className="pricing-metric" style={{ flex: "none" }}>{cents(plan.monthlyPriceMinor)}</div>
-                    <div>
-                      <strong className="pricing-audience-name">{plan.name}</strong>
-                      <p className="pricing-small pricing-muted">
-                        {plan.code === "basic"
-                          ? "Standard trial. $0.50 per day reference."
-                          : plan.code === "standard"
-                            ? "Medium-consumption profile."
-                            : "High-consumption profile. $100.00/month with a custom kit."}
-                      </p>
+            </div>              <PricingCard
+                title="Availability"
+                description="Flat prices are fixed by policy. They only take effect once a plan version is approved, and a draft price never appears on a bill."
+              >
+                <div className="pricing-stack">
+                  {approved.map((plan) => (
+                    <div key={plan.code} className="pricing-row" style={{ gap: "12px" }}>
+                      <div className="pricing-metric" style={{ flex: "none" }}>{cents(plan.monthlyPriceMinor)}</div>
+                      <div>
+                        <strong className="pricing-audience-name">{plan.name}</strong>
+                        <p className="pricing-small pricing-muted">
+                          {plan.code === "basic"
+                            ? "Standard trial. $0.50 per day reference."
+                            : plan.code === "standard"
+                              ? "Medium-consumption profile."
+                              : "High-consumption profile. $100.00/month with a custom kit."}
+                        </p>
+                      </div>
+                      <Badge tone="success">approved</Badge>
                     </div>
-                    <Badge tone="success">approved</Badge>
-                  </div>
-                ))}
+                  ))}
                 {draft.map((plan) => (
                   <div key={plan.code} className="pricing-row" style={{ gap: "12px" }}>
                     <div className="pricing-metric" style={{ flex: "none" }}>{cents(plan.monthlyPriceMinor)}</div>
@@ -333,6 +329,7 @@ export function PricingPage() {
                     <Badge tone="warning">draft</Badge>
                   </div>
                 ))}
+                {ILLUSTRATIVE_NOTICE}
               </div>
             </PricingCard>
           </div>
@@ -380,7 +377,7 @@ export function PricingPage() {
                   <div className="pricing-metric" style={{ flex: "none" }}>$15</div>
                   <div>
                     <strong className="pricing-audience-name">Basic</strong>
-                    <p className="pricing-audience-desc">Low-consumption accounts. 10 staff seats, 10 GB storage, 10 AI seats.</p>
+                    <p className="pricing-audience-desc">Low-consumption accounts. 10 staff seats, 10 GB storage, in-platform AI.</p>
                   </div>
                   <Badge tone="success">approved</Badge>
                 </div>
@@ -388,7 +385,7 @@ export function PricingPage() {
                   <div className="pricing-metric" style={{ flex: "none" }}>$30</div>
                   <div>
                     <strong className="pricing-audience-name">Standard</strong>
-                    <p className="pricing-audience-desc">Medium-consumption accounts. 50 staff seats, 50 GB storage, 50 AI seats.</p>
+                    <p className="pricing-audience-desc">Medium-consumption accounts. 50 staff seats, 50 GB storage, in-platform AI.</p>
                   </div>
                   <Badge tone="success">approved</Badge>
                 </div>
@@ -396,7 +393,7 @@ export function PricingPage() {
                   <div className="pricing-metric" style={{ flex: "none" }}>$100</div>
                   <div>
                     <strong className="pricing-audience-name">Professional</strong>
-                    <p className="pricing-audience-desc">High-consumption accounts. 250 staff seats, 200 GB storage, 250 AI seats.</p>
+                    <p className="pricing-audience-desc">High-consumption accounts. 250 staff seats, 200 GB storage, in-platform AI.</p>
                   </div>
                   <Badge tone="success">approved</Badge>
                 </div>
@@ -445,33 +442,31 @@ export function PricingPage() {
                 </a>
               }
             >
-              <div className="pricing-stack">
-                <div className="pricing-row" style={{ gap: "12px" }}>
-                  <div className="pricing-metric" style={{ flex: "none" }}>$15.00</div>
-                  <div>
-                    <strong className="pricing-audience-name">Basic</strong>
-                    <p className="pricing-small pricing-muted">10 staff seats · 10 GB storage · 10 AI seats</p>
+              <div className="pricing-stack">                  <div className="pricing-row" style={{ gap: "12px" }}>
+                    <div className="pricing-metric" style={{ flex: "none" }}>$15.00</div>
+                    <div>
+                      <strong className="pricing-audience-name">Basic</strong>
+                      <p className="pricing-small pricing-muted">10 staff seats · 10 GB storage · in-platform AI</p>
+                    </div>
                   </div>
-                </div>
-                <div className="pricing-row" style={{ gap: "12px" }}>
-                  <div className="pricing-metric" style={{ flex: "none" }}>$30.00</div>
-                  <div>
-                    <strong className="pricing-audience-name">Standard</strong>
-                    <p className="pricing-small pricing-muted">50 staff seats · 50 GB storage · 50 AI seats</p>
+                  <div className="pricing-row" style={{ gap: "12px" }}>
+                    <div className="pricing-metric" style={{ flex: "none" }}>$30.00</div>
+                    <div>
+                      <strong className="pricing-audience-name">Standard</strong>
+                      <p className="pricing-small pricing-muted">50 staff seats · 50 GB storage · in-platform AI</p>
+                    </div>
                   </div>
-                </div>
-                <div className="pricing-row" style={{ gap: "12px" }}>
-                  <div className="pricing-metric" style={{ flex: "none" }}>$100.00</div>
-                  <div>
-                    <strong className="pricing-audience-name">Professional</strong>
-                    <p className="pricing-small pricing-muted">250 staff seats · 200 GB storage · 250 AI seats</p>
+                  <div className="pricing-row" style={{ gap: "12px" }}>
+                    <div className="pricing-metric" style={{ flex: "none" }}>$100.00</div>
+                    <div>
+                      <strong className="pricing-audience-name">Professional</strong>
+                      <p className="pricing-small pricing-muted">250 staff seats · 200 GB storage · in-platform AI</p>
+                    </div>
                   </div>
-                </div>
                 <div className="pricing-note">
                   <p className="pricing-small pricing-muted">
                     <strong>Need a price on request?</strong> Enterprise and custom contracts are quoted per contract,
-                    not per plan. Contact Medveris finance to set a staff-seat, storage and AI allowance on the
-                    account.
+                    not per plan. Contact Medveris finance to set a staff-seat and storage allowance on the account.
                   </p>
                 </div>
               </div>
@@ -486,21 +481,20 @@ export function PricingPage() {
             <div className="pricing-footer-brand">
               <Logo text="" />
               <p>One digital health platform. Every level of care.</p>
-              <p className="pricing-footer-price" id="pricing">
+              <p className="pricing-footer-price">
                 <strong>$0.50 per day</strong> for providers &middot; Patients free
               </p>
             </div>
             <nav className="pricing-footer-col" aria-label="Product">
               <h2>Product</h2>
               <a href="/about">Platform</a>
-              <a href="/pricing">Pricing</a>
               <a href="/directory">Provider directory</a>
               <a href="/portal">Patient portal</a>
               <a href="#sign-up">Start a trial</a>
             </nav>
             <nav className="pricing-footer-col" aria-label="Company">
               <h2>Company</h2>
-              <a href="/pricing">Pricing</a>
+              <a href="/about">About</a>
               <a href="/help">Help &amp; support</a>
               <a href="/contacts">Contact</a>
             </nav>
@@ -548,3 +542,11 @@ function PricingCard({
     </section>
   );
 }
+
+const ILLUSTRATIVE_NOTICE = (
+  <p className="pricing-note" style={{ marginTop: "16px" }}>
+    <strong>Illustrative prices.</strong> The public prices below show the published tier structure.
+    The exact active price for an account is set on its subscription plan, managed by platform operators
+    in the billing console. Staff see their live plan, usage and invoices in the subscription screen.
+  </p>
+);
