@@ -126,6 +126,7 @@ export class RealtimeHub {
     if (url.pathname === "/publish" && request.method === "POST") return this.publish(request);
     if (url.pathname === "/revoke" && request.method === "POST") return this.revoke(request);
     if (url.pathname === "/stats") return Response.json({ connections: this.sockets().length });
+    if (url.pathname === "/iot/events" && request.method === "POST") return this.iotPublish(request);
     return new Response("not found", { status: 404 });
   }
 
@@ -202,6 +203,33 @@ export class RealtimeHub {
       closed += 1;
     }
     return Response.json({ closed });
+  }
+
+  private async iotPublish(request: Request): Promise<Response> {
+    const parsed = z.strictObject({
+      channel: z.string().regex(/^iot:/),
+      type: z.string().regex(/^[a-z][a-z0-9-]*(\.[a-z0-9_-]+)+$/).max(100),
+      ref: z.string().regex(/^[0-9a-f-]{36}$/i).nullable(),
+      payload: z.record(z.unknown()).optional(),
+    }).safeParse(await request.json().catch(() => null));
+    if (!parsed.success) return new Response("invalid event", { status: 400 });
+    const { channel, type, ref, payload } = parsed.data;
+    const now = this.now();
+    const event: RealtimeEvent = { channel, seq: await this.nextSeq(channel), type, ref, at: now };
+    if (!payload) {
+      const retained = (await this.log(channel)).filter((item) => now - item.at <= REPLAY_WINDOW_MS);
+      retained.push(event);
+      await this.ctx.storage.put(`log:${channel}`, retained.slice(-REPLAY_LIMIT));
+    }
+    let delivered = 0;
+    let failed = 0;
+    for (const socket of this.sockets()) {
+      const attachment = socket.deserializeAttachment() as Attachment | null;
+      if (!attachment || attachment.expiresAt <= now || !attachment.subscribed.includes(channel)) continue;
+      if (send(socket, { type: "event", channel, seq: event.seq, event: type, ref, at: now, payload })) delivered += 1;
+      else failed += 1;
+    }
+    return Response.json({ seq: event.seq, delivered, failed, payload });
   }
 
   async webSocketMessage(socket: HibernatableSocket, raw: string | ArrayBuffer): Promise<void> {

@@ -296,9 +296,9 @@ export function PricingPage() {
                       </a>
                     )}
                   </div>
-                </PricingCard>
-              ))}
-            </div>              <PricingCard
+                </PricingCard>              ))}
+
+              <PricingCard
                 title="Availability"
                 description="Flat prices are fixed by policy. They only take effect once a plan version is approved, and a draft price never appears on a bill."
               >
@@ -442,27 +442,28 @@ export function PricingPage() {
                 </a>
               }
             >
-              <div className="pricing-stack">                  <div className="pricing-row" style={{ gap: "12px" }}>
-                    <div className="pricing-metric" style={{ flex: "none" }}>$15.00</div>
-                    <div>
-                      <strong className="pricing-audience-name">Basic</strong>
-                      <p className="pricing-small pricing-muted">10 staff seats · 10 GB storage · in-platform AI</p>
-                    </div>
+              <div className="pricing-stack">
+                <div className="pricing-row" style={{ gap: "12px" }}>
+                  <div className="pricing-metric" style={{ flex: "none" }}>$15.00</div>
+                  <div>
+                    <strong className="pricing-audience-name">Basic</strong>
+                    <p className="pricing-small pricing-muted">10 staff seats · 10 GB storage · in-platform AI</p>
                   </div>
-                  <div className="pricing-row" style={{ gap: "12px" }}>
-                    <div className="pricing-metric" style={{ flex: "none" }}>$30.00</div>
-                    <div>
-                      <strong className="pricing-audience-name">Standard</strong>
-                      <p className="pricing-small pricing-muted">50 staff seats · 50 GB storage · in-platform AI</p>
-                    </div>
+                </div>
+                <div className="pricing-row" style={{ gap: "12px" }}>
+                  <div className="pricing-metric" style={{ flex: "none" }}>$30.00</div>
+                  <div>
+                    <strong className="pricing-audience-name">Standard</strong>
+                    <p className="pricing-small pricing-muted">50 staff seats · 50 GB storage · in-platform AI</p>
                   </div>
-                  <div className="pricing-row" style={{ gap: "12px" }}>
-                    <div className="pricing-metric" style={{ flex: "none" }}>$100.00</div>
-                    <div>
-                      <strong className="pricing-audience-name">Professional</strong>
-                      <p className="pricing-small pricing-muted">250 staff seats · 200 GB storage · in-platform AI</p>
-                    </div>
+                </div>
+                <div className="pricing-row" style={{ gap: "12px" }}>
+                  <div className="pricing-metric" style={{ flex: "none" }}>$100.00</div>
+                  <div>
+                    <strong className="pricing-audience-name">Professional</strong>
+                    <p className="pricing-small pricing-muted">250 staff seats · 200 GB storage · in-platform AI</p>
                   </div>
+                </div>
                 <div className="pricing-note">
                   <p className="pricing-small pricing-muted">
                     <strong>Need a price on request?</strong> Enterprise and custom contracts are quoted per contract,
