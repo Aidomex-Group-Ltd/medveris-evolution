@@ -50,7 +50,7 @@ export function isLocalEnvironment(env: WorkerEnv): boolean {
 export function bindingProblems(env: WorkerEnv, config: AppConfig): string[] {
   const problems: string[] = [];
   const local = isLocalEnvironment(env);
-  const bindings = new Set(Object.keys(env).filter((key) => env[key] && typeof env[key] === "object"));
+  const bindings = new Set(Object.entries(env).filter(([, value]) => value && typeof value === "object" && !(value instanceof Response)).map(([key]) => key));
   if (local && envString(env, "DATABASE_URL")) bindings.add("HYPERDRIVE");
   try {
     assertServableTopology(config.shardTopology, bindings);

@@ -216,10 +216,14 @@ export function PricingPage() {
                       <tr key={label}>
                         <td>{label}</td>
                         {["Basic", "Standard", "Professional"].map((planName) => (
-                          <td key={planName} className="pricing-small">
-                            {planName === "Basic" ? "10 seats" : planName === "Standard" ? "50 seats" : "250 seats"}</td>
-                          <td key={planName} className="pricing-small">
-                            {planName === "Basic" ? "10 GB" : planName === "Standard" ? "50 GB" : "200 GB"}</td>
+                          <React.Fragment key={planName}>
+                            <td className="pricing-small">
+                              {planName === "Basic" ? "10 seats" : planName === "Standard" ? "50 seats" : "250 seats"}
+                            </td>
+                            <td className="pricing-small">
+                              {planName === "Basic" ? "10 GB" : planName === "Standard" ? "50 GB" : "200 GB"}
+                            </td>
+                          </React.Fragment>
                         ))}
                       </tr>
                     ))}
@@ -250,8 +254,7 @@ export function PricingPage() {
         </section>
 
         <section id="plans" className="pricing-shell">
-          <div className="pricing-stack">
-            <div className="pricing-grid pricing-grid--3">
+          <div className="pricing-stack">          <div className="pricing-grid pricing-grid--3">
               {approved.map((plan) => (
                 <PricingCard
                   key={plan.code}
@@ -296,7 +299,8 @@ export function PricingPage() {
                       </a>
                     )}
                   </div>
-                </PricingCard>              ))}
+                </PricingCard>
+              ))}
 
               <PricingCard
                 title="Availability"
@@ -319,19 +323,20 @@ export function PricingPage() {
                       <Badge tone="success">approved</Badge>
                     </div>
                   ))}
-                {draft.map((plan) => (
-                  <div key={plan.code} className="pricing-row" style={{ gap: "12px" }}>
-                    <div className="pricing-metric" style={{ flex: "none" }}>{cents(plan.monthlyPriceMinor)}</div>
-                    <div>
-                      <strong className="pricing-audience-name">{plan.name}</strong>
-                      <p className="pricing-small pricing-muted">Pricing awaiting approval. The price is not active until a separate approval is recorded.</p>
+                  {draft.map((plan) => (
+                    <div key={plan.code} className="pricing-row" style={{ gap: "12px" }}>
+                      <div className="pricing-metric" style={{ flex: "none" }}>{cents(plan.monthlyPriceMinor)}</div>
+                      <div>
+                        <strong className="pricing-audience-name">{plan.name}</strong>
+                        <p className="pricing-small pricing-muted">Pricing awaiting approval. The price is not active until a separate approval is recorded.</p>
+                      </div>
+                      <Badge tone="warning">draft</Badge>
                     </div>
-                    <Badge tone="warning">draft</Badge>
-                  </div>
-                ))}
-                {ILLUSTRATIVE_NOTICE}
-              </div>
-            </PricingCard>
+                  ))}
+                  {ILLUSTRATIVE_NOTICE}
+                </div>
+              </PricingCard>
+            </div>
           </div>
         </section>
 

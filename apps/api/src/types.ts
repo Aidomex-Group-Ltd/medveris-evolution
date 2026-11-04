@@ -80,6 +80,8 @@ export interface AuthContext {
   patientId: string | null;
   platformRoles: string[];
   mfaVerified: boolean;
+  /** Membership id used by RLS write policies that need the caller's assigned row. */
+  membershipId: string | null;
 }
 
 export interface AppDeps {

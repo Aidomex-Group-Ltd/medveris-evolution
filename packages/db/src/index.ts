@@ -10,6 +10,10 @@ export interface TenantContext {
   actorKind: "anonymous" | "registration" | "staff" | "patient" | "system";
   roles?: string[];
   platformRole?: string | null;
+  /** Optional membership id used by RLS policies that need the caller's assigned row, not just the tenant. */
+  membershipId?: string | null;
+  /** Optional platform override: when true, the caller is treated as a platform operator for RLS. */
+  platformOperator?: boolean;
 }
 
 export * from "./routing.js";
@@ -46,7 +50,8 @@ export async function setLocalContext(tx: Tx, ctx: TenantContext): Promise<void>
       set_config('app.patient_id', ${ctx.patientId ?? ""}, true),
       set_config('app.actor_kind', ${ctx.actorKind}, true),
       set_config('app.roles', ${roles}, true),
-      set_config('app.platform_role', ${ctx.platformRole ?? ""}, true),
+      set_config('app.platform_role', ${ctx.platformRole ?? (ctx.platformOperator ? 'platform_operator' : "")}, true),
+      set_config('app.membership_id', ${ctx.membershipId ?? ""}, true),
       set_config('statement_timeout', ${String(STATEMENT_TIMEOUT_MS)}, true),
       set_config('idle_in_transaction_session_timeout', ${String(IDLE_IN_TRANSACTION_TIMEOUT_MS)}, true)
   `;

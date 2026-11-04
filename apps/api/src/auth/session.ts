@@ -115,8 +115,14 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
     if (!membership.roles.includes(role)) membership.roles = [...membership.roles, role];
   }
   for (const membership of memberships) membership.roles = withImpliedRoles(membership.roles);
-  const active = memberships.find((m) => m.tenantId === session.activeTenantId) ?? null;
-  if (session.activeTenantId && !active) {
+  // Prefer the remembered workspace when it is still an active membership; otherwise fall back to the
+  // first active membership so sessions created before facility selection still land somewhere useful.
+  let active = memberships.find((m) => m.tenantId === session.activeTenantId) ?? null;
+  if (!active && memberships.length > 0) {
+    active = memberships[0]!;
+    await sql`update sessions set active_tenant_id = ${active.tenantId} where id = ${session.id}`;
+    session.activeTenantId = active.tenantId;
+  } else if (session.activeTenantId && !active) {
     await sql`update sessions set active_tenant_id = null where id = ${session.id}`;
     session.activeTenantId = null;
   }
@@ -141,6 +147,7 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
     patientId: (patientRows[0]?.patientId as string | undefined) ?? null,
     platformRoles: platformRows.map((r) => r.role as string),
     mfaVerified: Boolean(session.mfaVerifiedAt) && Boolean(user.mfaEnrolledAt),
+  membershipId: active?.id ?? null,
   };
 }
 

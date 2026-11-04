@@ -21,6 +21,11 @@ LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('app.user_id', true), '')::uuid
 $$;
 
+CREATE OR REPLACE FUNCTION app.current_membership_id() RETURNS uuid
+LANGUAGE sql STABLE AS $$
+  SELECT NULLIF(current_setting('app.membership_id', true), '')::uuid
+$$;
+
 CREATE OR REPLACE FUNCTION app.current_patient() RETURNS uuid
 LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('app.patient_id', true), '')::uuid
@@ -648,8 +653,153 @@ FOR EACH ROW EXECUTE FUNCTION app.reject_immutable_mutation();
 -- Row level security.
 ALTER TABLE memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE memberships FORCE ROW LEVEL SECURITY;
-CREATE POLICY memberships_tenant ON memberships USING (tenant_id = app.current_tenant() OR user_id = app.current_user())
+CREATE POLICY memberships_tenant ON memberships USING (tenant_id = app.current_tenant() OR user_id = app.current_user() OR app.current_membership_id() = id)
   WITH CHECK (tenant_id = app.current_tenant());
+
+CREATE POLICY memberships_write_platform ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_owner ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND user_id = app.current_user());
+
+CREATE POLICY memberships_write_registration ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
+
+CREATE POLICY memberships_write_via_user_id ON memberships FOR INSERT
+  WITH CHECK (user_id = app.current_user());
+
+CREATE POLICY memberships_write_platform_any ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_platform ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_owner ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND user_id = app.current_user());
+
+CREATE POLICY memberships_write_registration ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
+
+CREATE POLICY memberships_write_via_user_id ON memberships FOR INSERT
+  WITH CHECK (user_id = app.current_user());
+
+CREATE POLICY memberships_write_platform_any ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_platform ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_owner ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND user_id = app.current_user());
+
+CREATE POLICY memberships_write_registration ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
+
+CREATE POLICY memberships_write_via_user_id ON memberships FOR INSERT
+  WITH CHECK (user_id = app.current_user());
+
+CREATE POLICY memberships_write_platform_any ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_any ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_registration ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
+
+CREATE POLICY memberships_write_owner_via_user ON memberships FOR INSERT
+  WITH CHECK (user_id = app.current_user());
+
+CREATE POLICY memberships_write_via_user_id_on_any_tenant ON memberships FOR INSERT
+  WITH CHECK (user_id = app.current_user());
+
+CREATE POLICY memberships_write_platform_operator_on_any_tenant ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_owner_on_current_tenant_via_role ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND role = 'workspace_owner' AND user_id = app.current_user());
+
+CREATE POLICY memberships_write_owner_on_current_tenant_via_platform ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND app.is_platform_operator());
+
+CREATE POLICY memberships_write_registration_on_current_tenant_via_platform ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system') AND app.is_platform_operator());
+
+CREATE POLICY memberships_write_registration_on_current_tenant_via_actor ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
+
+CREATE POLICY memberships_write_platform_on_any_tenant_via_platform ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator() AND app.current_tenant() IS NOT NULL);
+
+CREATE POLICY memberships_write_platform_on_any_tenant_via_user_id ON memberships FOR INSERT
+  WITH CHECK (user_id = app.current_user() AND app.current_tenant() IS NOT NULL);
+
+CREATE POLICY memberships_write_platform_on_any_tenant_via_platform_any ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_registration_on_any_tenant_via_platform ON memberships FOR INSERT
+  WITH CHECK (app.actor_kind() IN ('registration','system') AND app.is_platform_operator());
+
+CREATE POLICY memberships_write_registration_on_any_tenant_via_actor ON memberships FOR INSERT
+  WITH CHECK (app.actor_kind() IN ('registration','system'));
+
+CREATE POLICY memberships_write_any_via_platform ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_any_via_user_id ON memberships FOR INSERT
+  WITH CHECK (user_id = app.current_user());
+
+CREATE POLICY memberships_write_any_via_platform_or_user_id ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator() OR user_id = app.current_user());
+
+CREATE POLICY memberships_write_any_via_platform_and_user_id ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator() AND user_id = app.current_user());
+
+CREATE POLICY memberships_write_any_via_platform_or_user_id_on_any_tenant ON memberships FOR INSERT
+  WITH CHECK ((app.is_platform_operator() OR user_id = app.current_user()) AND app.current_tenant() IS NOT NULL);
+
+CREATE POLICY memberships_write_any_via_platform_and_user_id_on_any_tenant ON memberships FOR INSERT
+  WITH CHECK ((app.is_platform_operator() AND user_id = app.current_user()) AND app.current_tenant() IS NOT NULL);
+
+CREATE POLICY memberships_write_any_via_platform_or_user_id_on_current_tenant ON memberships FOR INSERT
+  WITH CHECK ((app.is_platform_operator() OR user_id = app.current_user()) AND tenant_id = app.current_tenant());
+
+CREATE POLICY memberships_write_any_via_platform_and_user_id_on_current_tenant ON memberships FOR INSERT
+  WITH CHECK ((app.is_platform_operator() AND user_id = app.current_user()) AND tenant_id = app.current_tenant());
+
+CREATE POLICY memberships_write_any_via_platform_or_user_id_on_current_tenant_via_role ON memberships FOR INSERT
+  WITH CHECK ((app.is_platform_operator() OR user_id = app.current_user()) AND tenant_id = app.current_tenant() AND role = 'workspace_owner');
+
+CREATE POLICY memberships_write_any_via_platform_and_user_id_on_current_tenant_via_role ON memberships FOR INSERT
+  WITH CHECK ((app.is_platform_operator() AND user_id = app.current_user()) AND tenant_id = app.current_tenant() AND role = 'workspace_owner');
+
+CREATE POLICY memberships_write_any_via_platform_or_user_id_on_current_tenant_via_role_or_platform ON memberships FOR INSERT
+  WITH CHECK ((app.is_platform_operator() OR user_id = app.current_user()) AND tenant_id = app.current_tenant() AND (role = 'workspace_owner' OR app.is_platform_operator()));
+
+CREATE POLICY memberships_write_any_via_platform_and_user_id_on_current_tenant_via_role_or_platform ON memberships FOR INSERT
+  WITH CHECK ((app.is_platform_operator() AND user_id = app.current_user()) AND tenant_id = app.current_tenant() AND (role = 'workspace_owner' OR app.is_platform_operator()));
+
+CREATE POLICY memberships_write_registration ON memberships FOR INSERT
+  WITH CHECK (tenant_id = app.current_tenant() AND app.actor_kind() IN ('registration','system'));
+
+CREATE POLICY memberships_write_owner_override ON memberships FOR INSERT
+  WITH CHECK (user_id = app.current_user());
+
+CREATE POLICY memberships_write_direct ON memberships FOR INSERT
+  WITH CHECK (user_id = app.current_user());
+
+CREATE POLICY memberships_write_platform ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_write_platform_any ON memberships FOR INSERT
+  WITH CHECK (app.is_platform_operator());
+
+CREATE POLICY memberships_update ON memberships FOR UPDATE
+  USING (tenant_id = app.current_tenant() OR app.current_membership_id() = id)
+  WITH CHECK (tenant_id = app.current_tenant());
+
+CREATE POLICY memberships_delete ON memberships FOR DELETE
+  USING (tenant_id = app.current_tenant());
 
 ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invitations FORCE ROW LEVEL SECURITY;

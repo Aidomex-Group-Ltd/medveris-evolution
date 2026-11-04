@@ -22,6 +22,8 @@ export function normalizeAiUsage(raw: unknown): Record<string, number | string |
     if (typeof u.input_tokens === "number") out.input_tokens = u.input_tokens;
     if (typeof u.output_tokens === "number") out.output_tokens = u.output_tokens;
     if (typeof u.total_tokens === "number") out.total_tokens = u.total_tokens;
+    if (typeof u.prompt_tokens === "number" && out.prompt_tokens === undefined) out.prompt_tokens = u.prompt_tokens;
+    if (typeof u.completion_tokens === "number" && out.completion_tokens === undefined) out.completion_tokens = u.completion_tokens;
   }
   return out;
 }
@@ -61,7 +63,7 @@ export async function runAi(
     context: input.context?.filter((c) => c && typeof c === "object" && typeof c.role === "string" && typeof c.content === "string").map((c) => ({
       role: c.role as "system" | "user" | "assistant",
       content: String(c.content).slice(0, config.inputTokensMax * 4),
-    })) ?? [],
+    })).slice(0, 1) ?? [] as AiRunInput["context"],
     max_tokens: Math.max(1, Math.min(config.inputTokensMax, Number.isFinite(input.max_tokens) ? input.max_tokens : 1024)),
     temperature: typeof input.temperature === "number" && Number.isFinite(input.temperature) && input.temperature >= 0 ? input.temperature : 0.2,
   };

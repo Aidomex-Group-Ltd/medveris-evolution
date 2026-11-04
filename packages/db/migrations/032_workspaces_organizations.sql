@@ -74,6 +74,7 @@ CREATE POLICY organization_memberships_write ON organization_memberships FOR INS
   -- The creator of a new organization becomes its first owner.
   OR (role = 'organization_owner' AND user_id = app.current_user()
       AND NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id = organization_id AND o.created_by IS DISTINCT FROM app.current_user()))
+  OR app.is_platform_operator()
 );
 CREATE POLICY organization_memberships_update ON organization_memberships FOR UPDATE
   USING (app.is_organization_admin(organization_id)) WITH CHECK (app.is_organization_admin(organization_id));

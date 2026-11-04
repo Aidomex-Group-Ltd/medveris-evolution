@@ -11,6 +11,7 @@ const stagingVars = {
   APP_ENV: "staging",
   APP_ORIGIN: "https://medveris-staging.example.workers.dev",
   EXPECTED_DATABASE_NAME: "medveris_staging",
+  AUDIT_SIGNING_KEY_ID: "staging-key-1",
   SESSION_SECRET: "s".repeat(20) + "-staging-session-value",
   AUDIT_SIGNING_KEY: "a".repeat(20) + "-staging-audit-value",
   MFA_ENCRYPTION_KEY: "m".repeat(20) + "-staging-mfa-value",

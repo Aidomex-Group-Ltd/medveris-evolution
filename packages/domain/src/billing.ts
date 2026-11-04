@@ -271,7 +271,7 @@ export function projectMonthlyUsage(daily: readonly number[], aggregation: "sum"
 }
 
 /** Allowance thresholds that notify account administrators, as fractions of an approved allowance. */
-export const USAGE_NOTIFICATION_THRESHOLDS = [0.8, 1] as const;
+export const USAGE_NOTIFICATION_THRESHOLDS = [0.8, 0.9, 1] as const;
 
 export function crossedThresholds(quantity: number, allowance: number | null): number[] {
   if (allowance == null || allowance <= 0) return [];

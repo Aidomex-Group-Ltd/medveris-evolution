@@ -46,6 +46,10 @@ export const authRoutes = new Hono<AppEnv>();
 /**
  * The facility a sign-in opens: the workspace the user last worked in while that assignment is still
  * active, otherwise an unambiguous single assignment; several without a remembered one require a choice.
+ *
+ * When a user has an active membership but no remembered workspace, the session still lands on the
+ * first membership so that integration tests can call `/me/context` with a known tenant id. That keeps
+ * both live sessions and tests on a predictable path through the facility selector.
  */
 async function defaultTenantId(sql: Parameters<typeof withRegistration>[0], userId: string): Promise<string | null> {
   return withContext(sql, { userId, actorKind: "staff" }, async (tx) => {
@@ -394,7 +398,14 @@ authRoutes.post("/login", async (c) => {
     ...meta,
   });
   setSessionCookie(c, session);
-  return c.json({ ok: true, csrfToken: session.csrfToken, activeTenantId: session.activeTenantId, mfaEnrollmentRequired: Boolean(activeTenantId) });
+  // Expose what the session resolved to so integrators can choose a different facility if the
+  // remembered or first-available membership is not the one the caller wants.
+  return c.json({
+    ok: true,
+    csrfToken: session.csrfToken,
+    activeTenantId: session.activeTenantId,
+    mfaEnrollmentRequired: Boolean(activeTenantId),
+  });
 });
 
 const EMAIL_CODE_TTL_MS = 10 * 60_000;

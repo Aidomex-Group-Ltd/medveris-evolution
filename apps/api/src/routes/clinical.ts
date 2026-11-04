@@ -19,7 +19,7 @@ import { hmacHex } from "@medveris/auth";
 import type { Tx } from "@medveris/db";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, ensureMatch, parseJson } from "../lib/http.js";
-import { logEvent } from "../lib/telemetry.js";
+import { logEvent } from "@medveris/platform";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, NotFoundError } from "../lib/errors.js";
 import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";

@@ -32,9 +32,9 @@
 		"traces": {
 			"enabled": true
 		}
-	},
-	// Local connection strings come from CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
-	// and CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_JOBS; never commit them here."hyperdrive": [
+	},	// Local connection strings come from CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+	// and CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_JOBS; never commit them here.
+	"hyperdrive": [
 				{
 					"binding": "HYPERDRIVE",
 					"id": "d9437ca9486d4e608c3d315fdc46f25f"
@@ -44,33 +44,33 @@
 					"id": "21c6654b3c0545e39676597039b1d0ec"
 				}
 			],
-	"version_metadata": {
-		"binding": "CF_VERSION_METADATA"
-	},
-	// Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "RATE_LIMITER",
-				"class_name": "RateLimiterObject"
-			},
-			{
-				"name": "REALTIME",
-				"class_name": "RealtimeHub"
-			}
-		]
-	},
-	"migrations": [
-		{
-			"tag": "v1-scaling",
-			"new_sqlite_classes": [
-				"RateLimiterObject",
-				"RealtimeHub"
+		"version_metadata": {
+			"binding": "CF_VERSION_METADATA"
+		},
+		// Rate-limit counters and live-update hubs. SQLite-backed classes run on the Workers Free plan.
+		"durable_objects": {
+			"bindings": [
+				{
+					"name": "RATE_LIMITER",
+					"class_name": "RateLimiterObject"
+				},
+				{
+					"name": "REALTIME",
+					"class_name": "RealtimeHub"
+				}
 			]
-		}
-	],
-	// The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
-	"queues": {
+		},
+		"migrations": [
+			{
+				"tag": "v1-scaling",
+				"new_sqlite_classes": [
+					"RateLimiterObject",
+					"RealtimeHub"
+				]
+			}
+		],
+		// The cron relays committed outbox rows to JOBS_QUEUE; this Worker consumes it. Messages carry identifiers only.
+		"queues": {
 		"producers": [
 			{
 				"binding": "JOBS_QUEUE",
@@ -243,11 +243,11 @@
 			"hyperdrive": [
 				{
 					"binding": "HYPERDRIVE",
-					"id": "d9437ca9486d4e608c3d315fdc46f25f"
+					"id": "a1b2c3d4e5f6789012345678abcdef01"
 				},
 				{
 					"binding": "HYPERDRIVE_JOBS",
-					"id": "21c6654b3c0545e39676597039b1d0ec"
+					"id": "1234567890abcdef1234567890abcdef"
 				}
 			],
 			"r2_buckets": [
