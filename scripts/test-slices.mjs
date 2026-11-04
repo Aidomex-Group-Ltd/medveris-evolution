@@ -36,7 +36,8 @@ const size = Math.max(1, Number(option("size", process.env.TEST_SLICE_SIZE ?? 2)
 const only = option("only", null);
 const includeDb = flag("include-db");
 const failFast = flag("fail-fast");
-const heapMb = Number(option("heap", process.env.TEST_SLICE_HEAP_MB ?? 768));
+const DEFAULT_HEAP_MB = 4096;
+const heapMb = Math.max(DEFAULT_HEAP_MB, Number(option("heap", process.env.TEST_SLICE_HEAP_MB ?? DEFAULT_HEAP_MB)));
 
 /** Tests that open a live Postgres connection are opt-in so unit slices stay self-contained. */
 const LIVE_DB_TESTS = new Set(["tests/unit/046_facility_logo.test.ts"]);
@@ -58,7 +59,7 @@ function collect(directory) {
 
 const matcher = only ? new RegExp(only, "i") : null;
 
-// Increase node max memory size to 4GB before running tests to avoid memory pressure.
+
 const files = directories
   .flatMap(collect)
   .filter((file) => !matcher || matcher.test(file))
