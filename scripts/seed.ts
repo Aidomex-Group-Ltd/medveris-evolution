@@ -218,8 +218,29 @@ try {
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-admin-b")}, ${tenantB}, ${users.admin}, ${["facility_admin"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-clinician-b")}, ${tenantB}, ${users.clinicianB}, ${["clinician"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
 
+    // platform_roles is protected by FORCE row level security (migration 045). Seeding the
+    // synthetic reviewer as an operator is an explicit bootstrap, so the CLI-only bootstrap
+    // flag is enabled for this statement block and disabled immediately after. This file
+    // refuses to run outside a synthetic environment (assertSyntheticEnvironment above), so
+    // a real operator is never created here; the grant also expires after 24 hours.
+    await tx`select set_config('app.platform_roles_bootstrap', 'true', true)`;
+    await tx`insert into platform_roles (user_id, role) values (${users.reviewer}, 'credential_reviewer') on conflict (user_id, role) do nothing`;
+    // Explicit 24 hour expiry, never a permanent grant: the seeded reviewer is an operator
+    // only long enough to publish the onboarding catalogue and exercise operator screens.
+    await tx`
+      insert into platform_roles (user_id, role, granted_by, approved_by, request_id, granted_at, expires_at)
+      values (${users.reviewer}, 'platform_operator', null, null, null, now(), now() + interval '24 hours')
+      on conflict (user_id, role) do update
+        set granted_at = excluded.granted_at,
+            expires_at = excluded.expires_at,
+            revoked_at = null,
+            revoked_by = null,
+            revoked_reason = null
+    `;
+    await tx`select set_config('app.platform_roles_bootstrap', 'false', true)`;
+
     // Billing is RLS-protected, so seed those rows under the platform operator context
-    // that the bootstrap grants the synthetic reviewer. ACCOUNTS_BILLING tables write path
+    // that the bootstrap just granted the synthetic reviewer. ACCOUNTS_BILLING tables write path
     // requires platform_operator credentials rather than a facility role alone.
     await platformContext(tx, users.reviewer);
     await tx`
@@ -243,29 +264,6 @@ try {
       select s.id, s.billing_account_id, 'trial-started', 'trialing', s.plan_id, 'system', jsonb_build_object('reason', 'billing activated for an existing account')
       from subscriptions s
     `;
-
-    // platform_roles is protected by FORCE row level security (migration 045). Seeding the
-    // synthetic reviewer as an operator is an explicit bootstrap, so the CLI-only bootstrap
-    // flag is enabled for this statement block and disabled immediately after. This file
-    // refuses to run outside a synthetic environment (assertSyntheticEnvironment above), so
-    // a real operator is never created here; the grant also expires after 24 hours.
-    await tx`select set_config('app.platform_roles_bootstrap', 'true', true)`;
-    await tx`insert into platform_roles (user_id, role) values (${users.reviewer}, 'credential_reviewer') on conflict (user_id, role) do nothing`;
-    // Explicit 24 hour expiry, never a permanent grant: the seeded reviewer is an operator
-    // only long enough to publish the onboarding catalogue and exercise operator screens.
-    await tx`
-      insert into platform_roles (user_id, role, granted_by, approved_by, request_id, granted_at, expires_at)
-      values (${users.reviewer}, 'platform_operator', null, null, null, now(), now() + interval '24 hours')
-      on conflict (user_id, role) do update
-        set granted_at = excluded.granted_at,
-            expires_at = excluded.expires_at,
-            revoked_at = null,
-            revoked_by = null,
-            revoked_reason = null
-    `;
-    await tx`select set_config('app.platform_roles_bootstrap', 'false', true)`;
-
-    await platformContext(tx, users.reviewer);
     await tx`
       update onboarding_catalogues set status = 'retired', retired_by = ${users.reviewer}, retired_at = now()
        where country_code = 'UG' and status = 'published' and version <> ${UGANDA_ONBOARDING_CATALOGUE.version}
