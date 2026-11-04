@@ -1,8 +1,9 @@
 import { Client } from "pg";
-import { describe, expect, it } from "vitest";
-import { randomUUID } from "node:crypto";
+import { expect, it as _it, describe as _describe, beforeAll as _beforeAll } from "vitest";
+import { randomUUID as _randomUUID } from "node:crypto";
 import { databaseName, loadLocalEnv } from "../../scripts/lib.js";
 import { applyMigration, ensureMigrationTable, loadMigrations } from "../../scripts/migrations.js";
+
 
 loadLocalEnv();
 

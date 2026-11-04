@@ -21,7 +21,7 @@ const PLANS = [
   { code: "enterprise", name: "Enterprise", description: "Custom kit with a contract", monthlyPriceMinor: null, storageGb: null, seats: null, usageOverages: true, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: true },
 ];
 
-function Logo({ text }: { text: string }) {
+function Logo({ text: _text }: { text: string }) {
   return (
     <a href="/" className="pricing-logo" aria-label="Medveris home">
       <span className="pricing-logo-mark">

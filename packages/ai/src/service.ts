@@ -5,7 +5,7 @@ export interface AiDependencies {
   logAiRun(result: AiRunResult, meta: Record<string, string | number | null>): void;
 }
 
-const MAX_TOKEN_UNITS = ["token", "tokens"];
+const _MAX_TOKEN_UNITS = ["token", "tokens"];
 
 export function normalizeAiUsage(raw: unknown): Record<string, number | string | null> {
   if (!raw || typeof raw !== "object") return {};

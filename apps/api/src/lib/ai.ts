@@ -13,7 +13,6 @@ export function aiDependencies(deps: AppDeps): AiDependencies {
   return {
     ai: deps.config.ai.enabled && deps.ai ? deps.ai : undefined,
     logAiRun(result: AiRunResult, meta: Record<string, string | number | null>) {
-      const level = result.ok ? "info" : "warn";
       deps.logAiRun?.(result, meta);
     },
   };

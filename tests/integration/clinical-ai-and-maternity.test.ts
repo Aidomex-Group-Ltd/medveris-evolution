@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { KAMPALA_TENANT, createHarness } from "./support.js";
+import { createHarness } from "./support.js";
 
 const h = createHarness("clinical-ai-and-maternity");
 

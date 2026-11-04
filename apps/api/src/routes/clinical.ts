@@ -12,9 +12,8 @@ import {
   updateDraftEntrySchema,
   uuidSchema,
   aiAssistSchema,
-} from "@medveris/contracts";
-import { assertClinicalRead, assertClinicalWrite, assertSign, assertAuthorized, type ActorContext } from "@medveris/authz";
-import { canonicalJson, contentDigest, type ClinicalEntryStatus, computePartographState, buildAiNoteSuggestion, assessBmiRisk } from "@medveris/domain";
+} from "@medveris/contracts";import { assertClinicalRead, assertClinicalWrite, assertSign as _assertSign, assertAuthorized, type ActorContext } from "@medveris/authz";
+import { canonicalJson, contentDigest, type ClinicalEntryStatus, computePartographState as _computePartographState, buildAiNoteSuggestion, assessBmiRisk } from "@medveris/domain";
 import { hmacHex } from "@medveris/auth";
 import type { Tx } from "@medveris/db";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
@@ -27,16 +26,10 @@ import { loadStaffAccessActor } from "../services/access.js";
 import { isIntegrationAvailable } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
 
-const AI_NOTE_CACHE_TTL_MS = 60_000;
-
-interface LabourAlertsRow {
-  id: string;
-  alert: string;
-  severity: "info" | "warning" | "critical";
-  recordedAt: string;
-}
-
 export const clinicalRoutes = new Hono<AppEnv>();
+
+
+
 
 function actor(c: Parameters<typeof requireStaff>[0]): ActorContext {
   const auth = c.get("auth")!;
@@ -67,7 +60,7 @@ async function currentEntry(tx: Tx, tenantId: string, entryId: string) {
   return rows[0];
 }
 
-async function computeAgeInYears(birthDate: Date, asOf: Date): number {
+async function _computeAgeInYears(birthDate: Date, asOf: Date): number {
   const years = asOf.getFullYear() - birthDate.getFullYear();
   const monthDiff = asOf.getMonth() - birthDate.getMonth();
   if (monthDiff < 0 || (monthDiff === 0 && asOf.getDate() < birthDate.getDate())) return years - 1;

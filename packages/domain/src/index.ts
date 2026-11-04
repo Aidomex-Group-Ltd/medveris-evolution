@@ -451,7 +451,7 @@ export function assessBmiRisk(sex: string, weightKg: number, heightM: number): {
 }
 
 /** Dynamic partograph automation for maternity care */
-export function computePartographState(maternal: Record<string, number | string | null>, fetal: Record<string, number | string | null>, templateType: "labour-care-guide" | "partograph"): {
+export function computePartographState(maternal: Record<string, number | string | null>, fetal: Record<string, number | string | null>, _templateType: "labour-care-guide" | "partograph"): {
   dilation: number;
   station: number;
   fetalHeartRate: number;
@@ -464,7 +464,7 @@ export function computePartographState(maternal: Record<string, number | string 
   const station = Number(maternal["station"] ?? 0);
   const fetalHeartRate = Number(fetal["fetalHeartRate"] ?? 0);
   const contractions = Number(maternal["contractionsPer10Min"] ?? 0);
-  let alerts: string[] = [];
+  const alerts: string[] = [];
   let progressRate: number | null = null;
   if (maternal["previousDilation"] !== undefined) {
     const prevDilation = Number(maternal["previousDilation"]);
@@ -508,7 +508,7 @@ export function computePartographState(maternal: Record<string, number | string 
  * `buildAiNoteSuggestion` when they want a deployment-gated, non-blocking
  * suggestion path. This legacy form is intentionally not wired into routes.
  */
-export async function generateAiNoteSuggestion(input: {
+export async function generateAiNoteSuggestion(_input: {
   patientId: string;
   encounterId: string;
   encounterState: string;
@@ -594,7 +594,7 @@ export async function buildAiNoteSuggestion(
 }
 
 /** Clinical decision support predictive algorithms on composite payloads */
-export async function predictClinicalRisk(input: {
+export async function predictClinicalRisk(_input: {
   patientId: string;
   encounterId: string;
   presentationData: Record<string, unknown>;
