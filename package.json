@@ -53,8 +53,11 @@
     "start": "node apps/api/dist/server.mjs"
   },
   "dependencies": {
+    "@cloudflare/ai": "1.2.2",
     "@hono/node-server": "2.1.5",
+    "base64-js": "^1.5.1",
     "hono": "4.13.14",
+    "mustache": "^4.2.0",
     "postgres": "3.4.9",
     "zod": "4.6.7"
   },

@@ -1,0 +1,1 @@
+{"name":"@medveris/ai","version":"0.1.0","private":true,"type":"module","main":"src/index.ts","dependencies":{"@cloudflare/ai":"^1.1.0"}}

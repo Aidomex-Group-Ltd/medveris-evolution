@@ -277,7 +277,7 @@ export default function LandingPage() {
             <div className="mv-footer-brand">
               <Logo light />
               <p>One digital health platform. Every level of care.</p>
-              <p id="pricing" className="mv-footer-price">
+              <p className="mv-footer-price">
                 <strong>$0.50 per day</strong> for providers &middot; Patients free
               </p>
             </div>

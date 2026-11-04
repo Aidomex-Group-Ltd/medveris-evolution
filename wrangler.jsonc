@@ -34,17 +34,16 @@
 		}
 	},
 	// Local connection strings come from CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
-	// and CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_JOBS; never commit them here.
-	"hyperdrive": [
-		{
-			"binding": "HYPERDRIVE",
-			"id": "local-only"
-		},
-		{
-			"binding": "HYPERDRIVE_JOBS",
-			"id": "local-only"
-		}
-	],
+	// and CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_JOBS; never commit them here."hyperdrive": [
+				{
+					"binding": "HYPERDRIVE",
+					"id": "d9437ca9486d4e608c3d315fdc46f25f"
+				},
+				{
+					"binding": "HYPERDRIVE_JOBS",
+					"id": "21c6654b3c0545e39676597039b1d0ec"
+				}
+			],
 	"version_metadata": {
 		"binding": "CF_VERSION_METADATA"
 	},
