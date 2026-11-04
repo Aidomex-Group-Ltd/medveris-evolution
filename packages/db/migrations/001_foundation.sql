@@ -11,45 +11,89 @@ REVOKE ALL ON SCHEMA app FROM PUBLIC;
 GRANT USAGE ON SCHEMA app TO medveris_runtime, medveris_jobs, medveris_exchange;
 GRANT CREATE ON SCHEMA app TO medveris_exchange;
 
-CREATE OR REPLACE FUNCTION app.current_tenant() RETURNS uuid
+-- Plumbing used everywhere later (auth/session, RLS helpers, migrations).
+
+CREATE OR REPLACE FUNCTION app.current_tenant()
+RETURNS uuid
 LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid
 $$;
 
-CREATE OR REPLACE FUNCTION app.current_user() RETURNS uuid
+CREATE OR REPLACE FUNCTION app.current_user()
+RETURNS uuid
 LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('app.user_id', true), '')::uuid
 $$;
 
-CREATE OR REPLACE FUNCTION app.current_membership_id() RETURNS uuid
+CREATE OR REPLACE FUNCTION app.current_membership_id()
+RETURNS uuid
 LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('app.membership_id', true), '')::uuid
 $$;
 
-CREATE OR REPLACE FUNCTION app.current_patient() RETURNS uuid
+CREATE OR REPLACE FUNCTION app.current_patient()
+RETURNS uuid
 LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('app.patient_id', true), '')::uuid
 $$;
 
-CREATE OR REPLACE FUNCTION app.actor_kind() RETURNS text
+CREATE OR REPLACE FUNCTION app.actor_kind()
+RETURNS text
 LANGUAGE sql STABLE AS $$
   SELECT COALESCE(NULLIF(current_setting('app.actor_kind', true), ''), 'anonymous')
 $$;
 
-CREATE OR REPLACE FUNCTION app.roles() RETURNS text[]
+CREATE OR REPLACE FUNCTION app.roles()
+RETURNS text[]
 LANGUAGE sql STABLE AS $$
   SELECT COALESCE(string_to_array(NULLIF(current_setting('app.roles', true), ''), ','), ARRAY[]::text[])
 $$;
 
-CREATE OR REPLACE FUNCTION app.has_any_role(required text[]) RETURNS boolean
+CREATE OR REPLACE FUNCTION app.has_any_role(required text[])
+RETURNS boolean
 LANGUAGE sql STABLE AS $$
   SELECT app.roles() && required
 $$;
 
-CREATE OR REPLACE FUNCTION app.is_platform_reviewer() RETURNS boolean
+-- Provenance-bound platform operator check (identity-aware, not global existence).
+-- This function is introduced as a stub here so 001 can be self-contained, but the
+-- authoritative definition is later rewritten by migration 045 once platform_roles
+-- exists and identity-bound platform access is implemented.
+
+-- Static reviewer helper for early credential policies. The authoritative definition is
+-- later rewritten by migration 045 once platform_roles exists and identity-bound platform
+-- access is implemented.
+
+CREATE OR REPLACE FUNCTION app.is_platform_reviewer()
+RETURNS boolean
 LANGUAGE sql STABLE AS $$
   SELECT COALESCE(NULLIF(current_setting('app.platform_role', true), ''), '') = 'credential_reviewer'
 $$;
+
+-- Keep 001 self-contained vs 045/016: provide the identity-bound platform operator
+-- helper now so early policies can run, and defer the later ownership/grant rewrite
+-- to migrations 016 and 045.
+
+CREATE OR REPLACE FUNCTION app.is_platform_operator()
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  SELECT app.current_user() IS NOT NULL
+     AND EXISTS (
+       SELECT 1 FROM platform_roles
+        WHERE user_id = app.current_user()
+          AND role = 'platform_operator'
+          AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at > now())
+     );
+$$;
+
+ALTER FUNCTION app.is_platform_operator() OWNER TO medveris_exchange;
+REVOKE ALL ON FUNCTION app.is_platform_operator() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.is_platform_operator() TO medveris_runtime, medveris_jobs;
+
+ALTER FUNCTION app.is_platform_reviewer() OWNER TO medveris_exchange;
+REVOKE ALL ON FUNCTION app.is_platform_reviewer() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.is_platform_reviewer() TO medveris_runtime, medveris_jobs;
 
 CREATE TABLE users (
   id uuid PRIMARY KEY,
