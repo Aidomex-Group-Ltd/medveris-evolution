@@ -11,18 +11,30 @@ import {
   signEntrySchema,
   updateDraftEntrySchema,
   uuidSchema,
+  aiAssistSchema,
 } from "@medveris/contracts";
 import { assertClinicalRead, assertClinicalWrite, assertSign, assertAuthorized, type ActorContext } from "@medveris/authz";
-import { canonicalJson, contentDigest, type ClinicalEntryStatus } from "@medveris/domain";
+import { canonicalJson, contentDigest, type ClinicalEntryStatus, computePartographState, buildAiNoteSuggestion, assessBmiRisk } from "@medveris/domain";
 import { hmacHex } from "@medveris/auth";
 import type { Tx } from "@medveris/db";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, ensureMatch, parseJson } from "../lib/http.js";
+import { logEvent } from "../lib/telemetry.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, NotFoundError } from "../lib/errors.js";
 import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
 import { loadStaffAccessActor } from "../services/access.js";
+import { isIntegrationAvailable } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
+
+const AI_NOTE_CACHE_TTL_MS = 60_000;
+
+interface LabourAlertsRow {
+  id: string;
+  alert: string;
+  severity: "info" | "warning" | "critical";
+  recordedAt: string;
+}
 
 export const clinicalRoutes = new Hono<AppEnv>();
 
@@ -55,6 +67,13 @@ async function currentEntry(tx: Tx, tenantId: string, entryId: string) {
   return rows[0];
 }
 
+async function computeAgeInYears(birthDate: Date, asOf: Date): number {
+  const years = asOf.getFullYear() - birthDate.getFullYear();
+  const monthDiff = asOf.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && asOf.getDate() < birthDate.getDate())) return years - 1;
+  return years;
+}
+
 async function attachEntryVersion(
   c: Parameters<typeof requireStaff>[0],
   tx: Tx,
@@ -75,16 +94,35 @@ async function attachEntryVersion(
     plan: string;
     occurredAt: Date;
     signedAt: Date | null;
+    aiDeps: { available: boolean; baseUrl: string | null; token: string | null };
   },
 ): Promise<{ versionId: string; digest: string }> {
+  // Optional AI-assisted clinical note suggestions. These are decision support only,
+  // used only to fill fields the clinician left blank, and never replace authored content.
+  const suggestion = await buildAiNoteSuggestion(
+    {
+      patientId: input.patientId,
+      encounterId: input.encounterId,
+      encounterState: "in-progress",
+      existingContent: input.subjective + " " + input.objective,
+    },
+    {
+      aiAvailable: aiDeps.available,
+      aiToken: aiDeps.token,
+      aiBaseUrl: aiDeps.baseUrl,
+    },
+  );
   const content = {
     schemaVersion: "urn:medveris:schema:outpatient-note:1",
-    title: input.title,
-    subjective: input.subjective,
-    objective: input.objective,
-    assessment: input.assessment,
-    plan: input.plan,
+    title: input.title || suggestion.title || "Clinical note",
+    subjective: input.subjective || suggestion.subjective || "",
+    objective: input.objective || suggestion.objective || "",
+    assessment: input.assessment || suggestion.assessment || "",
+    plan: input.plan || suggestion.plan || "",
   };
+  if (suggestion.reasoning) {
+    content.reasoning = suggestion.reasoning;
+  }
   const digest = await contentDigest(content);
   const versionId = crypto.randomUUID();
   const signaturePayload = canonicalJson({
@@ -119,6 +157,7 @@ clinicalRoutes.post("/encounters/:id/entries", async (c) => {
   const encounterId = uuidSchema.parse(c.req.param("id"));
   const body = await parseJson(c, createDraftEntrySchema);
   const entryId = crypto.randomUUID();
+  let bmiScreening: { bmi: number; riskLevel: "low" | "moderate" | "high" } | null = null;
   await withStaffActor(c, async (tx) => {
     const encounter = await encounterFor(tx, auth.activeTenant!.id, encounterId);
     if (!["triaged", "in-progress"].includes(String(encounter.state))) {
@@ -132,6 +171,32 @@ clinicalRoutes.post("/encounters/:id/entries", async (c) => {
       insert into clinical_entries (id, tenant_id, patient_id, encounter_id, current_version, status, created_by)
       values (${entryId}, ${auth.activeTenant!.id}, ${encounter.patientId}, ${encounterId}, 1, 'draft', ${auth.user.id})
     `;
+    const patientRows = await tx`select public_id, date_of_birth, sex from patients where id = ${encounter.patientId} limit 1`;
+    if (patientRows[0]) {
+      const weight = Number(body.subjective?.match(/weight[: ]+(\d+(\.\d+)?)\s*(?:kg| Kilograms)/i)?.[1] ?? body.objective?.match(/weight[: ]+(\d+(\.\d+)?)\s*(?:kg| Kilograms)/i)?.[1] ?? 0);
+      const height = Number(body.subjective?.match(/height[: ]+(\d+(\.\d+)?)\s*(?:m| meters|cm| centimetres)/i)?.[1] ?? body.objective?.match(/height[: ]+(\d+(\.\d+)?)\s*(?:m| meters)/i)?.[1] ?? 0);
+      const weightKg = Number(body.objective?.match(/weight[: ]+(\d+(\.\d+)?)\s*kg/i)?.[1] ?? 0);
+      const heightM = Number(body.objective?.match(/height[: ]+(\d+(\.\d+)?)\s*m/i)?.[1] ?? 0);
+      const effectiveWeightKg = weightKg || weight || 0;
+      const effectiveHeightM = heightM || (height > 3 ? height / 100 : height) || 0;
+      if (effectiveWeightKg > 0 && effectiveHeightM > 0) {
+        const bmiResult = assessBmiRisk(String(patientRows[0].sex), effectiveWeightKg, effectiveHeightM);
+        if (bmiResult) {
+          bmiScreening = bmiResult;
+          await tx`
+            insert into clinical_bmi_screenings (id, tenant_id, patient_id, encounter_id, entry_id, bmi, risk_level,
+              weight_kg, height_m, computed_by, recorded_at)
+            values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${encounter.patientId}, ${encounterId}, ${entryId},
+              ${bmiResult.bmi}, ${bmiResult.riskLevel}, ${effectiveWeightKg}, ${effectiveHeightM}, ${auth.user.id}, now())
+          `;
+          await logEvent("info", "bmi.screened", {
+            patientId: String(encounter.patientId),
+            bmi: bmiResult.bmi,
+            riskLevel: bmiResult.riskLevel,
+          });
+        }
+      }
+    }
     await attachEntryVersion(c, tx, {
       entryId,
       tenantId: auth.activeTenant!.id,
@@ -149,6 +214,11 @@ clinicalRoutes.post("/encounters/:id/entries", async (c) => {
       plan: body.plan,
       occurredAt: new Date(body.clinicalOccurredAt),
       signedAt: null,
+      aiDeps: {
+        available: isIntegrationAvailable(deps.config, "ai"),
+        baseUrl: deps.config.ai.baseUrl,
+        token: deps.config.ai.token,
+      },
     });
     await writeAudit(tx, deps.config, {
       tenantId: auth.activeTenant!.id,
@@ -170,7 +240,7 @@ clinicalRoutes.post("/encounters/:id/entries", async (c) => {
       payload: { entryId, encounterId },
     });
   });
-  return c.json({ ok: true, entryId, version: 1 }, 201);
+  return c.json({ ok: true, entryId, version: 1, bmi: bmiScreening ?? null }, 201);
 });
 
 clinicalRoutes.put("/entries/:id/draft", async (c) => {
@@ -336,7 +406,13 @@ clinicalRoutes.post("/entries/:id/amendments", async (c) => {
 
 clinicalRoutes.post("/entries/:id/entered-in-error", async (c) => {
   requireStaff(c);
-  assertSign(actor(c));
+  const access = await loadStaffAccessActor(c);
+  assertAuthorized(access.actor, "clinical.note.error", {
+    kind: "clinical-record",
+    tenantId: access.actor.tenantId,
+    patientId: access.actor.patientId,
+    requiresCredential: true,
+  });
   const auth = c.get("auth")!;
   const deps = c.get("deps");
   const entryId = uuidSchema.parse(c.req.param("id"));
@@ -571,4 +647,133 @@ clinicalRoutes.post("/encounters/:id/referrals", async (c) => {
     return referralId;
   });
   return c.json({ ok: true, referralId: id }, 201);
+});
+
+// AI-assisted note suggestion is decision support only. The suggest endpoint uses the AI schema the
+// contracts package already defines; it does not accept BMI directly, and BMI is screened in the note
+// drafting path where height/weight are observable in the note text.
+clinicalRoutes.post("/ai/encounters/:id/suggest", async (c) => {
+  requireStaff(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const encounterId = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, aiAssistSchema);
+  const result = await withStaffActor(c, async (tx) => {
+    const encounter = await encounterFor(tx, auth.activeTenant!.id, encounterId);
+    if (!["triaged", "in-progress", "completed"].includes(String(encounter.state))) {
+      throw new ConflictError("AI note suggestions are only available for triaged, in-progress or completed encounters");
+    }
+    const suggestion = await buildAiNoteSuggestion(
+      {
+        patientId: String(encounter.patientId),
+        encounterId,
+        encounterState: String(encounter.state),
+        existingContent: body.existingContent ?? "",
+      },
+      {
+        aiAvailable: isIntegrationAvailable(deps.config, "ai"),
+        aiToken: deps.config.ai.token,
+        aiBaseUrl: deps.config.ai.baseUrl,
+      },
+    );
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "clinical.ai.suggest",
+      subjectPatientId: String(encounter.patientId),
+      resourceType: "ClinicalAiSuggestion",
+      resourceId: crypto.randomUUID(),
+      ...auditMeta(c),
+      metadata: {
+        encounterId,
+        aiAssistAvailable: isIntegrationAvailable(deps.config, "ai") || !!(deps.config.ai.baseUrl || deps.config.ai.token),
+      },
+    });
+    return {
+      ok: true,
+      encounterId,
+      patientId: String(encounter.patientId),
+      aiAssist: {
+        available: isIntegrationAvailable(deps.config, "ai") || !!(deps.config.ai.baseUrl || deps.config.ai.token),
+        title: suggestion.title ?? null,
+        subjective: suggestion.subjective ?? null,
+        objective: suggestion.objective ?? null,
+        assessment: suggestion.assessment ?? null,
+        plan: suggestion.plan ?? null,
+        reasoning: suggestion.reasoning ?? null,
+      },
+      disclaimer: "AI suggestions are decision support only and must be reviewed before any action. They do not replace clinical judgment, local protocols, or validated reference ranges.",
+    };
+  });
+  return c.json(result, 200);
+});
+
+// Maternity labour-partograph alerting is decision support only. The thresholds used by the partograph
+// helper are illustrative and have not been clinically validated for this deployment, so the route keeps
+// the generated alerts visible rather than treating them as actionable findings.
+clinicalRoutes.get("/maternity/episodes/:id/alerts", async (c) => {
+  requireStaff(c);
+  assertClinicalRead(actor(c));
+  const auth = c.get("auth")!;
+  const episodeId = uuidSchema.parse(c.req.param("id"));
+  const alerts = await withStaffActor(c, async (tx) => {
+    const episodeRows = await tx`
+      select e.tenant_id, e.patient_id, e.status
+        from maternity_episodes e
+       where e.id = ${episodeId} and e.tenant_id = ${auth.activeTenant!.id}
+       limit 1
+    `;
+    if (!episodeRows[0]) throw new NotFoundError("Maternity episode not found");
+    const observations = await tx`
+      select maternal, fetal, template_type, clinical_occurred_at, recorded_at, notes
+        from labour_observations
+       where episode_id = ${episodeId}
+       order by clinical_occurred_at
+    `;
+    const episodeAlerts: { alert: string; severity: "info" | "warning" | "critical"; recordedAt: string; source: string }[] = [];
+    for (const obs of observations) {
+      const state = computePartographState(
+        (obs.maternal as Record<string, number | string | null>) ?? {},
+        (obs.fetal as Record<string, number | string | null>) ?? {},
+        (obs.template_type as "labour-care-guide" | "partograph") ?? "partograph",
+      );
+      for (const alert of state.alerts) {
+        episodeAlerts.push({
+          alert,
+          severity: "warning",
+          recordedAt: obs.recorded_at,
+          source: "partograph",
+        });
+      }
+      if (state.progressStatus === "arrested") {
+        episodeAlerts.push({
+          alert: "Labour progress status: arrested",
+          severity: "critical",
+          recordedAt: obs.recorded_at,
+          source: "partograph",
+        });
+      } else if (state.progressStatus === "delayed") {
+        episodeAlerts.push({
+          alert: "Labour progress status: delayed",
+          severity: "warning",
+          recordedAt: obs.recorded_at,
+          source: "partograph",
+        });
+      }
+    }
+    const storedAlerts = await tx`
+      select id, alert, severity, recorded_at as recordedAt
+        from labour_alerts
+       where episode_id = ${episodeId}
+       order by recorded_at desc
+    `;
+    return {
+      episodeId,
+      episodeStatus: episodeRows[0].status,
+      alerts: [...episodeAlerts, ...storedAlerts.map((row) => ({ alert: row.alert, severity: row.severity, recordedAt: row.recordedAt, source: "manual" }))],
+    };
+  });
+  return c.json(alerts);
 });

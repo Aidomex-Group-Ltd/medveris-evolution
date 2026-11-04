@@ -435,3 +435,250 @@ export function validateDocumentContent(
   }
   return { valid: errors.length === 0, errors };
 }
+
+/** BMI risk assessment function for patient intake */
+export function assessBmiRisk(sex: string, weightKg: number, heightM: number): { bmi: number; riskLevel: "low" | "moderate" | "high" } | null {
+  const bmi = weightKg / (heightM * heightM);
+  let riskLevel: "low" | "moderate" | "high";
+  if (sex === "female") {
+    riskLevel = bmi < 18.5 || bmi > 30 ? "high" : bmi < 25 ? "low" : "moderate";
+  } else if (sex === "male") {
+    riskLevel = bmi < 18.5 || bmi > 28 ? "high" : bmi < 25 ? "low" : "moderate";
+  } else {
+    riskLevel = bmi < 18.5 || bmi > 30 ? "high" : bmi < 26 ? "low" : "moderate";
+  }
+  return { bmi: Number(bmi.toFixed(1)), riskLevel };
+}
+
+/** Dynamic partograph automation for maternity care */
+export function computePartographState(maternal: Record<string, number | string | null>, fetal: Record<string, number | string | null>, templateType: "labour-care-guide" | "partograph"): {
+  dilation: number;
+  station: number;
+  fetalHeartRate: number;
+  contractionsPer10Min: number;
+  progressStatus: "on-track" | "delayed" | "arrested";
+  alerts: string[];
+  progressRate: number | null;
+} {
+  const dilation = Number(maternal["dilation"] ?? 0);
+  const station = Number(maternal["station"] ?? 0);
+  const fetalHeartRate = Number(fetal["fetalHeartRate"] ?? 0);
+  const contractions = Number(maternal["contractionsPer10Min"] ?? 0);
+  let alerts: string[] = [];
+  let progressRate: number | null = null;
+  if (maternal["previousDilation"] !== undefined) {
+    const prevDilation = Number(maternal["previousDilation"]);
+    const timeDiff = 1;
+    progressRate = ((dilation - prevDilation) / timeDiff) * 60;
+  }
+  if (dilation >= 10) {
+    alerts.push("Progress arrested: cervix fully dilated");
+  }
+  if (contractions < 2) {
+    alerts.push("Reduced uterine activity");
+  }
+  if (fetalHeartRate < 110 || fetalHeartRate > 160) {
+    alerts.push("Fetal heart rate abnormality");
+  }
+  if (station > -3) {
+    alerts.push("Cephalic descent below -3 station");
+  }
+  let progressStatus: "on-track" | "delayed" | "arrested" = "on-track";
+  if (progressRate !== null && progressRate < 1) {
+    progressStatus = "delayed";
+  }
+  if (dilation >= 10 && !alerts.includes("Progress arrested: cervix fully dilated")) {
+    progressStatus = "arrested";
+  }
+  return {
+    dilation,
+    station,
+    fetalHeartRate,
+    contractionsPer10Min: contractions,
+    progressStatus,
+    alerts,
+    progressRate,
+  };
+}
+
+/**
+ * AI-assisted clinical note suggestion generation.
+ *
+ * Kept for backwards compatibility, but callers should prefer
+ * `buildAiNoteSuggestion` when they want a deployment-gated, non-blocking
+ * suggestion path. This legacy form is intentionally not wired into routes.
+ */
+export async function generateAiNoteSuggestion(input: {
+  patientId: string;
+  encounterId: string;
+  encounterState: string;
+  existingContent: string;
+}): Promise<{
+  title?: string;
+  subjective?: string;
+  objective?: string;
+  assessment?: string;
+  plan?: string;
+  reasoning?: string;
+}> {
+  return { reasoning: "AI note generation is not wired in this build; existing content is used as-is" };
+}
+
+/**
+ * Optional, deployment-gated note suggestions for outpatient notes.
+ *
+ * This is decision support only. Suggestions never replace the authored note;
+ * the clinical route only falls back to a suggestion value when the clinician
+ * left that field blank. The feature is enabled only when the AI integration is
+ * available and configured with a real token.
+ */
+export async function buildAiNoteSuggestion(
+  input: {
+    patientId: string;
+    encounterId: string;
+    encounterState: string;
+    existingContent: string;
+  },
+  deps: {
+    aiAvailable: boolean;
+    aiToken: string | null;
+    aiBaseUrl: string | null;
+  },
+): Promise<{
+  title?: string;
+  subjective?: string;
+  objective?: string;
+  assessment?: string;
+  plan?: string;
+  reasoning?: string;
+}> {
+  if (!deps.aiAvailable || !deps.aiToken || !deps.aiBaseUrl) {
+    return { reasoning: "AI note suggestions are not configured; clinical defaults are used" };
+  }
+  try {
+    const aiResponse = await fetch(deps.aiBaseUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${deps.aiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        patientId: input.patientId,
+        encounterId: input.encounterId,
+        encounterState: input.encounterState,
+        existingContent: input.existingContent,
+      }),
+    });
+    if (!aiResponse.ok) {
+      return { reasoning: "AI service unavailable; clinical defaults are used" };
+    }
+    const suggestions = (await aiResponse.json()) as {
+      title?: string;
+      subjective?: string;
+      objective?: string;
+      assessment?: string;
+      plan?: string;
+      reasoning?: string;
+    };
+    return {
+      title: suggestions.title,
+      subjective: suggestions.subjective,
+      objective: suggestions.objective,
+      assessment: suggestions.assessment,
+      plan: suggestions.plan,
+      reasoning: suggestions.reasoning ?? "AI-generated suggestions",
+    };
+  } catch (error) {
+    return { reasoning: `AI suggestor threw: ${(error as Error).message}` };
+  }
+}
+
+/** Clinical decision support predictive algorithms on composite payloads */
+export async function predictClinicalRisk(input: {
+  patientId: string;
+  encounterId: string;
+  presentationData: Record<string, unknown>;
+  vitals: Record<string, number | string | null>;
+  ultrasoundReport: string | null;
+}): Promise<{
+  riskLevel: "low" | "moderate" | "high";
+  riskFactors: string[];
+  recommendations: string[];
+  confidence: number;
+}> {
+  const presentation = input.presentationData;
+  const vitals = input.vitals;
+  const ultrasound = input.ultrasoundReport || "";
+  const riskFactors: string[] = [];
+  let riskScore = 0;
+  const maxScore = 100;
+  if (presentation.size && typeof presentation.size === "number") {
+    riskScore += Math.min(20, presentation.size / 10);
+    if (presentation.size > 50) riskFactors.push("Large presentation size");
+  }
+  if (presentation.location && typeof presentation.location === "string") {
+    if (presentation.location.includes("critical") || presentation.location.includes("deep")) {
+      riskScore += 15;
+      riskFactors.push("Deep/invasive location");
+    }
+  }
+  const { temperature, heartRate, bloodPressure, oxygenSaturation } = vitals;
+  if (temperature && typeof temperature === "number") {
+    if (temperature > 38 || temperature < 35) {
+      riskScore += 10;
+      riskFactors.push("Fever or hypothermia");
+    }
+  }
+  if (heartRate && typeof heartRate === "number") {
+    if (heartRate > 120 || heartRate < 50) {
+      riskScore += 15;
+      riskFactors.push("Tachycardia or bradycardia");
+    }
+  }
+  if (bloodPressure && typeof bloodPressure === "number") {
+    if (bloodPressure > 140 || bloodPressure < 90) {
+      riskScore += 10;
+      riskFactors.push("Hypotension or hypertension");
+    }
+  }
+  if (oxygenSaturation && typeof oxygenSaturation === "number") {
+    if (oxygenSaturation < 95) {
+      riskScore += 20;
+      riskFactors.push("Hypoxemia");
+    }
+  }
+  if (ultrasound) {
+    const lowerUS = ultrasound.toLowerCase();
+    if (lowerUS.includes("complex") || lowerUS.includes("mass")) {
+      riskScore += 15;
+      riskFactors.push("Complex ultrasound findings");
+    }
+    if (lowerUS.includes("normal") || lowerUS.includes("unremarkable")) {
+      riskScore -= 5;
+    }
+  }
+  riskScore = Math.min(Math.max(riskScore, 0), maxScore);
+  let riskLevel: "low" | "moderate" | "high";
+  const confidence = Math.round((riskScore / maxScore) * 100);
+  if (riskScore >= 70) {
+    riskLevel = "high";
+  } else if (riskScore >= 40) {
+    riskLevel = "moderate";
+  } else {
+    riskLevel = "low";
+  }
+  const recommendations: string[] = [];
+  if (riskFactors.includes("Fever or hypothermia")) recommendations.push("Obtain cultures and start empiric antibiotics");
+  if (riskFactors.includes("Tachycardia or bradycardia")) recommendations.push("Continuous cardiac monitoring");
+  if (riskFactors.includes("Hypoxemia")) recommendations.push("Administer supplemental oxygen");
+  if (riskFactors.includes("Complex ultrasound findings")) recommendations.push("Consult radiology for targeted follow-up");
+  if (recommendations.length === 0) recommendations.push("Continue routine monitoring");
+  return {
+    riskLevel,
+    riskFactors,
+    recommendations,
+    confidence,
+  };
+}
+
+export type ClinicalRiskOutput = Awaited<ReturnType<typeof predictClinicalRisk>>;

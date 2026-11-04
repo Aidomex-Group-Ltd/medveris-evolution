@@ -294,6 +294,13 @@ export const enteredInErrorSchema = z.object({
   reason: z.string().trim().min(10).max(2000),
 });
 
+export const aiAssistSchema = z.object({
+  patientId: uuidSchema,
+  encounterId: uuidSchema,
+  encounterState: z.enum(["planned", "arrived", "triaged", "in-progress", "completed", "cancelled", "entered-in-error"]),
+  existingContent: z.string().trim().max(20000).optional(),
+});
+
 export const observationSchema = z.object({
   coding: codingSchema,
   value: z.number().finite(),

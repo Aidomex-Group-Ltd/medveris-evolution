@@ -87,7 +87,7 @@ function first(dataset: DicomDataset, tag: string): unknown {
   return dataset[tag]?.Value?.[0];
 }
 
-function text(dataset: DicomDataset, tag: string): string | null {
+export function text(dataset: DicomDataset, tag: string): string | null {
   const value = first(dataset, tag);
   if (value == null) return null;
   if (typeof value === "object") {

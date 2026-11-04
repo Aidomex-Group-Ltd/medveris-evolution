@@ -57,6 +57,8 @@ export interface AppConfig {
     tokenTtlMinutes: number;
   };
   features: Record<string, boolean>;
+  /** Optional AI suggestor / CDS provider that is only used when the AI integration is available and configured. */
+  ai: AiConfig;
   /** PACS connection; problems are reported through the integration registry, never at startup. */
   dicomweb: DicomwebConfig;
   /** Deployment-level gate for the facility-scoped eHMIS/DHIS2 connector. */
@@ -150,6 +152,32 @@ export interface SubscriptionConfig {
   fxFallbackUsdUgx: number | null;
   /** A provider rate older than this is refused rather than priced. */
   fxMaxAgeMinutes: number;
+}
+
+export interface AiConfig {
+  /** Provider base URL for AI note suggestions and CDS jobs. Must be HTTPS outside local development and tests. */
+  baseUrl: string | null;
+  /** Provider token used as a Bearer credential. Worker secret in staging/production. */
+  token: string | null;
+}
+
+export function aiConfig(env: EnvLike, appEnv: string): AiConfig {
+  const rawUrl = (env.AI_BASE_URL ?? "").trim();
+  let baseUrl: string | null = rawUrl || null;
+  if (baseUrl) {
+    let url: URL;
+    try {
+      url = new URL(baseUrl);
+    } catch {
+      throw new Error("AI_BASE_URL must be an absolute URL");
+    }
+    if (url.protocol !== "https:" && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) {
+      throw new Error("AI_BASE_URL must use HTTPS outside local development and tests");
+    }
+    baseUrl = url.origin.replace(/\/+$/, "");
+  }
+  const token = (env.AI_TOKEN ?? "").trim() || null;
+  return { baseUrl, token };
 }
 
 export interface DicomwebConfig {
@@ -462,6 +490,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
       ehmis: bool(env.FEATURE_EHMIS, false),
       nhfr: bool(env.FEATURE_NHFR, false),
     },
+    ai: aiConfig(env, appEnv),
     ehmis: {
       requested: bool(env.FEATURE_EHMIS, false),
       deploymentAuthorizationReference: (env.EHMIS_DEPLOYMENT_AUTHORIZATION_REF ?? "").trim() || null,
