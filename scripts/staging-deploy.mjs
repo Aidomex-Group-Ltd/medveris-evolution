@@ -64,7 +64,9 @@ function wrangler(...args) {
 function step(label, command, args) {
   console.log(`\nstaging gate: ${label}`);
   const result = spawnSync(command, args, { stdio: "inherit" });
-  if (result.status !== 0) problems.push(`${label} failed (exit ${result.status})`);
+  if (result.status !== 0) {
+    problems.push(`${label} failed (exit ${result.status ?? "null"}, signal ${result.signal ?? "none"}, code ${result.error?.code ?? "none"})`);
+  }
 }
 
 function insideRepo(path) {
@@ -172,8 +174,11 @@ console.log("\nstaging gate: wrangler packaging dry run (no upload)");
 const packaging = wrangler("deploy", "--env", "staging", "--dry-run", "--outdir", ".wrangler/dry-run");
 process.stdout.write(packaging.stdout);
 process.stderr.write(packaging.stderr);
-if (packaging.status !== 0) problems.push(`wrangler deploy --dry-run failed (exit ${packaging.status})`);
+if (packaging.status !== 0) {
+  problems.push(`wrangler deploy --dry-run failed (exit ${packaging.status ?? "null"}, signal ${packaging.signal ?? "none"}, code ${packaging.error?.code ?? "none"})`);
+}
 if (/REPLACE_WITH|local-only/.test(packaging.stdout)) problems.push("the packaged staging bindings still contain placeholders");
+
 
 // 4. Decision.
 console.log("");
@@ -207,7 +212,7 @@ function withSecretsFile(fn) {
 if (remoteSecretNames === null) {
   const deploy = withSecretsFile((file) => spawnSync("npx", ["wrangler", "deploy", "--env", "staging", "--strict", ...(file ? ["--secrets-file", file] : [])], { stdio: "inherit" }));
   if (deploy.status !== 0) {
-    console.error(`staging gate: wrangler deploy failed (exit ${deploy.status}); check \`npx wrangler deployments list --env staging\``);
+    console.error(`staging gate: wrangler deploy failed (exit ${deploy.status ?? "null"}, signal ${deploy.signal ?? "none"}, code ${deploy.error?.code ?? "none"}); check \`npx wrangler deployments list --env staging\``);
     process.exit(deploy.status ?? 1);
   }
   const health = await probeHealth();
@@ -220,7 +225,7 @@ if (pendingMigration) {
   const previous = live.blue;
   const deploy = withSecretsFile((file) => spawnSync("npx", ["wrangler", "deploy", "--env", "staging", "--strict", ...(file ? ["--secrets-file", file] : [])], { stdio: "inherit" }));
   if (deploy.status !== 0) {
-    console.error(`staging release: wrangler deploy failed (exit ${deploy.status}); ${previous ? `blue ${previous} should still be live` : "check the deployment list"}`);
+    console.error(`staging release: wrangler deploy failed (exit ${deploy.status ?? "null"}, signal ${deploy.signal ?? "none"}, code ${deploy.error?.code ?? "none"}); ${previous ? `blue ${previous} should still be live` : "check the deployment list"}`);
     process.exit(deploy.status ?? 1);
   }
   const health = await probeHealth();
@@ -253,7 +258,7 @@ process.stdout.write(upload.stdout);
 process.stderr.write(upload.stderr);
 const green = uploadedVersionId(upload.stdout);
 if (upload.status !== 0 || !green) {
-  console.error("staging release: green upload failed; blue still serves all traffic");
+  console.error(`staging release: green upload failed (exit ${upload.status ?? "null"}, signal ${upload.signal ?? "none"}, code ${upload.error?.code ?? "none"}); blue still serves all traffic`);
   process.exit(1);
 }
 
@@ -272,12 +277,12 @@ if (!greenCheck.ok) {
 console.log(`staging release: green verified through version override (${greenCheck.detail})`);
 
 if (!versionsDeploy([`${green}@100%`], `promote green ${green} (${commit})`)) {
-  console.error("staging release: promotion failed; restoring blue");
+  console.error(`staging release: promotion failed; restoring blue`);
   versionsDeploy([`${blue}@100%`], `restore blue ${blue}`);
   process.exit(1);
 }
 const triggers = spawnSync("npx", ["wrangler", "triggers", "deploy", "--env", "staging"], { stdio: "inherit" });
-if (triggers.status !== 0) console.error("staging release: warning: cron triggers were not updated; run `npx wrangler triggers deploy --env staging`");
+if (triggers.status !== 0) console.error(`staging release: warning: cron triggers were not updated (exit ${triggers.status ?? "null"}, signal ${triggers.signal ?? "none"}, code ${triggers.error?.code ?? "none"}); run \`npx wrangler triggers deploy --env staging\``);
 
 const liveCheck = await verifyVersion(green, { override: false, expectedEntry });
 if (!liveCheck.ok) {
