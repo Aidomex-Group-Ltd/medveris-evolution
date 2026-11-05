@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  orthanc:
+    image: osimis/orthanc
+    ports:
+      - "8042:8042"
+    environment:
+      ORTHANC_JSON: |
+        {
+          "Name": "Medveris Sandbox Orthanc",
+          "AuthenticationEnabled": false,
+          "DicomWeb": {
+            "Enable": true
+          }
+        }
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    ports:
+      - "8080:8080"

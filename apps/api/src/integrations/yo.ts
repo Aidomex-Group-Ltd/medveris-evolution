@@ -186,7 +186,7 @@ export function createYoClient(yo: YoConfig, fetchImpl: FetchLike = fetch): YoCl
   };
 }
 
-export function createMockYoClient(yo: YoConfig): YoClient {
+export function createMockYoClient(_yo: YoConfig): YoClient {
   return {
     async depositFunds(request) {
       const reference = `MOCK-YO-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -223,7 +223,7 @@ export function createMockYoClient(yo: YoConfig): YoClient {
 
 // ---------------------------------------------------------------- notification signatures
 
-function pemBody(pem: string): { label: string; der: Uint8Array } {
+function pemBody(_pem: string): { label: string; der: Uint8Array } {
   const match = /-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/.exec(pem);
   if (!match) throw new Error("Not a PEM document");
   const binary = atob(match[2]!.replace(/\s+/g, ""));
