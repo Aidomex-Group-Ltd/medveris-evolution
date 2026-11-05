@@ -2,6 +2,7 @@ import type { AiModelConfig, AiRunInput, AiRunOutput, AiRunResult } from "./type
 
 export interface AiDependencies {
   ai?: { run: (params: AiRunInput) => Promise<unknown> } | null;
+  providerName?: "workers-ai" | "ollama";
   logAiRun(result: AiRunResult, meta: Record<string, string | number | null>): void;
 }
 
@@ -93,7 +94,7 @@ export async function runAi(
         if (typeof u.total_tokens === "number") output.tokens_used = u.total_tokens;
       }
       result.ok = true;
-      result.provider = "workers-ai";
+      result.provider = deps.providerName ?? "workers-ai";
       result.output = output;
       result.latencyMs = Math.round(performance.now() - started);
       result.usage = normalizeAiUsage(payload.usage ?? null);
@@ -105,7 +106,7 @@ export async function runAi(
     }
   }
 
-  result.provider = "workers-ai";
+  result.provider = deps.providerName ?? "workers-ai";
   result.error = { code: "ai_inference_failed", message: lastError ? lastError.message : "AI inference failed after retries" };
   deps.logAiRun(result, meta);
   return result;

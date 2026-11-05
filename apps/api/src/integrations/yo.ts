@@ -134,6 +134,8 @@ export interface YoClient {
 }
 
 export function createYoClient(yo: YoConfig, fetchImpl: FetchLike = fetch): YoClient {
+  if (yo.mode === "mock") return createMockYoClient(yo);
+
   async function post(url: string, xml: string): Promise<YoResponse> {
     let response: Response;
     try {
@@ -180,6 +182,41 @@ export function createYoClient(yo: YoConfig, fetchImpl: FetchLike = fetch): YoCl
         if (!(error instanceof YoTransportError) || !yo.backupApiUrl) throw error;
         return post(yo.backupApiUrl, xml);
       }
+    },
+  };
+}
+
+export function createMockYoClient(yo: YoConfig): YoClient {
+  return {
+    async depositFunds(request) {
+      const reference = `MOCK-YO-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      return {
+        status: "OK",
+        statusCode: 0,
+        statusMessage: "Mock deposit initiated successfully",
+        transactionStatus: "PENDING",
+        transactionReference: reference,
+        mnoTransactionReferenceId: `MNO-${reference}`,
+        errorMessage: null,
+        errorMessageCode: null,
+        amount: String(request.amount),
+        currencyCode: "UGX",
+      };
+    },
+    async checkStatus(reference) {
+      const ref = reference.transactionReference || reference.externalReference;
+      return {
+        status: "OK",
+        statusCode: 0,
+        statusMessage: "Mock transaction check status",
+        transactionStatus: "SUCCEEDED",
+        transactionReference: ref,
+        mnoTransactionReferenceId: `MNO-${ref}`,
+        errorMessage: null,
+        errorMessageCode: null,
+        amount: "1000",
+        currencyCode: "UGX",
+      };
     },
   };
 }

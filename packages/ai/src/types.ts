@@ -1,5 +1,5 @@
 export interface AiModelConfig {
-  provider: "workers-ai";
+  provider: "workers-ai" | "ollama";
   model: string;
   inputTokensMax: number;
   timeoutMs: number;
@@ -24,7 +24,7 @@ export interface AiRunOutput {
 export interface AiRunResult {
   ok: boolean;
   output: AiRunOutput | null;
-  provider: "workers-ai" | "unconfigured" | "fallback";
+  provider: "workers-ai" | "ollama" | "unconfigured" | "fallback";
   latencyMs: number | null;
   error: { code: string; message: string } | null;
   usage: Record<string, number | string | null> | null;

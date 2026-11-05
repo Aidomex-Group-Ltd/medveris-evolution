@@ -132,21 +132,23 @@ deviceRoutes.post("/devices/:id/ingest", async (c) => {
       system: mapped.loincSystem, version: mapped.loincVersion, code: mapped.loincCode,
       display: mapped.display, text: mapped.display, userSelected: false,
     };
+    const mode = c.get("deps").config.modes.devices;
+    const tag = mode === "sandbox" ? { simulated: true, source: "sandbox:devices" } : { simulated: false, source: null };
     await tx`
       insert into observations (id, tenant_id, patient_id, encounter_id, loinc_system, loinc_version, loinc_code, display,
-        original_text, coding, value_num, unit_code, unit_system, occurred_at, recorded_at, author_id, status, note)
+        original_text, coding, value_num, unit_code, unit_system, occurred_at, recorded_at, author_id, status, note, simulated, source)
       values (${observationId}, ${auth.activeTenant!.id}, ${assignment.patientId}, ${assignment.encounterId},
         ${mapped.loincSystem}, ${mapped.loincVersion}, ${mapped.loincCode}, ${mapped.display}, ${body.nativeCode},
         ${tx.json(coding as never)}, ${body.value}, ${body.unit}, 'http://unitsofmeasure.org', ${new Date(body.measuredAt)},
-        ${new Date()}, ${auth.user.id}, 'final', ${`Device ${id} event ${body.eventId}; quality ${body.quality}`})
+        ${new Date()}, ${auth.user.id}, 'final', ${`Device ${id} event ${body.eventId}; quality ${body.quality}`}, ${tag.simulated}, ${tag.source})
     `;
     const deviceObservationId = crypto.randomUUID();
     await tx`
       insert into device_observations (id, tenant_id, device_id, assignment_id, patient_id, encounter_id, event_id, sequence,
-        native_code, loinc_system, loinc_version, loinc_code, display, value_num, unit_code, measured_at, quality, observation_id)
+        native_code, loinc_system, loinc_version, loinc_code, display, value_num, unit_code, measured_at, quality, observation_id, simulated, source)
       values (${deviceObservationId}, ${auth.activeTenant!.id}, ${id}, ${assignment.id}, ${assignment.patientId}, ${assignment.encounterId},
         ${body.eventId}, ${body.sequence}, ${body.nativeCode}, ${mapped.loincSystem}, ${mapped.loincVersion}, ${mapped.loincCode},
-        ${mapped.display}, ${body.value}, ${body.unit}, ${new Date(body.measuredAt)}, ${body.quality}, ${observationId})
+        ${mapped.display}, ${body.value}, ${body.unit}, ${new Date(body.measuredAt)}, ${body.quality}, ${observationId}, ${tag.simulated}, ${tag.source})
     `;
     await tx`update devices set last_seen_at = now() where id = ${id}`;
     if (body.quality !== "valid") {

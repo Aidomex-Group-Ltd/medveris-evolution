@@ -1,10 +1,22 @@
 import { runAi, type AiDependencies, type AiRunResult } from "@medveris/ai";
+import { createOllamaClient } from "../integrations/ollama.js";
 import type { AppDeps } from "../types.js";
 import type { AuthContext } from "../types.js";
 
 export function aiDependencies(deps: AppDeps): AiDependencies {
+  const mode = deps.config.modes.ai;
+  if (mode === "sandbox") {
+    return {
+      ai: createOllamaClient(deps.config.ollama),
+      providerName: "ollama",
+      logAiRun(result, meta) {
+        deps.logAiRun?.(result, { ...meta, simulated: "true", source: "sandbox:ollama" });
+      },
+    };
+  }
   return {
     ai: deps.config.features.ai && deps.ai ? deps.ai : undefined,
+    providerName: "workers-ai",
     logAiRun(result: AiRunResult, meta: Record<string, string | number | null>) {
       deps.logAiRun?.(result, meta);
     },
