@@ -46,6 +46,8 @@ interface IntegrationResponse {
     name: string;
     enabled: boolean;
     state: string;
+    mode: string;
+    modeLabel: string;
     reason: string;
     requested: boolean;
     missingPrerequisites: string[];
@@ -59,6 +61,7 @@ interface IntegrationResponse {
 
 const INTEGRATION_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
   available: "success",
+  sandbox: "warning",
   degraded: "warning",
   unavailable: "warning",
   disabled: "neutral",
@@ -299,10 +302,11 @@ export function Integrations() {
         </Card>
       ) : null}
       <Card title="External adapters">
-        <Table head={["Integration", "State", "Reason and effect", "Missing prerequisites", "Last verification", "Operator action"]} caption="Server-reported integration availability">
+        <Table head={["Integration", "Mode", "State", "Reason and effect", "Missing prerequisites", "Last verification", "Operator action"]} caption="Server-reported integration availability">
           {integrations.data?.integrations.map((integration) => (
             <tr key={integration.id}>
               <td><strong>{integration.name}</strong>{integration.requested ? <div className="mv-small mv-muted">requested by environment flag</div> : null}</td>
+              <td><Badge tone={integration.state === "sandbox" ? "warning" : INTEGRATION_TONE[integration.state] ?? "warning"}>{integration.modeLabel}</Badge></td>
               <td><Badge tone={INTEGRATION_TONE[integration.state] ?? "warning"}>{integration.state.replace("_", " ")}</Badge></td>
               <td className="mv-small">{integration.reason}<div className="mv-muted" style={{ marginTop: 4 }}>{integration.effectWhileUnavailable}</div></td>
               <td className="mv-small"><ul style={{ margin: 0, paddingLeft: 16 }}>{integration.missingPrerequisites.map((item) => <li key={item}>{item}</li>)}</ul></td>

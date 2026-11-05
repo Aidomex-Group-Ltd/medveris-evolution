@@ -8,7 +8,7 @@ import { requestActor, requestAudit } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
 import { NotFoundError } from "../lib/errors.js";
-import { assertIntegrationAvailable, isIntegrationAvailable } from "../integrations/registry.js";
+import { assertIntegrationAvailable, isIntegrationOperational } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
 
 export const aiRoutes = new Hono<AppEnv>();
@@ -21,7 +21,7 @@ aiRoutes.get("/ai/jobs", async (c) => {
       from ai_jobs j join patients p on p.id = j.patient_id join users u on u.id = j.created_by
      where j.tenant_id = ${auth.activeTenant!.id} order by j.created_at desc limit 100
   `);
-  return c.json({ jobs: rows, configured: isIntegrationAvailable(c.get("deps").config, "ai") });
+  return c.json({ jobs: rows, configured: isIntegrationOperational(c.get("deps").config, "ai") });
 });
 
 const AI_DISCLAIMER = "AI output is decision support only. It is not a diagnosis and must be reviewed by a qualified clinician.";

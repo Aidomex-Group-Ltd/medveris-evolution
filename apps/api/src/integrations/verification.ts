@@ -1,7 +1,7 @@
 import type { Sql, Tx } from "@medveris/db";
 import type { AppConfig } from "../config.js";
 import { DicomwebClient, dicomwebConfigProblems, dicomwebFingerprint, isDicomUid, PacsError } from "./dicomweb.js";
-import { IMPLEMENTED_ADAPTERS, type IntegrationId, type VerificationLookup, type VerificationRecord } from "./registry.js";
+import { VERIFICATION_REQUIRED, type IntegrationId, type IntegrationMode, type VerificationLookup, type VerificationRecord } from "./registry.js";
 
 export interface VerificationCheck {
   name: string;
@@ -29,7 +29,12 @@ async function cacheKey(config: AppConfig, id: IntegrationId): Promise<{ key: st
 }
 
 function needsLookup(config: AppConfig, id: IntegrationId): boolean {
-  return IMPLEMENTED_ADAPTERS.has(id) && Boolean(config.features[id]) && dicomwebConfigProblems(config).length === 0;
+  return VERIFICATION_REQUIRED.has(id) && Boolean(config.features[id]) && dicomwebConfigProblems(config).length === 0;
+}
+
+/** The mode a verification run executes against, recorded with the run so a sandbox run is never read as a live one. */
+function verificationMode(config: AppConfig, id: IntegrationId): IntegrationMode {
+  return config.modes[id] ?? "live";
 }
 
 /**
@@ -38,7 +43,7 @@ function needsLookup(config: AppConfig, id: IntegrationId): boolean {
  */
 export async function loadVerifications(sql: Sql | Tx, config: AppConfig): Promise<VerificationLookup> {
   const out: VerificationLookup = {};
-  for (const id of IMPLEMENTED_ADAPTERS) {
+  for (const id of VERIFICATION_REQUIRED) {
     if (!needsLookup(config, id)) continue;
     const { key, fingerprint } = await cacheKey(config, id);
     const cached = cache.get(key);
@@ -48,7 +53,7 @@ export async function loadVerifications(sql: Sql | Tx, config: AppConfig): Promi
     }
     try {
       const [row] = await sql`
-        select outcome, finished_at, checks from integration_verifications
+        select outcome, finished_at, checks, mode from integration_verifications
          where integration_id = ${id} and app_env = ${config.appEnv} and endpoint_fingerprint = ${fingerprint}
          order by finished_at desc limit 1
       `;
@@ -56,6 +61,7 @@ export async function loadVerifications(sql: Sql | Tx, config: AppConfig): Promi
         outcome: row.outcome === "passed" ? "passed" : "failed",
         finishedAt: new Date(row.finishedAt as string).toISOString(),
         failure: ((row.checks as VerificationCheck[] | null) ?? []).find((check) => !check.passed)?.detail ?? null,
+        mode: row.mode === "sandbox" ? "sandbox" : "live",
       } : null;
       cache.set(key, { record, expiresAt: Date.now() + CACHE_TTL_MS });
       out[id] = record;
@@ -70,8 +76,8 @@ export async function recordVerification(tx: Tx, config: AppConfig, id: Integrat
   const { key, fingerprint } = await cacheKey(config, id);
   const recordId = crypto.randomUUID();
   await tx`
-    insert into integration_verifications (id, integration_id, app_env, endpoint_fingerprint, outcome, checks, run_by, started_at)
-    values (${recordId}, ${id}, ${config.appEnv}, ${fingerprint}, ${run.outcome}, ${tx.json(run.checks as never)}, ${runBy}, ${startedAt})
+    insert into integration_verifications (id, integration_id, app_env, endpoint_fingerprint, outcome, checks, run_by, started_at, mode)
+    values (${recordId}, ${id}, ${config.appEnv}, ${fingerprint}, ${run.outcome}, ${tx.json(run.checks as never)}, ${runBy}, ${startedAt}, ${verificationMode(config, id)})
   `;
   cache.delete(key);
   return recordId;

@@ -2,6 +2,55 @@ import { parseShardTopology, type ShardTopology } from "@medveris/db";
 import type { FxConfig } from "./integrations/fx.js";
 import type { AiModelConfig } from "@medveris/ai";
 
+/**
+ * How an integration is connected in this deployment. `live` talks to a real provider endpoint,
+ * `sandbox` runs a simulated or local adapter that only ever produces synthetic data, and `off`
+ * means nothing was requested. Sandbox is never reported as available anywhere in the product.
+ */
+export type IntegrationMode = "off" | "sandbox" | "live";
+
+/** Environment variables whose sandbox value is hard-blocked when APP_ENV=production. */
+export const SANDBOX_MODE_ENV_VARS = [
+  "UPLOAD_SCAN_MODE",
+  "AI_MODE",
+  "DICOMWEB_MODE",
+  "TELEMEDICINE_MODE",
+  "LAB_MODE",
+  "PHARMACY_MODE",
+  "DEVICES_MODE",
+  "LEDGER_ANCHOR_MODE",
+  "TERMINOLOGY_MODE",
+  "YO_MODE",
+] as const;
+
+/**
+ * Sandbox adapters are refused at startup in production, before any other work: a simulated
+ * adapter must never be able to boot in the environment where real patient data lives.
+ */
+export function refuseSandboxInProduction(env: Record<string, string | undefined>, appEnv: string): void {
+  if (appEnv !== "production") return;
+  for (const name of SANDBOX_MODE_ENV_VARS) {
+    const value = (env[name] ?? "").trim();
+    const sandboxValue = name === "YO_MODE" ? value === "sandbox" || value === "mock" : value === "sandbox";
+    if (sandboxValue) {
+      throw new Error(`${name}=${value} is not allowed in production; sandbox adapters are hard-blocked when APP_ENV=production`);
+    }
+  }
+}
+
+function modeVar(env: EnvLike, name: string, fallback: IntegrationMode = "live"): IntegrationMode {
+  const raw = (env[name] ?? "").trim() || fallback;
+  if (raw !== "off" && raw !== "sandbox" && raw !== "live") throw new Error(`${name} must be off, sandbox or live`);
+  return raw;
+}
+
+/** YO_MODE=disabled is off, YO_MODE=mock is the local mock gateway (sandbox); Yo!'s own sandbox and production endpoints are real provider connections. */
+function yoIntegrationMode(mode: string): IntegrationMode {
+  if (mode === "disabled") return "off";
+  if (mode === "mock") return "sandbox";
+  return "live";
+}
+
 export interface AppConfig {
   appEnv: string;
   origin: string;
@@ -18,7 +67,7 @@ export interface AppConfig {
   storageAdapter: "local" | "r2";
   localUploadDir: string;
   maxUploadBytes: number;
-  terminologyMode: "synthetic" | "production" | "unavailable";
+  terminologyMode: "synthetic" | "sandbox" | "production" | "unavailable";
   terminologyProviderUrl: string | null;
   terminologyProviderToken: string | null;
   terminologyTimeoutMs: number;
@@ -58,6 +107,22 @@ export interface AppConfig {
     tokenTtlMinutes: number;
   };
   features: Record<string, boolean>;
+  /** Per-integration connection mode derived from the *_MODE environment variables; the feature flag still gates everything. */
+  modes: Record<string, IntegrationMode>;
+  /** Upload malware scanning. `signature` keeps the pre-existing local signature check only. */
+  uploadScan: UploadScanConfig;
+  /** Ollama endpoint used as the sandbox AI adapter in local Node development. */
+  ollama: OllamaConfig;
+  /** Jitsi media provider for telehealth sessions. */
+  telemedicine: TelemedicineConfig;
+  /** Simulator gateway settings shared by the lab, pharmacy and device sandbox adapters. */
+  lab: SimulatorGatewayConfig;
+  pharmacy: SimulatorGatewayConfig;
+  devices: SimulatorGatewayConfig;
+  /** Ledger anchoring: local append-only sandbox anchor or the OpenTimestamps live adapter. */
+  ledgerAnchor: LedgerAnchorConfig;
+  /** Mobile money provider selection: Yo! (default) or LivePay. */
+  payments: PaymentsConfig;
   /** Optional AI suggestor / CDS provider that is only used when the AI integration is available and configured. */
   ai: AiConfig;
   /** AI model configuration used by clinical inference jobs. */
@@ -183,6 +248,128 @@ export function aiConfig(env: EnvLike, appEnv: string): AiConfig {
   return { baseUrl, token };
 }
 
+export interface UploadScanConfig {
+  /** off: the pre-existing local signature check only; sandbox: EICAR stub scanner; live: ClamAV through clamd. */
+  mode: IntegrationMode;
+  /** clamd INSTREAM endpoint. Defaults to 127.0.0.1:3310 in local development and tests. */
+  clamdAddress: string;
+  timeoutMs: number;
+}
+
+function uploadScanConfig(env: EnvLike, appEnv: string): UploadScanConfig {
+  // There is no feature flag for scanning, and before this mode existed only the local signature
+  // check ran, so an unset UPLOAD_SCAN_MODE stays `off` rather than silently demanding clamd.
+  const mode = modeVar(env, "UPLOAD_SCAN_MODE", "off");
+  const clamdAddress = (env.CLAMD_ADDRESS ?? "").trim() || (LOCAL_ONLY_ENVIRONMENTS.has(appEnv) ? "127.0.0.1:3310" : "");
+  if (mode === "live" && !clamdAddress) throw new Error("UPLOAD_SCAN_MODE=live requires CLAMD_ADDRESS (host:port of clamd)");
+  if (clamdAddress && !/^[a-zA-Z0-9._-]+(:\d{1,5})?$/.test(clamdAddress)) throw new Error("CLAMD_ADDRESS must be host or host:port");
+  return { mode, clamdAddress, timeoutMs: Math.max(1_000, Math.min(integer(env.UPLOAD_SCAN_TIMEOUT_MS, 10_000), 60_000)) };
+}
+
+export interface OllamaConfig {
+  /** Ollama server used as the sandbox AI adapter; http is allowed outside production because sandbox mode is refused there. */
+  url: string | null;
+  model: string;
+  timeoutMs: number;
+}
+
+function ollamaConfig(env: EnvLike, appEnv: string): OllamaConfig {
+  const raw = (env.OLLAMA_URL ?? "").trim().replace(/\/+$/, "");
+  let url: string | null = raw || null;
+  if (url) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error("OLLAMA_URL must be an absolute URL");
+    }
+    if (parsed.protocol !== "https:" && appEnv === "production") throw new Error("OLLAMA_URL must use HTTPS in production");
+    url = parsed.origin;
+  }
+  return { url, model: (env.OLLAMA_MODEL ?? "").trim() || "llama3.2", timeoutMs: Math.max(1_000, Math.min(integer(env.OLLAMA_TIMEOUT_MS, 60_000), 300_000)) };
+}
+
+export interface TelemedicineConfig {
+  mode: IntegrationMode;
+  /** Jitsi server that hosts generated rooms. Required for live mode; sandbox defaults to the public meet.jit.si. */
+  baseUrl: string | null;
+}
+
+function telemedicineConfig(env: EnvLike, appEnv: string): TelemedicineConfig {
+  const mode = modeVar(env, "TELEMEDICINE_MODE");
+  const raw = (env.JITSI_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  let baseUrl: string | null = raw || null;
+  if (baseUrl) {
+    let parsed: URL;
+    try {
+      parsed = new URL(baseUrl);
+    } catch {
+      throw new Error("JITSI_BASE_URL must be an absolute URL");
+    }
+    if (parsed.protocol !== "https:" && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) throw new Error("JITSI_BASE_URL must use HTTPS outside local development and tests");
+    baseUrl = parsed.origin;
+  }
+  return { mode, baseUrl };
+}
+
+export interface SimulatorGatewayConfig {
+  mode: IntegrationMode;
+  /** Shared HMAC secret the simulator gateway signs its messages with; required before a sandbox gateway is usable. */
+  gatewaySecret: string | null;
+}
+
+function simulatorGatewayConfig(env: EnvLike, prefix: "LAB" | "PHARMACY" | "DEVICES"): SimulatorGatewayConfig {
+  const secret = (env[`${prefix}_GATEWAY_SECRET`] ?? "").trim();
+  return { mode: modeVar(env, `${prefix}_MODE`), gatewaySecret: secret.length >= 32 ? secret : null };
+}
+
+export interface LedgerAnchorConfig {
+  mode: IntegrationMode;
+  /** Directory the local append-only sandbox anchor appends to; never claimed as an external anchor. */
+  anchorDir: string;
+}
+
+function ledgerAnchorConfig(env: EnvLike): LedgerAnchorConfig {
+  return { mode: modeVar(env, "LEDGER_ANCHOR_MODE"), anchorDir: (env.LEDGER_ANCHOR_DIR ?? "").trim() || ".data/anchors" };
+}
+
+export interface LivePayConfig {
+  /** LivePay API key (Bearer credential). Worker secret in staging and production. */
+  apiKey: string | null;
+  /** LivePay business account number, e.g. LP2305443309. */
+  accountNumber: string | null;
+  baseUrl: string;
+  timeoutMs: number;
+}
+
+export interface PaymentsConfig {
+  /** yo: the Yo! Payments XML API (default). livepay: the LivePay REST API. LivePay has no test mode, so it is always live. */
+  provider: "yo" | "livepay";
+  livepay: LivePayConfig;
+}
+
+function paymentsConfig(env: EnvLike, appEnv: string): PaymentsConfig {
+  const provider = (env.PAYMENT_PROVIDER ?? "yo").trim() || "yo";
+  if (provider !== "yo" && provider !== "livepay") throw new Error("PAYMENT_PROVIDER must be yo or livepay");
+  const rawUrl = (env.LIVEPAY_BASE_URL ?? "https://livepay.me/api").trim().replace(/\/+$/, "");
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("LIVEPAY_BASE_URL must be an absolute URL");
+  }
+  if (parsed.protocol !== "https:" && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) throw new Error("LIVEPAY_BASE_URL must use HTTPS");
+  return {
+    provider,
+    livepay: {
+      apiKey: (env.LIVEPAY_API_KEY ?? "").trim() || null,
+      accountNumber: (env.LIVEPAY_ACCOUNT_NUMBER ?? "").trim() || null,
+      baseUrl: rawUrl,
+      timeoutMs: Math.max(1_000, Math.min(integer(env.LIVEPAY_TIMEOUT_MS, 20_000), 120_000)),
+    },
+  };
+}
+
 export interface DicomwebConfig {
   /** DICOMweb service root (QIDO-RS and WADO-RS), without a trailing slash. */
   baseUrl: string | null;
@@ -213,8 +400,8 @@ export interface EhmisConfig {
 }
 
 export interface YoConfig {
-  /** disabled: no request is sent; sandbox: Yo! test system; production: live collections. */
-  mode: "disabled" | "sandbox" | "production";
+  /** disabled: no request is sent; mock: the local mock gateway (sandbox, refused in production); sandbox: Yo! test system; production: live collections. */
+  mode: "disabled" | "sandbox" | "mock" | "production";
   /** Yo! Payments API endpoint (task.php). Defaults to the documented endpoint for the mode. */
   apiUrl: string | null;
   /** Secondary production endpoint, used only for idempotent status checks. */
@@ -237,8 +424,8 @@ export const YO_ENDPOINTS = Object.freeze({
 
 function yoConfig(env: EnvLike, appEnv: string, origin: string): YoConfig {
   const raw = (env.YO_MODE ?? "disabled").trim() || "disabled";
-  if (raw !== "disabled" && raw !== "sandbox" && raw !== "production") throw new Error("YO_MODE must be disabled, sandbox or production");
-  if (raw === "sandbox" && appEnv === "production") throw new Error("YO_MODE=sandbox is not allowed in production; use production or disabled");
+  if (raw !== "disabled" && raw !== "sandbox" && raw !== "mock" && raw !== "production") throw new Error("YO_MODE must be disabled, sandbox, mock or production");
+  if ((raw === "sandbox" || raw === "mock") && appEnv === "production") throw new Error(`YO_MODE=${raw} is not allowed in production; use production or disabled`);
   const https = (name: string, value: string | undefined): string | null => {
     const trimmed = (value ?? "").trim();
     if (!trimmed) return null;
@@ -248,7 +435,8 @@ function yoConfig(env: EnvLike, appEnv: string, origin: string): YoConfig {
     } catch {
       throw new Error(`${name} must be an absolute URL`);
     }
-    if (url.protocol !== "https:" && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) throw new Error(`${name} must use HTTPS`);
+    // The mock gateway is a local process with no real credentials; it is refused in production.
+    if (url.protocol !== "https:" && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv) && raw !== "mock") throw new Error(`${name} must use HTTPS`);
     return trimmed.replace(/\/+$/, "");
   };
   const apiUrl = https("YO_API_URL", env.YO_API_URL) ?? (raw === "sandbox" ? YO_ENDPOINTS.sandbox : raw === "production" ? YO_ENDPOINTS.production : null);
@@ -332,7 +520,7 @@ const TEST_AUDIT_SIGNING_KEY = "test-audit-signing-key-test-audit-signing-key";
 const TEST_MFA_ENCRYPTION_KEY = "test-mfa-encryption-key-test-mfa-encryption-key";
 const LOCAL_ONLY_ENVIRONMENTS = new Set(["development", "test"]);
 
-const TERMINOLOGY_MODES = ["synthetic", "production", "unavailable"] as const;
+const TERMINOLOGY_MODES = ["synthetic", "sandbox", "production", "unavailable"] as const;
 
 function isTerminologyMode(value: string): value is AppConfig["terminologyMode"] {
   return (TERMINOLOGY_MODES as readonly string[]).includes(value);
@@ -362,6 +550,7 @@ function validatedOrigin(raw: string, appEnv: string): string {
 
 export function loadConfig(env: EnvLike = process.env): AppConfig {
   const appEnv = env.APP_ENV ?? env.NODE_ENV ?? "development";
+  refuseSandboxInProduction(env, appEnv);
   const sessionSecret = env.SESSION_SECRET ?? "";
   const auditSigningKey = env.AUDIT_SIGNING_KEY ?? "";
   const mfaEncryptionKey = env.MFA_ENCRYPTION_KEY ?? "";
@@ -385,13 +574,16 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
   if (!rawOrigin) throw new Error("APP_ORIGIN is required outside local development");
   const origin = validatedOrigin(rawOrigin, appEnv);
   const terminologyMode = env.TERMINOLOGY_MODE || "synthetic";
-  if (!isTerminologyMode(terminologyMode)) throw new Error("TERMINOLOGY_MODE must be synthetic, production or unavailable");
+  if (!isTerminologyMode(terminologyMode)) throw new Error("TERMINOLOGY_MODE must be synthetic, production or unavailable (sandbox is allowed outside production)");
   if (terminologyMode === "synthetic" && appEnv === "production") {
     throw new Error("TERMINOLOGY_MODE=synthetic is not allowed in production; use production or unavailable");
   }
   const terminologyProviderUrl = env.TERMINOLOGY_PROVIDER_URL || null;
   if (terminologyMode === "production" && !terminologyProviderUrl) {
     throw new Error("TERMINOLOGY_MODE=production requires TERMINOLOGY_PROVIDER_URL");
+  }
+  if (terminologyMode === "sandbox" && !terminologyProviderUrl) {
+    throw new Error("TERMINOLOGY_MODE=sandbox requires TERMINOLOGY_PROVIDER_URL (the local HAPI FHIR sandbox server)");
   }
   const mapProviderState = (env.MAP_TILE_PROVIDER ?? "osm") === "osm"
     ? "osm"
@@ -420,6 +612,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
   if (legacyElevateEnvironments.includes("production")) {
     throw new Error("PLATFORM_ROLE_LEGACY_ELEVATE_ENVIRONMENTS must never include production");
   }
+  const payments = paymentsConfig(env, appEnv);
   return {
     appEnv,
     origin,
@@ -493,6 +686,27 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
       ehmis: bool(env.FEATURE_EHMIS, false),
       nhfr: bool(env.FEATURE_NHFR, false),
     },
+    modes: {
+      dicomweb: modeVar(env, "DICOMWEB_MODE"),
+      lab: modeVar(env, "LAB_MODE"),
+      pharmacy: modeVar(env, "PHARMACY_MODE"),
+      telemedicine: modeVar(env, "TELEMEDICINE_MODE"),
+      devices: modeVar(env, "DEVICES_MODE"),
+      ai: modeVar(env, "AI_MODE"),
+      payments: payments.provider === "livepay" ? "live" : yoIntegrationMode((env.YO_MODE ?? "disabled").trim() || "disabled"),
+      publicHealth: "live",
+      ehmis: "live",
+      nhfr: "live",
+      ledgerAnchoring: modeVar(env, "LEDGER_ANCHOR_MODE"),
+    },
+    uploadScan: uploadScanConfig(env, appEnv),
+    ollama: ollamaConfig(env, appEnv),
+    telemedicine: telemedicineConfig(env, appEnv),
+    lab: simulatorGatewayConfig(env, "LAB"),
+    pharmacy: simulatorGatewayConfig(env, "PHARMACY"),
+    devices: simulatorGatewayConfig(env, "DEVICES"),
+    ledgerAnchor: ledgerAnchorConfig(env),
+    payments,
     ai: aiConfig(env, appEnv),
     aiModel: {
       provider: "workers-ai",

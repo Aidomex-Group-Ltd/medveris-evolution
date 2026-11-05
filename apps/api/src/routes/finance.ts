@@ -38,7 +38,7 @@ import { AppError, ConflictError, DependencyError, ForbiddenError, NotFoundError
 import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
 import { enforceRateLimit } from "../lib/rate-limit.js";
 import { resolveAttribution } from "../lib/scope.js";
-import { assertIntegrationAvailable, integrationStatus, isIntegrationAvailable } from "../integrations/registry.js";
+import { assertIntegrationAvailable, integrationStatus, isIntegrationOperational } from "../integrations/registry.js";
 import { createYoClient, yoConfigProblems, yoOutcome, YoTransportError, type YoClient } from "../integrations/yo.js";
 import { createFxProvider, FxUnavailableError } from "../integrations/fx.js";
 import { invoiceNumber, invoiceTotals, receiptNumber, refreshInvoice } from "../services/billing.js";
@@ -739,7 +739,7 @@ financeRoutes.get("/invoices/:id", async (c) => {
     mobileMoney: data.mobileMoney.map((row) => ({ ...row, msisdn: maskMsisdn(String(row.msisdn)) })),
     paymentOptions: {
       cash: data.invoice.status !== "void",
-      mobileMoney: data.invoice.status !== "void" && isIntegrationAvailable(config, "payments") && yoSupports(String(data.invoice.currency)),
+      mobileMoney: data.invoice.status !== "void" && isIntegrationOperational(config, "payments") && yoSupports(String(data.invoice.currency)),
       mobileMoneyMode: config.yo.mode,
       mobileMoneyReason: !yoSupports(String(data.invoice.currency)) ? "Yo! mobile money collects whole Uganda shillings (UGX) only; this bill is in another currency" : integrationStatus(config, "payments").reason,
     },

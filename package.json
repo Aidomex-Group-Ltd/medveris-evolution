@@ -31,7 +31,7 @@
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project chromium",
     "smoke:workers": "node scripts/workers-smoke.mjs",
     "smoke:clinical": "node scripts/clinical-smoke.mjs",
     "verify:runtime": "node scripts/runtime-verify.mjs",

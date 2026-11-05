@@ -23,7 +23,7 @@ import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, NotFoundError } from "../lib/errors.js";
 import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
 import { loadStaffAccessActor } from "../services/access.js";
-import { isIntegrationAvailable } from "../integrations/registry.js";
+import { isIntegrationOperational } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
 
 export const clinicalRoutes = new Hono<AppEnv>();
@@ -208,7 +208,7 @@ clinicalRoutes.post("/encounters/:id/entries", async (c) => {
       occurredAt: new Date(body.clinicalOccurredAt),
       signedAt: null,
       aiDeps: {
-        available: isIntegrationAvailable(deps.config, "ai"),
+        available: isIntegrationOperational(deps.config, "ai"),
         baseUrl: deps.config.ai.baseUrl,
         token: deps.config.ai.token,
       },
@@ -664,7 +664,7 @@ clinicalRoutes.post("/ai/encounters/:id/suggest", async (c) => {
         existingContent: body.existingContent ?? "",
       },
       {
-        aiAvailable: isIntegrationAvailable(deps.config, "ai"),
+        aiAvailable: isIntegrationOperational(deps.config, "ai"),
         aiToken: deps.config.ai.token,
         aiBaseUrl: deps.config.ai.baseUrl,
       },
@@ -681,7 +681,7 @@ clinicalRoutes.post("/ai/encounters/:id/suggest", async (c) => {
       ...auditMeta(c),
       metadata: {
         encounterId,
-        aiAssistAvailable: isIntegrationAvailable(deps.config, "ai") || !!(deps.config.ai.baseUrl || deps.config.ai.token),
+        aiAssistAvailable: isIntegrationOperational(deps.config, "ai") || !!(deps.config.ai.baseUrl || deps.config.ai.token),
       },
     });
     return {
@@ -689,7 +689,7 @@ clinicalRoutes.post("/ai/encounters/:id/suggest", async (c) => {
       encounterId,
       patientId: String(encounter.patientId),
       aiAssist: {
-        available: isIntegrationAvailable(deps.config, "ai") || !!(deps.config.ai.baseUrl || deps.config.ai.token),
+        available: isIntegrationOperational(deps.config, "ai") || !!(deps.config.ai.baseUrl || deps.config.ai.token),
         title: suggestion.title ?? null,
         subjective: suggestion.subjective ?? null,
         objective: suggestion.objective ?? null,

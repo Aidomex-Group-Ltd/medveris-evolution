@@ -11,7 +11,7 @@ import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
 import { ConflictError, NotFoundError, ValidationError } from "../lib/errors.js";
-import { assertIntegrationAvailable, isIntegrationAvailable } from "../integrations/registry.js";
+import { assertIntegrationAvailable, isIntegrationOperational } from "../integrations/registry.js";
 import type { AppEnv } from "../types.js";
 
 export const telehealthRoutes = new Hono<AppEnv>();
@@ -56,7 +56,7 @@ telehealthRoutes.post("/telehealth/sessions", async (c) => {
     `;
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "telehealth.session.create", {
       subjectPatientId: body.patientId, resourceType: "TelehealthSession", resourceId: id,
-      metadata: { clinicianUserId: body.clinicianUserId, adapterAvailable: isIntegrationAvailable(c.get("deps").config, "telemedicine") },
+      metadata: { clinicianUserId: body.clinicianUserId, adapterAvailable: isIntegrationOperational(c.get("deps").config, "telemedicine") },
     }));
   });
   return c.json({ ok: true, session: { id } }, 201);
@@ -74,7 +74,7 @@ telehealthRoutes.get("/telehealth/sessions/:id", async (c) => {
        where s.id = ${id} and s.tenant_id = ${auth.activeTenant!.id}
     `, "Telehealth session not found");
     const consents = await tx`select * from telehealth_consents where session_id = ${id} order by created_at desc`;
-    return { session, consents, adapter: { configured: isIntegrationAvailable(c.get("deps").config, "telemedicine"), provider: null } };
+    return { session, consents, adapter: { configured: isIntegrationOperational(c.get("deps").config, "telemedicine"), provider: null } };
   });
   await withStaffActor(c, async (tx) => writeAudit(tx, c.get("deps").config, requestAudit(c, "telehealth.session.read", {
     subjectPatientId: String(data.session.patientId), resourceType: "TelehealthSession", resourceId: id,
