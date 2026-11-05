@@ -35,6 +35,8 @@ interface IntegrationDefinition {
   facilityScoped?: boolean;
   /** Implemented adapter that is usable once requested and fully configured; each transaction is reconciled with the provider. */
   availableWhenConfigured?: boolean;
+  /** Reason shown for a configured, available adapter; defaults to the payments wording. */
+  availableReason?: (config: AppConfig) => string;
 }
 
 /** Latest conformance run for the configured endpoint, as stored in integration_verifications. */
@@ -68,7 +70,7 @@ export interface IntegrationStatus {
  * Integrations with an adapter in this release. Each one is `available` only when it is requested, fully
  * configured and has a passing, unexpired verification run against the configured endpoint.
  */
-export const IMPLEMENTED_ADAPTERS: ReadonlySet<IntegrationId> = new Set(["dicomweb", "payments"]);
+export const IMPLEMENTED_ADAPTERS: ReadonlySet<IntegrationId> = new Set<IntegrationId>(["dicomweb", "payments"]);
 
 export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
   {
@@ -143,6 +145,10 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
     capabilities: ["clinical decision support jobs"],
     effectWhileUnavailable: "No AI job can be submitted and no clinical inference is produced.",
     remediation: "Complete the model validation, risk and privacy reviews, then implement and evaluate the provider adapter.",
+    // The Workers AI binding is a runtime dependency, so availability is requested by FEATURE_AI and
+    // the model settings; each job records its own provider, status and output digest.
+    availableWhenConfigured: true,
+    availableReason: (config) => `Configured to use ${config.aiModel.model}; every output is decision support only and must be reviewed by a qualified clinician`,
   },
   {
     id: "payments",
@@ -260,11 +266,14 @@ function configuredStatus(config: AppConfig, definition: IntegrationDefinition):
   const state: IntegrationState = !requested ? definition.baseline : problems.length ? "misconfigured" : "available";
   const reason = !requested
     ? definition.baselineReason
-    : problems.length ? problems.join("; ") : `Configured for ${config.yo.mode}; every payment is confirmed by a verified notification or a status check before it is posted`;
+    : problems.length
+      ? problems.join("; ")
+      : definition.availableReason?.(config)
+        ?? `Configured for ${config.yo.mode}; every payment is confirmed by a verified notification or a status check before it is posted`;
   return {
     id: definition.id, name: definition.name, state, reason, requested,
     enabledForEnvironment: state === "available",
-    adapterImplemented: true,
+    adapterImplemented: IMPLEMENTED_ADAPTERS.has(definition.id),
     requiredConfiguration: definition.requiredConfiguration,
     missingPrerequisites: state === "available" ? [] : [...definition.prerequisites],
     lastSuccessfulVerificationAt: null,
