@@ -223,7 +223,7 @@ export function createMockYoClient(_yo: YoConfig): YoClient {
 
 // ---------------------------------------------------------------- notification signatures
 
-function pemBody(_pem: string): { label: string; der: Uint8Array } {
+function pemBody(pem: string): { label: string; der: Uint8Array } {
   const match = /-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/.exec(pem);
   if (!match) throw new Error("Not a PEM document");
   const binary = atob(match[2]!.replace(/\s+/g, ""));
@@ -328,9 +328,9 @@ export function parsePaymentNotification(form: URLSearchParams): YoPaymentNotifi
   };
 }
 
-export function verifyPaymentNotification(pem: string, notification: YoPaymentNotification): Promise<boolean> {
+export function verifyPaymentNotification(_pem: string, notification: YoPaymentNotification): Promise<boolean> {
   const data = notification.dateTime + notification.amount + notification.narrative + notification.networkRef + notification.externalRef + notification.msisdn;
-  return verifySignature(pem, data, notification.signature);
+  return verifySignature(_pem, data, notification.signature);
 }
 
 export interface YoFailureNotification {
