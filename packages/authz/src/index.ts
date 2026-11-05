@@ -54,6 +54,8 @@ export const IMPLIED_ROLES: Readonly<Partial<Record<Role, readonly Role[]>>> = O
   radiologist: ["radiology"],
   lab_validator: ["laboratory"],
   ward_manager: ["nurse"],
+  // Midwifery applies the nursing role to maternity care; the midwife's own role adds note signing.
+  midwife: ["nurse"],
   // The primary owner of a workspace administers it; ownership adds protection against removal.
   owner: ["facility_admin"],
 });

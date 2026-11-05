@@ -12,23 +12,23 @@ export class UnavailableTerminologyAdapter implements TerminologyAdapter {
     throw new DependencyError("Terminology service is not configured for this environment");
   }
 
-  async lookup(): ReturnType<TerminologyAdapter["lookup"]> {
+  async lookup(): Promise<import("./types.js").TerminologyConcept | null> {
     return this.fail();
   }
 
-  async validateCode(): ReturnType<TerminologyAdapter["validateCode"]> {
+  async validateCode(): Promise<import("./types.js").ValidateCodeResult> {
     return this.fail();
   }
 
-  async expand(): ReturnType<TerminologyAdapter["expand"]> {
+  async expand(): Promise<{ valueSet: import("./types.js").ValueSetDefinition; concepts: import("./types.js").TerminologyConcept[]; total: number }> {
     return this.fail();
   }
 
-  async translate(): ReturnType<TerminologyAdapter["translate"]> {
+  async translate(): Promise<{ result: boolean; message?: string; map?: import("./types.js").ConceptMapDefinition; match?: { toCode: string; toDisplay: string; equivalence: string; specimen?: string; method?: string; unit?: string } }> {
     return this.fail();
   }
 
-  async search(): ReturnType<TerminologyAdapter["search"]> {
+  async search(): Promise<import("./types.js").TerminologyConcept[]> {
     return this.fail();
   }
 }

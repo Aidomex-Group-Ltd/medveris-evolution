@@ -1,5 +1,6 @@
 import { parseShardTopology, type ShardTopology } from "@medveris/db";
 import type { FxConfig } from "./integrations/fx.js";
+import type { AiModelConfig } from "@medveris/ai";
 
 export interface AppConfig {
   appEnv: string;
@@ -59,6 +60,8 @@ export interface AppConfig {
   features: Record<string, boolean>;
   /** Optional AI suggestor / CDS provider that is only used when the AI integration is available and configured. */
   ai: AiConfig;
+  /** AI model configuration used by clinical inference jobs. */
+  aiModel: AiModelConfig;
   /** PACS connection; problems are reported through the integration registry, never at startup. */
   dicomweb: DicomwebConfig;
   /** Deployment-level gate for the facility-scoped eHMIS/DHIS2 connector. */
@@ -491,6 +494,12 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
       nhfr: bool(env.FEATURE_NHFR, false),
     },
     ai: aiConfig(env, appEnv),
+    aiModel: {
+      provider: "workers-ai",
+      model: (env.AI_MODEL ?? "").replace(/\/+$/, "").trim() || "workers-ai/llama-2-7b-chat-fp16",
+      inputTokensMax: Math.max(64, integer(env.AI_INPUT_TOKENS_MAX, 4096)),
+      timeoutMs: Math.max(1_000, Math.min(integer(env.AI_TIMEOUT_MS, 30_000), 300_000)),
+    },
     ehmis: {
       requested: bool(env.FEATURE_EHMIS, false),
       deploymentAuthorizationReference: (env.EHMIS_DEPLOYMENT_AUTHORIZATION_REF ?? "").trim() || null,

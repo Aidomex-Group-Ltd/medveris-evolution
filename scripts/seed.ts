@@ -51,6 +51,7 @@ const users = {
   clinician: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   reception: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
   nurse: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  midwife: "d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1",
   clinicianB: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
   reviewer: "ffffffff-ffff-4fff-8fff-ffffffffffff",
   patient: "99999999-9999-4999-8999-999999999999",
@@ -159,7 +160,7 @@ try {
   await sql.begin(async (tx) => {
     await tx`
       insert into tenants (id, name, slug, facility_type, city, country, email, phone, status, public_listing)
-      values (${tenantA}, 'Kampala Community Clinic (synthetic)', 'kampala-community', 'outpatient', 'Kampala', 'Uganda',
+      values (${tenantA}, 'Kampala Community Clinic (synthetic)', 'kampala-general', 'outpatient', 'Kampala', 'Uganda',
         'hello@kampala.example', '+256-000-000-001', 'active', true),
         (${tenantB}, 'Entebbe Family Health Centre (synthetic)', 'entebbe-family', 'outpatient', 'Entebbe', 'Uganda',
         'hello@entebbe.example', '+256-000-000-002', 'active', true)
@@ -170,6 +171,7 @@ try {
     await person(tx, users.clinician, "clinician@medveris.local", "Dr Daniel Okello", "Daniel", "Okello", true);
     await person(tx, users.reception, "reception@medveris.local", "Rita Reception", "Rita", "Nabirye", true);
     await person(tx, users.nurse, "nurse@medveris.local", "Nurse Sarah Atim", "Sarah", "Atim", true);
+    await person(tx, users.midwife, "midwife@medveris.local", "Midwife Grace Adong", "Grace", "Adong", true);
     await person(tx, users.clinicianB, "clinician.b@medveris.local", "Dr Peter Ssemakula", "Peter", "Ssemakula", true);
     await person(tx, users.reviewer, "reviewer@medveris.local", "Independent Reviewer", "Irene", "Kagoya", true);
     await person(tx, users.patient, "patient@medveris.local", "Amina Nakato", "Amina", "Nakato", false);
@@ -195,6 +197,7 @@ try {
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-admin-a")}, ${tenantA}, ${users.admin}, ${["facility_admin"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-clinician-a")}, ${tenantA}, ${users.clinician}, ${["clinician"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-nurse-a")}, ${tenantA}, ${users.nurse}, ${["nurse"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
+    await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-midwife-a")}, ${tenantA}, ${users.midwife}, ${["midwife"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-reception-a")}, ${tenantA}, ${users.reception}, ${["receptionist"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-finance-a")}, ${tenantA}, ${users.finance}, ${["finance"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
     await tx`insert into memberships (id, tenant_id, user_id, roles, status) values (${hashId("m-pharmacist-a")}, ${tenantA}, ${users.pharmacist}, ${["pharmacist"]}, 'active') on conflict (tenant_id, user_id) do update set roles = excluded.roles, status = 'active'`;
@@ -438,10 +441,11 @@ try {
     await context(tx, tenantA, users.clinician, ["clinician"], null);
     await tx`
       insert into credentials (id, subject_type, subject_user_id, submitted_by, credential_type, issuer, jurisdiction,
-        credential_number, scope, issued_on, expires_on, status)
+        credential_number, scope, issued_on, expires_on, status, reviewer_id, reviewed_at, decision_reason)
       values (${hashId("credential-clinician")}, 'practitioner', ${users.clinician}, ${users.clinician}, 'Medical licence',
         'Uganda Medical and Dental Practitioners Council', 'Uganda', 'SYNTH-UMDPC-0001', 'General outpatient medicine',
-        '2022-01-15', '2027-01-14', 'submitted')
+        '2022-01-15', '2027-01-14', 'verified', ${users.admin}, now(),
+        'Synthetic seeded licence check for the demonstration clinician')
       on conflict (id) do nothing
     `;
 
@@ -555,10 +559,16 @@ try {
         ${tx.json({ cadreId: hashId("cadre-MIDWIFE"), source: "synthetic-seed" })}, ${users.hr})
       on conflict (id) do nothing
     `;
+    // The seeded medical officer holds an approved signing privilege against the verified licence above,
+    // so note signing works out of the box; the pending onboarding case below still exercises the
+    // request/approve workflow for staff who do not.
     await tx`
-      insert into privilege_grants (id, tenant_id, engagement_id, privilege_id, status, requested_by)
-      values (${hashId("privilege-request-clinician")}, ${tenantA}, ${engagementClinician}, ${hashId("privilege-CLIN-SIGN")}, 'requested', ${users.hr})
-      on conflict (id) do nothing
+      insert into privilege_grants (id, tenant_id, engagement_id, privilege_id, status, requested_by,
+        reviewed_by, reviewed_at, decision_reason, effective_from)
+      values (${hashId("privilege-request-clinician")}, ${tenantA}, ${engagementClinician}, ${hashId("privilege-CLIN-SIGN")},
+        'approved', ${users.hr}, ${users.admin}, now(), 'Synthetic seeded approval for the demonstration clinician', current_date - 400)
+      on conflict (id) do update set status = 'approved', reviewed_by = excluded.reviewed_by,
+        reviewed_at = excluded.reviewed_at, effective_from = excluded.effective_from
     `;
     await tx`
       insert into training_records (id, tenant_id, engagement_id, training_type, completed_on, expires_on, verified_by, verified_at)
@@ -737,7 +747,7 @@ try {
         claimed_tenant_id, claimed_by_user_id, credential_status, capability_status, source_kind,
         source_name, source_license, last_confirmed_on, next_confirmation_on, created_by
       ) values
-        (${facilities.kampala}, 'MV-DIR-KLA-01', 'kampala-community-clinic', 'Kampala Community Clinic',
+        (${facilities.kampala}, 'MV-DIR-KLA-01', 'kampala-general', 'Kampala Community Clinic',
          'clinic', 'Synthetic public listing for a Medveris-connected outpatient clinic.', 'Uganda', 'Central',
          'Kampala', 'Kampala Central', '+256-000-000-101', 'directory@kampala.example', 'https://kampala.example',
          'direct', 'published', 'active', ${tenantA}, ${users.admin}, 'verified', 'verified', 'medveris-registered',
@@ -883,6 +893,7 @@ try {
       clinician: "clinician@medveris.local",
       reception: "reception@medveris.local",
       nurse: "nurse@medveris.local",
+      midwife: "midwife@medveris.local",
       clinicianB: "clinician.b@medveris.local",
       reviewer: "reviewer@medveris.local",
       patient: "patient@medveris.local",

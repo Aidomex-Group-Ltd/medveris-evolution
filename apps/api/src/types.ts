@@ -95,6 +95,10 @@ export interface AppDeps {
   config: AppConfig;
   email: EmailAdapter;
   storage: StorageAdapter;
+  /** AI binding; absent means AI features are unavailable. */
+  ai?: { run: (params: import("@medveris/ai").AiRunInput) => Promise<unknown> } | null;
+  /** Optional hook for recording AI run outcomes; absent means runs are not logged. */
+  logAiRun?: (result: import("@medveris/ai").AiRunResult, meta: Record<string, string | number | null>) => void;
   /** PACS client; absent means one is built from `config.dicomweb` when it is fully configured. */
   dicomweb?: DicomwebClient | null;
   /** Transport for facility DHIS2 connections; tests inject a fake server. */

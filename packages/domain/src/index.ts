@@ -594,7 +594,7 @@ export async function buildAiNoteSuggestion(
 }
 
 /** Clinical decision support predictive algorithms on composite payloads */
-export async function predictClinicalRisk(_input: {
+export async function predictClinicalRisk(input: {
   patientId: string;
   encounterId: string;
   presentationData: Record<string, unknown>;

@@ -60,7 +60,7 @@ async function currentEntry(tx: Tx, tenantId: string, entryId: string) {
   return rows[0];
 }
 
-async function _computeAgeInYears(birthDate: Date, asOf: Date): number {
+function _computeAgeInYears(birthDate: Date, asOf: Date): number {
   const years = asOf.getFullYear() - birthDate.getFullYear();
   const monthDiff = asOf.getMonth() - birthDate.getMonth();
   if (monthDiff < 0 || (monthDiff === 0 && asOf.getDate() < birthDate.getDate())) return years - 1;
@@ -87,7 +87,7 @@ async function attachEntryVersion(
     plan: string;
     occurredAt: Date;
     signedAt: Date | null;
-    aiDeps: { available: boolean; baseUrl: string | null; token: string | null };
+    aiDeps?: { available: boolean; baseUrl: string | null; token: string | null };
   },
 ): Promise<{ versionId: string; digest: string }> {
   // Optional AI-assisted clinical note suggestions. These are decision support only,
@@ -100,12 +100,12 @@ async function attachEntryVersion(
       existingContent: input.subjective + " " + input.objective,
     },
     {
-      aiAvailable: aiDeps.available,
-      aiToken: aiDeps.token,
-      aiBaseUrl: aiDeps.baseUrl,
+      aiAvailable: input.aiDeps?.available ?? false,
+      aiToken: input.aiDeps?.token ?? null,
+      aiBaseUrl: input.aiDeps?.baseUrl ?? null,
     },
   );
-  const content = {
+  const content: Record<string, unknown> = {
     schemaVersion: "urn:medveris:schema:outpatient-note:1",
     title: input.title || suggestion.title || "Clinical note",
     subjective: input.subjective || suggestion.subjective || "",
@@ -727,7 +727,7 @@ clinicalRoutes.get("/maternity/episodes/:id/alerts", async (c) => {
     `;
     const episodeAlerts: { alert: string; severity: "info" | "warning" | "critical"; recordedAt: string; source: string }[] = [];
     for (const obs of observations) {
-      const state = computePartographState(
+      const state = _computePartographState(
         (obs.maternal as Record<string, number | string | null>) ?? {},
         (obs.fetal as Record<string, number | string | null>) ?? {},
         (obs.template_type as "labour-care-guide" | "partograph") ?? "partograph",
