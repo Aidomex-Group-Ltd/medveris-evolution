@@ -13,20 +13,21 @@ describe("clinical AI suggestion and maternity alerts", () => {
     const patientId = await h.registerPatient(reception);
     const clinician = await h.login("clinician@medveris.local");
 
-    const encounter = await h.expectOk(
-      await h.post(clinician, "/api/v1/encounters", {
-        patientId,
-        type: "walk-in",
-        reason: "Routine review",
-      }),
-    );
+    const encounter = await h.post(clinician, "/api/v1/encounters", {
+      patientId,
+      type: "walk-in",
+      reason: "Routine review",
+    });
+    await h.post(clinician, `/api/v1/encounters/${encounter.encounterId}/triage`, {
+      complaint: "Routine review", urgency: "routine", notes: "", allergyState: "none",
+    }, 200);
 
     const suggested = await h.expectOk(
-      await h.call(clinician, `/api/v1/ai/encounters/${encounter.encounter.id}/suggest`, {
+      await h.call(clinician, `/api/v1/ai/encounters/${encounter.encounterId}/suggest`, {
         method: "POST",
         body: JSON.stringify({
           patientId,
-          encounterId: encounter.encounter.id,
+          encounterId: encounter.encounterId,
           encounterState: "in-progress",
           existingContent: "Patient presented for routine review",
         }),
@@ -38,7 +39,7 @@ describe("clinical AI suggestion and maternity alerts", () => {
     expect(suggested.aiAssist.available).toBe(false);
     expect(suggested.disclaimer).toContain("decision support only");
     expect(suggested.patientId).toBe(patientId);
-    expect(suggested.encounterId).toBe(encounter.encounter.id);
+    expect(suggested.encounterId).toBe(encounter.encounterId);
   });
 
   it("surfaces partograph-generated alerts from labour observations for a maternity episode", async () => {
@@ -46,33 +47,30 @@ describe("clinical AI suggestion and maternity alerts", () => {
     const patientId = await h.registerPatient(reception);
     const midwife = await h.login("midwife@medveris.local");
 
-    const episode = await h.expectOk(
-      await h.post(midwife, "/api/v1/maternity/episodes", {
-        patientId,
-        gravidity: 2,
-        parity: 1,
-        riskLevel: "low",
-      }),
-    );
+    const episode = await h.post(midwife, "/api/v1/maternity/episodes", {
+      patientId,
+      gravidity: 2,
+      parity: 1,
+      riskLevel: "low",
+    });
 
-    await h.expectOk(
-      await h.post(
-        midwife,
-        `/api/v1/maternity/episodes/${episode.episode.id}/observations`,
-        {
-          templateType: "partograph",
-          clinicalOccurredAt: new Date().toISOString(),
-          maternal: {
+    await h.post(
+      midwife,
+      `/api/v1/maternity/episodes/${episode.episode.id}/observations`,
+      {
+        templateType: "partograph",
+        clinicalOccurredAt: new Date().toISOString(),          maternal: {
             dilation: 4,
             station: -3,
             contractionsPer10Min: 1,
-            previousDilation: 3,
+            // No cervical change since the previous reading: the implemented rule flags a
+            // progress rate below 1 as delayed labour progress.
+            previousDilation: 4,
           },
-          fetal: {
-            fetalHeartRate: 100,
-          },
+        fetal: {
+          fetalHeartRate: 100,
         },
-      ),
+      },
       201,
     );
 

@@ -14,7 +14,7 @@ function collector(): { deps: AiDependencies; runs: AiRunResult[] } {
   return {
     runs,
     deps: {
-      logAiRun(result) {
+      logAiRun(result, _meta) {
         runs.push(result);
       },
     },

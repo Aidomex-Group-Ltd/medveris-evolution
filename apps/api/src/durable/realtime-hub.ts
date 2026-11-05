@@ -134,7 +134,7 @@ export class RealtimeHub {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("upgrade required", { status: 426 });
     let context: ConnectionContext;
     try {
-      context = contextSchema.parse(JSON.parse(request.headers.get(CONTEXT_HEADER) ?? "null"));
+      context = contextSchema.parse(JSON.parse(request.headers.get(CONTEXT_HEADER) ?? "null")) as ConnectionContext;
     } catch {
       return new Response("forbidden", { status: 403 });
     }
@@ -210,7 +210,7 @@ export class RealtimeHub {
       channel: z.string().regex(/^iot:/),
       type: z.string().regex(/^[a-z][a-z0-9-]*(\.[a-z0-9_-]+)+$/).max(100),
       ref: z.string().regex(/^[0-9a-f-]{36}$/i).nullable(),
-      payload: z.record(z.unknown()).optional(),
+      payload: z.record(z.string(), z.unknown()).optional(),
     }).safeParse(await request.json().catch(() => null));
     if (!parsed.success) return new Response("invalid event", { status: 400 });
     const { channel, type, ref, payload } = parsed.data;

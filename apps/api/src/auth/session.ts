@@ -115,10 +115,11 @@ export async function loadAuthContext(sql: Sql, token: string): Promise<AuthCont
     if (!membership.roles.includes(role)) membership.roles = [...membership.roles, role];
   }
   for (const membership of memberships) membership.roles = withImpliedRoles(membership.roles);
-  // Prefer the remembered workspace when it is still an active membership; otherwise fall back to the
-  // first active membership so sessions created before facility selection still land somewhere useful.
+  // Prefer the remembered workspace when it is still an active membership. A single assignment is
+  // selected automatically; an account with several facilities must choose through /me/context so no
+  // facility is entered silently.
   let active = memberships.find((m) => m.tenantId === session.activeTenantId) ?? null;
-  if (!active && memberships.length > 0) {
+  if (!active && memberships.length === 1) {
     active = memberships[0]!;
     await sql`update sessions set active_tenant_id = ${active.tenantId} where id = ${session.id}`;
     session.activeTenantId = active.tenantId;

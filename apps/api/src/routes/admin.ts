@@ -286,7 +286,9 @@ adminRoutes.delete("/memberships/:id", async (c) => {
       if (Number(admins[0]?.count ?? 0) <= 1) throw new ValidationError("The facility must retain at least one active administrator");
     }
     await tx`update memberships set status = 'removed', updated_at = now() where id = ${id}`;
-    await tx`update sessions set revoked_at = now(), revoked_reason = 'membership-removed' where user_id = ${target[0].userId} and active_tenant_id = ${auth.activeTenant!.id} and revoked_at is null`;
+    // Drop the removed facility from live sessions without ending the whole sign-in: the account may
+    // still hold assignments elsewhere, and a contextless session is refused by every staff route.
+    await tx`update sessions set active_tenant_id = null where user_id = ${target[0].userId} and active_tenant_id = ${auth.activeTenant!.id} and revoked_at is null`;
     await writeAudit(tx, c.get("deps").config, {
       tenantId: auth.activeTenant!.id,
       actorKind: "staff",

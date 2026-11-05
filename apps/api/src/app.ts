@@ -10,7 +10,7 @@ import { DATABASE_RETRY_AFTER_SECONDS, databaseErrorSummary, isDatabaseUnavailab
 import { requestTelemetry, routeShape } from "./lib/observability.js";
 import { enforceRateLimit, RateLimitedError, requestAddress } from "./lib/rate-limit.js";
 import { AppError, nativeErrorBody } from "./lib/errors.js";
-import { AuthzError } from "@medveris/authz";
+import { AuthzError, PolicyDeniedError } from "@medveris/authz";
 import { DomainError } from "@medveris/domain";
 import { operationOutcome } from "./fhir/router.js";
 import type { AppBaseDeps, AppBindings, AppEnv } from "./types.js";
@@ -247,7 +247,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
 
   app.onError((error, c) => {
     const correlation = c.get("correlationId") ?? crypto.randomUUID();
-    if (error instanceof AuthzError) {
+    if (error instanceof AuthzError || error instanceof PolicyDeniedError) {
       const appError = new AppError(403, error.code, error.message);
       if (isFhirPath(c.req.path)) return fhirResponse(c, operationOutcome("error", "forbidden", appError.message), 403);
       return c.json(nativeErrorBody(c, appError), 403);

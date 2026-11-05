@@ -25,7 +25,13 @@ export interface Session { cookie: string; csrf: string }
  */
 export async function chooseFacility(app: { fetch(request: Request): Response | Promise<Response> }, session: Session, tenantId = KAMPALA_TENANT, facilitySlug = KAMPALA_FACILITY_SLUG): Promise<void> {
   const facilities = await (await app.fetch(new Request("http://localhost/api/v1/me/facilities", { headers: { cookie: session.cookie } }))).json() as any;
-  if (facilities.activeTenantId === tenantId && (!facilitySlug || facilities.activeFacilitySlug === facilitySlug)) return;
+  const listed: Array<{ tenantId: string }> = Array.isArray(facilities.facilities) ? facilities.facilities : [];
+  // A platform operator or any account without an active facility assignment signs in with no
+  // facility context; there is nothing to choose and /me/context would (correctly) refuse.
+  if (listed.length === 0) return;
+  if (facilities.activeTenantId === tenantId) return;
+  // Never ask /me/context for a facility the account does not hold; leave the sign-in selection alone.
+  if (!listed.some((facility) => facility.tenantId === tenantId)) return;
   const switched = await app.fetch(new Request("http://localhost/api/v1/me/context", {
     method: "POST",
     headers: { cookie: session.cookie, "x-medveris-csrf": session.csrf, "content-type": "application/json" },
@@ -65,6 +71,20 @@ export function createHarness(label: string, options: HarnessOptions = {}) {
   };
   const app = createApp(deps);
 
+  /**
+   * A platform operator or any account without an active facility assignment signs in with no
+   * facility context, which is a valid state: /me/context only accepts a membership the account
+   * really holds. Everyone else is moved to the requested facility.
+   */
+  async function selectFacility(session: Session, tenantId: string, facilitySlug: string): Promise<void> {
+    const facilities = await json(await app.fetch(new Request("http://localhost/api/v1/me/facilities", { headers: { cookie: session.cookie } })));
+    const listed: Array<{ tenantId: string }> = Array.isArray(facilities.facilities) ? facilities.facilities : [];
+    if (listed.length === 0) return;
+    if (facilities.activeTenantId === tenantId) return;
+    if (!listed.some((facility) => facility.tenantId === tenantId)) return;
+    await chooseFacility(app, session, tenantId, facilitySlug);
+  }
+
   async function json(response: Response): Promise<any> {
     const text = await response.text();
     try {
@@ -93,23 +113,7 @@ export function createHarness(label: string, options: HarnessOptions = {}) {
     // choose the requested facility explicitly when it differs from what the session guessed.
     if (!body.mfaRequired) {
       const session = { cookie: sessionCookie(challenge), csrf: body.csrfToken };
-      // Log the session resolution for debugging so we can see when the app fails to pick a facility.
-      console.log(`[${email}] login resolved activeTenantId=${body.activeTenantId ?? "null"} activeFacilitySlug=${body.activeFacilitySlug ?? "null"}`);
-      // If the app did not pick a facility, wait a short pause and retry so the DB-backed session can settle, then reread /me/facilities.
-      if (!body.activeTenantId) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        const reread = await app.fetch(new Request("http://localhost/api/v1/me/facilities", { headers: { cookie: session.cookie } }));
-        const rereadBody = await json(reread);
-        console.log(`[${email}] after retry me/facilities activeTenantId=${rereadBody.activeTenantId ?? "null"} activeFacilitySlug=${rereadBody.activeFacilitySlug ?? "null"}`);
-        // After the retry, choose the requested facility when the app still has not picked one or picked a different one.
-        if (rereadBody.activeTenantId && rereadBody.activeTenantId !== tenantId) {
-          await chooseFacility(app, session, tenantId, wantedSlug);
-        } else if (!rereadBody.activeTenantId || rereadBody.activeFacilitySlug !== wantedSlug) {
-          await chooseFacility(app, session, tenantId, wantedSlug);
-        }
-      } else if (body.activeTenantId !== tenantId || (body.activeFacilitySlug ?? null) !== wantedSlug) {
-        await chooseFacility(app, session, tenantId, wantedSlug);
-      }
+      await selectFacility(session, tenantId, wantedSlug);
       return session;
     }
     const { code } = await json(await app.fetch(new Request(`http://localhost/api/v1/auth/totp/dev?email=${encodeURIComponent(email)}`)));
@@ -120,7 +124,7 @@ export function createHarness(label: string, options: HarnessOptions = {}) {
     const verified = await json(mfa);
     expect(mfa.status, JSON.stringify(verified)).toBe(200);
     const session = { cookie: sessionCookie(mfa), csrf: verified.csrfToken };
-    await chooseFacility(app, session, tenantId, wantedSlug);
+    await selectFacility(session, tenantId, wantedSlug);
     return session;
   }
 

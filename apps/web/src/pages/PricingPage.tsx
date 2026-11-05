@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Badge } from "@medveris/ui";
 import "./PricingPage.css";
 
@@ -21,7 +21,7 @@ const PLANS = [
   { code: "enterprise", name: "Enterprise", description: "Custom kit with a contract", monthlyPriceMinor: null, storageGb: null, seats: null, usageOverages: true, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: true },
 ];
 
-function Logo({ text: _text }: { text: string }) {
+function Logo({ text: _text }: { text?: string }) {
   return (
     <a href="/" className="pricing-logo" aria-label="Medveris home">
       <span className="pricing-logo-mark">
@@ -216,14 +216,14 @@ export function PricingPage() {
                       <tr key={label}>
                         <td>{label}</td>
                         {["Basic", "Standard", "Professional"].map((planName) => (
-                          <React.Fragment key={planName}>
+                          <Fragment key={planName}>
                             <td className="pricing-small">
                               {planName === "Basic" ? "10 seats" : planName === "Standard" ? "50 seats" : "250 seats"}
                             </td>
                             <td className="pricing-small">
                               {planName === "Basic" ? "10 GB" : planName === "Standard" ? "50 GB" : "200 GB"}
                             </td>
-                          </React.Fragment>
+                          </Fragment>
                         ))}
                       </tr>
                     ))}

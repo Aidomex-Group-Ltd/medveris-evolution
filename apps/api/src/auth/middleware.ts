@@ -45,11 +45,10 @@ export function authMiddleware(deps: AppBaseDeps): MiddlewareHandler<AppEnv> {
     }
     c.set("auth", auth);
     if (auth && ["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && isCsrfProtected(c.req.path)) {
+      // A state-changing request must echo the token issued with the session; omitting the header is a
+      // CSRF attempt, not an exemption. There are no path exceptions.
       const supplied = c.req.header(requestDeps.config.csrfHeader) ?? "";
-      // The test client authenticates with a session cookie but may exercise context changes before it
-      // has seen the csrf_token returned by the auth routes, so treat a missing csrf token as acceptable
-      // only for the facility context switch path in test mode.
-      if (supplied && supplied !== auth.session.csrfToken && c.req.path !== "/api/v1/me/context") {
+      if (supplied !== auth.session.csrfToken) {
         throw new ForbiddenError("CSRF validation failed");
       }
     }
@@ -102,6 +101,10 @@ export function requirePlatformReviewer(c: Context<AppEnv>): AuthContext {
 
 export function isPlatformOperator(c: Context<AppEnv>): boolean {
   return requireAuth(c).platformRoles.includes("platform_operator");
+}
+
+export function effectiveModulesFor(auth: AuthContext): string[] {
+  return auth.activeTenant?.workspace?.enabledModules ?? [];
 }
 
 export function actorFrom(auth: AuthContext): ActorContext {
