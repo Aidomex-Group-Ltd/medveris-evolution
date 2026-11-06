@@ -17,7 +17,7 @@ const PLATFORM_KIT = [
 const PLANS = [
   { code: "basic", name: "Basic", description: "Low-consumption accounts", monthlyPriceMinor: 1500, storageGb: 10, seats: 10, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
   { code: "standard", name: "Standard", description: "Medium-consumption accounts", monthlyPriceMinor: 3000, storageGb: 50, seats: 50, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
-  { code: "professional", name: "Professional", description: "High-consumption accounts", monthlyPriceMinor: 10000, storageGb: 200, seats: 250, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
+  { code: "advanced", name: "Professional", description: "High-consumption accounts", monthlyPriceMinor: 10000, storageGb: 200, seats: 250, usageOverages: false, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: false },
   { code: "enterprise", name: "Enterprise", description: "Custom kit with a contract", monthlyPriceMinor: null, storageGb: null, seats: null, usageOverages: true, features: ["core-clinical", "point-of-sale", "price-list"], contractRequired: true },
 ];
 

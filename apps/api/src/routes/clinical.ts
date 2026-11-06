@@ -13,6 +13,7 @@ import {
   uuidSchema,
   aiAssistSchema,
 } from "@medveris/contracts";import { assertClinicalRead, assertClinicalWrite, assertSign as _assertSign, assertAuthorized, type ActorContext } from "@medveris/authz";
+import { recordProfessionalDesignation } from "../services/clinical.js";
 import { canonicalJson, contentDigest, type ClinicalEntryStatus, computePartographState as _computePartographState, buildAiNoteSuggestion, assessBmiRisk } from "@medveris/domain";
 import { hmacHex } from "@medveris/auth";
 import type { Tx } from "@medveris/db";
@@ -301,6 +302,7 @@ clinicalRoutes.post("/entries/:id/sign", async (c) => {
     const entry = await currentEntry(tx, auth.activeTenant!.id, entryId);
     ensureMatch(body.expectedVersion, Number(entry.currentVersion));
     if (entry.status !== "draft") throw new ConflictError("Only a draft can be signed");
+    const encounterId = String(entry.encounterId);
     const version = await tx`
       select id, content_digest from clinical_entry_versions where entry_id = ${entryId} and version = ${entry.currentVersion} and status = 'draft'
     `;
@@ -312,6 +314,20 @@ clinicalRoutes.post("/entries/:id/sign", async (c) => {
     );
     await tx`update clinical_entry_versions set status = 'signed', signed_at = ${signedAt}, signature = ${signature}, signature_key_id = ${deps.config.auditSigningKeyId} where id = ${version[0].id} and status = 'draft'`;
     await tx`update clinical_entries set status = 'signed', updated_at = now() where id = ${entryId}`;
+    const primaryDepartment = access.summary?.departments?.[0];
+    await recordProfessionalDesignation(tx, {
+      tenantId: auth.activeTenant!.id,
+      practitionerStaffPersonId: auth.user.id,
+      practitionerUserId: auth.user.id,
+      encounterId: encounterId,
+      version: entry.currentVersion,
+      designationCode: primaryDepartment?.cadreCode ?? "unknown",
+      designationName: primaryDepartment?.cadreName ?? auth.user.id,
+      category: primaryDepartment?.cadreCode
+        ? (access.actor.cadreCodes?.[0] ?? "administrative")
+        : "administrative",
+      specialtyCodes: access.summary?.specialties ?? [],
+    });
     await writeAudit(tx, deps.config, {
       tenantId: auth.activeTenant!.id,
       actorKind: "staff",

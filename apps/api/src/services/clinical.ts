@@ -3,6 +3,7 @@ import type { Coding } from "@medveris/contracts";
 import type { Tx } from "@medveris/db";
 import type { AppEnv } from "../types.js";
 import { ValidationError } from "../lib/errors.js";
+import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { createTerminology, FIELD_VALUE_SETS, LOINC_SYSTEM, UCUM_SYSTEM, type TerminologyAdapter } from "../terminology/index.js";
 
 export function terminology(c: Context<AppEnv>): TerminologyAdapter {
@@ -118,4 +119,99 @@ export async function insertAllergy(
       ${input.severity}, ${input.note}, ${input.authorId}, ${new Date()}, ${input.sensitivity ?? []})
   `;
   return id;
+}
+
+/**
+ * Complete a triage record and advance the encounter into in-progress so a
+ * clinician can take over. This is the persisted "completed triage" the
+ * clinician will read back: the record is written with the nurse who acted and
+ * the encounter moves to in-progress atomically.
+ *
+ * The prerequisite is preserved: clinical notes may only be documented once an
+ * encounter has been triaged and moved to in-progress, and triage is a
+ * persisted completed record rather than a transient UI state.
+ */
+export async function completeTriage(
+  c: Context<AppEnv>,
+  tx: Tx,
+  input: {
+    tenantId: string;
+    encounterId: string;
+    patientId: string;
+    nurseUserId: string;
+    complaint: string;
+    urgency: string;
+    notes: string | null;
+    observationIds: string[];
+  },
+): Promise<{ triageId: string; encounterVersion: number }> {
+  const { complaint, urgency, notes, nurseUserId, observationIds } = input;
+  const id = crypto.randomUUID();
+  await tx`
+    insert into triage_records (id, tenant_id, encounter_id, patient_id, complaint, urgency, notes, nurse_user_id)
+    values (${id}, ${input.tenantId}, ${input.encounterId}, ${input.patientId}, ${complaint},
+      ${urgency}, ${notes || null}, ${nurseUserId})
+  `;
+  for (const _observationId of observationIds) {
+    await tx`
+      update clinical_entries set status = 'in-progress', updated_at = now(),
+        clinician_user_id = coalesce(clinician_user_id, ${input.nurseUserId}) where id = ${input.encounterId}
+    `;
+  }
+  await tx`
+    update encounters set state = 'in-progress', version = version + 1, clinician_user_id = coalesce(clinician_user_id, ${input.nurseUserId}), updated_at = now()
+     where id = ${input.encounterId}
+  `;
+  await tx`
+    update queue_entries set status = 'with-clinician', updated_at = now() where encounter_id = ${input.encounterId} and status not in ('completed','cancelled')
+  `;
+  await writeAudit(tx, c.get("deps").config, {
+    tenantId: input.tenantId,
+    actorUserId: nurseUserId,
+    actorKind: "staff",
+    action: "encounter.triaged",
+    subjectPatientId: input.patientId,
+    resourceType: "Encounter",
+    resourceId: input.encounterId,
+    metadata: { urgency, observationCount: observationIds.length },
+  });
+  await writeOutbox(tx, {
+    tenantId: input.tenantId,
+    eventType: "encounter.triaged",
+    aggregateId: input.encounterId,
+    aggregateVersion: 1,
+    payload: { encounterId: input.encounterId, urgency, observationCount: observationIds.length },
+  });
+  return { triageId: id, encounterVersion: 1 };
+}
+
+/**
+ * Capture an immutable snapshot of the signer's professional designation at sign time.
+ *
+ * This keeps the signed document's title and speciality stable even when the
+ * practitioner changes their catalogue assignment later. Inactive catalogue
+ * entries never rewrite historical signed documents.
+ */
+export async function recordProfessionalDesignation(
+  tx: Tx,
+  input: {
+    tenantId: string;
+    practitionerStaffPersonId: string;
+    practitionerUserId: string;
+    encounterId: string;
+    version: number;
+    designationCode: string;
+    designationName: string;
+    category: string;
+    specialtyCodes: string[];
+  },
+): Promise<void> {
+  const id = crypto.randomUUID();
+  await tx`
+    insert into professional_designations (id, tenant_id, practitioner_staff_person_id, practitioner_user_id,
+      encounter_id, version, designation_code, designation_name, category, specialty_codes)
+    values (${id}, ${input.tenantId}, ${input.practitionerStaffPersonId}, ${input.practitionerUserId},
+      ${input.encounterId}, ${input.version}, ${input.designationCode}, ${input.designationName},
+      ${input.category}, ${tx.array(input.specialtyCodes) ?? '[]'})
+  `;
 }

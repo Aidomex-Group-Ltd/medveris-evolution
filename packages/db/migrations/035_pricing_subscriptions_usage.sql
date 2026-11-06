@@ -314,13 +314,27 @@ VALUES
   ('c0000000-0000-4000-8000-000000000002', 'basic', 1, 'Basic', 'USD 15 per month for low-consumption accounts (reference USD 0.50 per day). Fixed for the billing month; no usage overages.',
    'approved', 1500, 50, 1500, false, NULL, ARRAY['core-clinical','point-of-sale','price-list'],
    'Medveris pricing instruction: Basic USD 15/month, USD 0.50/day reference, no overages', now()),
-  ('c0000000-0000-4000-8000-000000000003', 'standard', 1, 'Standard', 'Pricing awaiting approval.', 'draft', NULL, NULL, NULL, true, NULL, ARRAY['core-clinical','point-of-sale','price-list'], NULL, NULL),
-  ('c0000000-0000-4000-8000-000000000004', 'advanced', 1, 'Advanced', 'Pricing awaiting approval.', 'draft', NULL, NULL, NULL, true, NULL, ARRAY['core-clinical','point-of-sale','price-list'], NULL, NULL),
-  ('c0000000-0000-4000-8000-000000000005', 'enterprise', 1, 'Enterprise', 'Contract pricing awaiting approval.', 'draft', NULL, NULL, NULL, true, NULL, ARRAY['core-clinical','point-of-sale','price-list'], NULL, NULL);
+  ('c0000000-0000-4000-8000-000000000003', 'standard', 1, 'Standard', 'USD 30 per month for medium-consumption accounts. Flat price, no usage overages.', 'approved', 3000, 100, 3000, false, NULL, ARRAY['core-clinical','point-of-sale','price-list'],
+   'Medveris pricing instruction: Standard USD 30/month, USD 1.00/day reference, no overages', now()),
+  ('c0000000-0000-4000-8000-000000000004', 'advanced', 1, 'Professional', 'USD 100 per month for high-consumption accounts. Flat price, no usage overages.', 'approved', 10000, 400, 10000, false, NULL, ARRAY['core-clinical','point-of-sale','price-list'],
+   'Medveris pricing instruction: Professional USD 100/month, USD 3.50/day reference, no overages', now()),
+  ('c0000000-0000-4000-8000-000000000005', 'enterprise', 1, 'Enterprise', 'Custom kit with a contract. Bespoke staff seats, storage and usage allowance quoted per contract.', 'draft', NULL, NULL, NULL, true, NULL, ARRAY['core-clinical','point-of-sale','price-list'], NULL, NULL);
 UPDATE subscription_plans SET contract_required = true WHERE code = 'enterprise';
 -- Trial and Basic include every measured resource; their supported limits await approval.
 INSERT INTO plan_resource_rules (plan_id, resource, treatment)
 SELECT p.id, r.code, 'included' FROM subscription_plans p CROSS JOIN usage_resources r WHERE p.code IN ('trial','basic');
+-- Standard and Professional are approved flat-price tiers with a per-seat and per-storage allowance.
+INSERT INTO plan_resource_rules (plan_id, resource, treatment)
+SELECT p.id, r.code, 'included' FROM subscription_plans p CROSS JOIN usage_resources r WHERE p.code IN ('standard','advanced');
+-- Staff seats and storage are tracked per plan allowance and billed as overages beyond the approved limit.
+INSERT INTO plan_resource_rules (plan_id, resource, treatment)
+SELECT p.id, 'users.active', 'per-seat allowance' FROM subscription_plans p WHERE p.code = 'standard';
+INSERT INTO plan_resource_rules (plan_id, resource, treatment)
+SELECT p.id, 'users.active', 'per-seat allowance' FROM subscription_plans p WHERE p.code = 'advanced';
+INSERT INTO plan_resource_rules (plan_id, resource, treatment)
+SELECT p.id, 'storage.file_bytes', 'per-storage allowance' FROM subscription_plans p WHERE p.code = 'standard';
+INSERT INTO plan_resource_rules (plan_id, resource, treatment)
+SELECT p.id, 'storage.file_bytes', 'per-storage allowance' FROM subscription_plans p WHERE p.code = 'advanced';
 -- From here on, rules of an approved or retired plan version are frozen with it.
 CREATE TRIGGER plan_resource_rules_guard BEFORE INSERT OR UPDATE OR DELETE ON plan_resource_rules
 FOR EACH ROW EXECUTE FUNCTION app.plan_resource_rule_guard();

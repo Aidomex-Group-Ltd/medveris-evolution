@@ -86,7 +86,7 @@ export function createHarness(label: string, options: HarnessOptions = {}) {
   }
 
   async function json(response: Response): Promise<any> {
-    const text = await response.text();
+    const text = await response.text().catch(() => (response.status >= 500 ? "[server error]" : response.statusText));
     try {
       return JSON.parse(text);
     } catch {

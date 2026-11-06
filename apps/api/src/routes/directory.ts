@@ -460,10 +460,43 @@ directoryRoutes.post("/public/directory/reports", async (c) => {
 });
 
 // Provider workspace ----------------------------------------------------------
+directoryRoutes.get("/directory/providers", async (c) => {
+  requireStaff(c);
+  const _auth = c.get("auth")!;
+  const rows = await withStaffActor(c, async (tx) => {
+    return tx`      select distinct
+        p.id as staff_id,
+        p.staff_ref,
+        p.given_name,
+        p.family_name,
+        p.professional_display_name,
+        p.status,
+        j.code as title_code,
+        j.name as title_name,
+        j.grade,
+        c.code as cadre_code,
+        c.name as cadre_name,
+        c.category as cadre_category,
+        s.code as specialty_code,
+        s.name as specialty_name,
+        d.id as department_id,
+        d.name as department_name
+      from staff_persons p
+      join engagements e on e.staff_person_id = p.id
+      join job_titles j on j.id = e.job_title_id
+      join cadres c on c.id = j.cadre_id
+      left join department_assignments da on da.engagement_id = e.id and da.is_primary
+      left join departments d on d.id = da.department_id
+      order by p.updated_at desc
+      limit 200
+    `;
+  });
+  return c.json({ providers: rows });
+});
 
 directoryRoutes.get("/directory/facilities", async (c) => {
   requireProvider(c);
-  const auth = c.get("auth")!;
+  const _auth = c.get("auth")!;
   const platform = isPlatformOperator(c);
   const rows = await (platform ? withPlatformActor(c, async (tx) => tx`
     select f.id, f.public_id, f.name, f.facility_type, f.publication_status, f.status,
@@ -476,7 +509,7 @@ directoryRoutes.get("/directory/facilities", async (c) => {
            f.credential_status, f.capability_status, f.last_confirmed_on, f.next_confirmation_on,
            f.claimed_tenant_id, f.version, f.updated_at
       from directory_facilities f
-     where f.claimed_tenant_id = ${auth.activeTenant!.id}
+     where f.claimed_tenant_id = ${_auth.activeTenant!.id}
      order by f.updated_at desc limit 200
   `));
   return c.json({ facilities: rows });

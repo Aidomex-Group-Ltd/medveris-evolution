@@ -15,7 +15,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "allowImportingTsExtensions": false,
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "types": ["node"]
   }

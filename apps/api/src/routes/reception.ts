@@ -9,6 +9,7 @@ import {
   patientSearchSchema,
   queueEntrySchema,
   resolvePatientSchema,
+  triageCompleteSchema,
   triageSchema,
   transitionEncounterSchema,
   uuidSchema,
@@ -24,7 +25,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from ".
 import { enforceRateLimit } from "../lib/rate-limit.js";
 import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
 import { resolveAttribution } from "../lib/scope.js";
-import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
+import { completeTriage, insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
 import type { AppEnv } from "../types.js";
 
 export const receptionRoutes = new Hono<AppEnv>();
@@ -842,6 +843,43 @@ receptionRoutes.post("/encounters/:id/triage", async (c) => {
       aggregateId: id,
       aggregateVersion: Number(encounters[0].version) + 1,
       payload: { encounterId: id, urgency: body.urgency },
+    });
+  });
+  return c.json({ ok: true });
+});
+
+receptionRoutes.post("/encounters/:id/triage/complete", async (c) => {
+  requireStaff(c);
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, triageCompleteSchema);
+  const a = actor(c);
+  if (!a.roles.some((r) => ["nurse", "clinician"].includes(r))) throw new ForbiddenError("Nursing or clinician role required");
+  await withStaffActor(c, async (tx) => {
+    const encounters = await tx`select id, state, version, patient_id from encounters where id = ${id} and tenant_id = ${auth.activeTenant!.id} for update`;
+    if (!encounters[0]) throw new NotFoundError("Encounter not found");
+    if (String(encounters[0].state) !== "triaged") throw new ConflictError("Only a triaged encounter can be completed");
+    await completeTriage(c, tx, {
+      tenantId: auth.activeTenant!.id,
+      encounterId: id,
+      patientId: String(encounters[0].patientId),
+      nurseUserId: auth.user.id,
+      complaint: body.complaint,
+      urgency: body.urgency,
+      notes: body.notes ?? null,
+      observationIds: [],
+    });
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "encounter.triage.complete",
+      subjectPatientId: String(encounters[0].patientId),
+      resourceType: "Encounter",
+      resourceId: id,
+      metadata: { urgency: body.urgency, complaint: body.complaint },
     });
   });
   return c.json({ ok: true });

@@ -260,6 +260,12 @@ export const triageSchema = z.object({
     .nullable(),
 });
 
+export const triageCompleteSchema = z.object({
+  complaint: z.string().trim().min(1).max(4000),
+  urgency: z.enum(["routine", "urgent", "emergency"]),
+  notes: z.string().trim().max(4000).optional().or(z.literal("")),
+});
+
 export const createDraftEntrySchema = z.object({
   title: z.string().trim().min(1).max(300),
   subjective: z.string().trim().max(20000),
