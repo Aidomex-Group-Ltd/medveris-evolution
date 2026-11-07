@@ -223,3 +223,27 @@ describe("stored authenticator secret that no longer decrypts", () => {
     }
   });
 });
+
+describe("mfa attempt guard", () => {
+  it("allows email verification even when TOTP secret is broken", async () => {
+    const client = isolatedClient();
+    const challengeId = await startChallenge(client);
+    // Request an email code
+    await post("/api/v1/auth/login/mfa/email", { challengeId }, client);
+    
+    // Break the TOTP secret
+    const [original] = await sql`select totp_secret_enc from users where email = ${email}`;
+    const foreignCiphertext = await encryptSecret(secret, "synthetic-foreign-mfa-key-synthetic-foreign");
+    await sql`update users set totp_secret_enc = ${foreignCiphertext} where email = ${email}`;
+    
+    try {
+      // Attempt verification with the broken TOTP secret (6 digits)
+      // This should fail to verify but not throw 500 because we have a pending email method
+      const code = (await emailedCodes()).at(-1)!;
+      const res = await verify(challengeId, code, client);
+      expect(res.status).toBe(200);
+    } finally {
+      await sql`update users set totp_secret_enc = ${original?.totpSecretEnc} where email = ${email}`;
+    }
+  });
+});
