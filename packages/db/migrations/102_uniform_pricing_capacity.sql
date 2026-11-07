@@ -18,9 +18,10 @@ UPDATE plan_resource_rules SET included_quantity = 10
 UPDATE plan_resource_rules SET included_quantity = 10737418240
  WHERE plan_id = 'c0000000-0000-4000-8000-000000000002' AND resource = 'storage.file_bytes';
 
-ALTER TABLE plan_resource_rules ENABLE TRIGGER plan_resource_rules_guard;
-
 -- The free trial measures use but does not impose a staff or storage cap; the commercial packages do.
+-- Insert the per-seat/per-storage allowances. The freeze guard is re-enabled only below so that the
+-- allowance backfill can write to approved tiers; 104_clinical_bmi_and_labour_alerts.sql and later
+-- migrations rely on the guard being active to protect later rule mutations.
 INSERT INTO plan_resource_rules (plan_id, resource, treatment, included_quantity)
 SELECT p.id, r.code, 'included',
        CASE
@@ -33,6 +34,8 @@ SELECT p.id, r.code, 'included',
   FROM subscription_plans p CROSS JOIN usage_resources r
  WHERE p.code IN ('standard', 'advanced', 'enterprise')
 ON CONFLICT (plan_id, resource) DO NOTHING;
+
+ALTER TABLE plan_resource_rules ENABLE TRIGGER plan_resource_rules_guard;
 
 -- Standard and Professional are now approved commercial packages with the published prices.
 UPDATE subscription_plans

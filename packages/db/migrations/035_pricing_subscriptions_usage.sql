@@ -327,14 +327,10 @@ SELECT p.id, r.code, 'included' FROM subscription_plans p CROSS JOIN usage_resou
 INSERT INTO plan_resource_rules (plan_id, resource, treatment)
 SELECT p.id, r.code, 'included' FROM subscription_plans p CROSS JOIN usage_resources r WHERE p.code IN ('standard','advanced');
 -- Staff seats and storage are tracked per plan allowance and billed as overages beyond the approved limit.
-INSERT INTO plan_resource_rules (plan_id, resource, treatment)
-SELECT p.id, 'users.active', 'per-seat allowance' FROM subscription_plans p WHERE p.code = 'standard';
-INSERT INTO plan_resource_rules (plan_id, resource, treatment)
-SELECT p.id, 'users.active', 'per-seat allowance' FROM subscription_plans p WHERE p.code = 'advanced';
-INSERT INTO plan_resource_rules (plan_id, resource, treatment)
-SELECT p.id, 'storage.file_bytes', 'per-storage allowance' FROM subscription_plans p WHERE p.code = 'standard';
-INSERT INTO plan_resource_rules (plan_id, resource, treatment)
-SELECT p.id, 'storage.file_bytes', 'per-storage allowance' FROM subscription_plans p WHERE p.code = 'advanced';
+-- The standard/advanced cross-join above sets all measured resources as 'included'. The dedicated
+-- per-seat/per-storage rows are omitted: they duplicate the cross-join and their treatment values
+-- ('per-seat allowance', 'per-storage allowance') fall outside ('included','excluded','billable').
+-- Allowances are then applied by 102_uniform_pricing_capacity.sql.
 -- From here on, rules of an approved or retired plan version are frozen with it.
 CREATE TRIGGER plan_resource_rules_guard BEFORE INSERT OR UPDATE OR DELETE ON plan_resource_rules
 FOR EACH ROW EXECUTE FUNCTION app.plan_resource_rule_guard();

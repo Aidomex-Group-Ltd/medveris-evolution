@@ -7,6 +7,8 @@ import type { AppEnv } from "../types.js";
 
 export interface AccessSummary {
   roles: string[];
+  /** staff_persons.id for the signed-in user, resolved from staff_persons.user_id. Null when no staff profile exists. */
+  staffPersonId: string | null;
   departments: Array<{ id: string; name: string; cadreCode: string | null; cadreName: string | null; isPrimary: boolean }>;
   specialties: string[];
   privileges: string[];
@@ -32,6 +34,7 @@ export async function loadAccessActor(c: Context<AppEnv>): Promise<AccessActor> 
   const baseRoles = auth.activeTenant?.roles ?? (auth.patientId ? ["patient"] : []);
   const summary: AccessSummary = {
     roles: [...baseRoles],
+    staffPersonId: null,
     departments: [],
     specialties: [],
     privileges: [],
@@ -64,7 +67,7 @@ export async function loadAccessActor(c: Context<AppEnv>): Promise<AccessActor> 
       const staffRows = await tx`select id from staff_persons where user_id = ${auth.user.id} limit 1`;
       const staffPersonId = staffRows[0]?.id as string | undefined;
       if (!staffPersonId) {
-        return { engagementActive: false, departments: [], cadres: [], cadresNamed: [], privileges: [], careTeam: [], credentialValid: false };
+        return { staffPersonId: null, engagementActive: false, departments: [], cadres: [], cadresNamed: [], privileges: [], careTeam: [], credentialValid: false };
       }
       const engagementRows = await tx`
         select e.id, e.status, e.start_date, e.end_date, c.code as cadre_code, c.name as cadre_name
@@ -111,6 +114,7 @@ export async function loadAccessActor(c: Context<AppEnv>): Promise<AccessActor> 
          limit 1
       `;
       return {
+        staffPersonId,
         engagementActive: Boolean(engagement),
         departments: assignmentRows.map((row) => ({
           id: row.departmentId as string,
@@ -134,6 +138,7 @@ export async function loadAccessActor(c: Context<AppEnv>): Promise<AccessActor> 
     actor.careTeamPatientIds = access.careTeam;
     actor.credentialValid = access.credentialValid;
     summary.departments = access.departments;
+    summary.staffPersonId = access.staffPersonId;
     summary.specialties = actor.specialties;
     summary.privileges = actor.privileges;
     summary.engagementActive = access.engagementActive;

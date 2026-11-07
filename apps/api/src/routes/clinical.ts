@@ -21,7 +21,7 @@ import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { auditMeta, ensureMatch, parseJson } from "../lib/http.js";
 import { logEvent } from "@medveris/platform";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
-import { ConflictError, NotFoundError } from "../lib/errors.js";
+import { ConflictError, ForbiddenError, NotFoundError } from "../lib/errors.js";
 import { insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
 import { loadStaffAccessActor } from "../services/access.js";
 import { isIntegrationOperational } from "../integrations/registry.js";
@@ -315,9 +315,15 @@ clinicalRoutes.post("/entries/:id/sign", async (c) => {
     await tx`update clinical_entry_versions set status = 'signed', signed_at = ${signedAt}, signature = ${signature}, signature_key_id = ${deps.config.auditSigningKeyId} where id = ${version[0].id} and status = 'draft'`;
     await tx`update clinical_entries set status = 'signed', updated_at = now() where id = ${entryId}`;
     const primaryDepartment = access.summary?.departments?.[0];
+    // staff_persons.id, not the user id: the designation snapshot FK references staff_persons.
+    // loadStaffAccessActor already resolved it from staff_persons.user_id for this account.
+    const practitionerStaffPersonId = access.summary.staffPersonId;
+    if (!practitionerStaffPersonId) {
+      throw new ForbiddenError("Signing requires a staff profile linked to this account");
+    }
     await recordProfessionalDesignation(tx, {
       tenantId: auth.activeTenant!.id,
-      practitionerStaffPersonId: auth.user.id,
+      practitionerStaffPersonId,
       practitionerUserId: auth.user.id,
       encounterId: encounterId,
       version: entry.currentVersion,

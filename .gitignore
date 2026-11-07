@@ -28,3 +28,4 @@ backup-verification.json
 .pgcredentials
 data/
 .worktree/
+.neon

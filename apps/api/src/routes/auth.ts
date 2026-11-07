@@ -29,8 +29,9 @@ import {
 } from "@medveris/contracts";
 import { categoryFromLegacyType, defaultLevelStatus, randomPatientPublicId } from "@medveris/domain";
 import { setLocalContext, withAnonymous, withContext, withRegistration } from "@medveris/db";
-import { AppError, ConflictError, DependencyError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "../lib/errors.js";
+import { AppError, ConflictError, DependencyError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError, correlationId } from "../lib/errors.js";
 import { auditMeta, parseJson, requestMeta } from "../lib/http.js";
+import { routeShape } from "../lib/observability.js";
 import { enforceRateLimit, peekRateLimit, recordRateLimitHit, requestAddress } from "../lib/rate-limit.js";
 import { writeAudit } from "../lib/audit.js";
 import { requireAuth, setSessionCookie, revokeCurrentSession } from "../auth/middleware.js";
@@ -496,10 +497,18 @@ authRoutes.post("/login/mfa", async (c) => {
   }
   let method: "totp" | "email" | "recovery" | null = null;
   let recoveryHash: string | null = null;
+  // Set when the stored authenticator secret cannot be opened with MFA_ENCRYPTION_KEY. That is a
+  // configuration fault on our side, never a wrong code, so it must not consume the user's attempts
+  // and must not stop the other verification methods from running.
+  let storedTotpError: unknown = null;
   if (/^\d{6}$/.test(body.code)) {
     if (challenge.totpSecretEnc) {
-      const secret = await decryptSecret(String(challenge.totpSecretEnc), deps.config.mfaEncryptionKey);
-      if (await verifyTotp(secret, body.code)) method = "totp";
+      try {
+        const secret = await decryptSecret(String(challenge.totpSecretEnc), deps.config.mfaEncryptionKey);
+        if (await verifyTotp(secret, body.code)) method = "totp";
+      } catch (error) {
+        storedTotpError = error;
+      }
     }
     if (!method && challenge.emailCodeHash && new Date(challenge.emailCodeExpiresAt as Date).getTime() > Date.now()
       && (await emailCodeHash(String(challenge.id), body.code)) === challenge.emailCodeHash) {
@@ -514,6 +523,15 @@ authRoutes.post("/login/mfa", async (c) => {
     }
   }
   if (!method) {
+    if (storedTotpError) {
+      console.error(JSON.stringify({
+        event: "mfa_totp_secret_unavailable",
+        correlationId: correlationId(c),
+        path: routeShape(c.req.path),
+        errorClass: storedTotpError instanceof Error ? storedTotpError.name : typeof storedTotpError,
+      }));
+      throw new AppError(500, "internal_error", "An unexpected error occurred");
+    }
     const failed = await deps.sql`
       update auth_challenges set failed_attempts = failed_attempts + 1 where id = ${challenge.id} returning failed_attempts
     `;

@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { totpCode } from "@medveris/auth";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { encryptSecret, totpCode } from "@medveris/auth";
 import { createSql } from "@medveris/db";
 import { createApp } from "../../apps/api/src/app.js";
 import { loadConfig } from "../../apps/api/src/config.js";
@@ -34,15 +34,27 @@ async function post(path: string, body: unknown, headers: Record<string, string>
   }));
 }
 
-async function startChallenge(): Promise<string> {
-  const response = await post("/api/v1/auth/login", { email, password });
+async function startChallenge(headers: Record<string, string> = {}): Promise<string> {
+  const response = await post("/api/v1/auth/login", { email, password }, headers);
   const body = await response.json() as any;
   expect(response.status, JSON.stringify(body)).toBe(200);
   expect(body.mfaRequired).toBe(true);
   return body.challengeId as string;
 }
 
-const verify = (challengeId: string, code: string) => post("/api/v1/auth/login/mfa", { challengeId, code });
+const verify = (challengeId: string, code: string, headers: Record<string, string> = {}) =>
+  post("/api/v1/auth/login/mfa", { challengeId, code }, headers);
+
+/**
+ * Rate limits are keyed on the client address, so every case speaks from its own documentation
+ * address (trusted in tests). That keeps the auth quotas the suite is not asserting about from
+ * coupling unrelated cases; the policies themselves are unchanged.
+ */
+let clientSequence = 0;
+function isolatedClient(): Record<string, string> {
+  clientSequence += 1;
+  return { "x-forwarded-for": `203.0.113.${clientSequence}` };
+}
 
 async function emailedCodes(): Promise<string[]> {
   const files = (await readdir(mailDir).catch(() => [] as string[])).filter((name) => name.includes(email)).sort();
@@ -126,5 +138,88 @@ describe("attempt limit", () => {
     for (let attempt = 0; attempt < 5; attempt++) expect((await verify(challengeId, "abcdefghijkl")).status).toBe(401);
     expect((await verify(challengeId, await totpCode(secret))).status).toBe(401);
     expect((await post("/api/v1/auth/login/mfa/email", { challengeId })).status).toBe(401);
+  });
+});
+
+describe("authenticator app codes", () => {
+  it("completes sign-in with a valid code and refuses the consumed challenge again", async () => {
+    const client = isolatedClient();
+    const challengeId = await startChallenge(client);
+    const ok = await verify(challengeId, await totpCode(secret), client);
+    const body = await ok.json() as any;
+    expect(ok.status, JSON.stringify(body)).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.csrfToken).toBeTruthy();
+    expect((ok.headers.getSetCookie?.() ?? []).some((value) => value.startsWith("mv_session="))).toBe(true);
+    const [challenge] = await sql`select verified_method from auth_challenges where id = ${challengeId}`;
+    expect(challenge?.verifiedMethod).toBe("totp");
+
+    const replay = await verify(challengeId, await totpCode(secret), client);
+    expect(replay.status).toBe(401);
+    expect((replay.headers.getSetCookie?.() ?? []).some((value) => value.startsWith("mv_session="))).toBe(false);
+  });
+
+  it("refuses an unknown challenge", async () => {
+    expect((await verify(crypto.randomUUID(), await totpCode(secret), isolatedClient())).status).toBe(401);
+  });
+
+  it("refuses an expired challenge without consuming it or counting an attempt", async () => {
+    const client = isolatedClient();
+    const challengeId = await startChallenge(client);
+    await sql`update auth_challenges set expires_at = now() - interval '1 millisecond' where id = ${challengeId}`;
+    expect((await verify(challengeId, await totpCode(secret), client)).status).toBe(401);
+    const [challenge] = await sql`select consumed_at, failed_attempts from auth_challenges where id = ${challengeId}`;
+    expect(challenge?.consumedAt).toBeNull();
+    expect(challenge?.failedAttempts).toBe(0);
+  });
+});
+
+describe("stored authenticator secret that no longer decrypts", () => {
+  // Reproduces the staging failure: the ciphertext was sealed with a different MFA_ENCRYPTION_KEY
+  // than the one the process holds, so authenticator codes cannot be checked at all.
+  it("keeps the fault internal, spends no attempt, and still accepts an emailed code", async () => {
+    const client = isolatedClient();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const challengeId = await startChallenge(client);
+    const [original] = await sql`select totp_secret_enc from users where email = ${email}`;
+    expect(original?.totpSecretEnc).toBeTruthy();
+    const foreignCiphertext = await encryptSecret(secret, "synthetic-foreign-mfa-key-synthetic-foreign");
+    try {
+      await sql`update users set totp_secret_enc = ${foreignCiphertext} where email = ${email}`;
+
+      const failed = await verify(challengeId, await totpCode(secret), client);
+      const payload = await failed.json() as any;
+      expect(failed.status, JSON.stringify(payload)).toBe(500);
+      expect(payload.error).toMatchObject({
+        code: "internal_error",
+        message: "An unexpected error occurred",
+        correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      });
+      const rendered = JSON.stringify(payload);
+      expect(rendered).not.toMatch(/decrypt|OperationError|AES-GCM|stack/i);
+      expect((failed.headers.getSetCookie?.() ?? []).some((value) => value.startsWith("mv_session="))).toBe(false);
+
+      const [afterFailure] = await sql`select consumed_at, failed_attempts from auth_challenges where id = ${challengeId}`;
+      expect(afterFailure?.consumedAt).toBeNull();
+      expect(afterFailure?.failedAttempts).toBe(0);
+
+      const logged = errors.mock.calls.map((args) => args.join(" ")).join("\n");
+      expect(logged).toContain("mfa_totp_secret_unavailable");
+      expect(logged).toContain(payload.error.correlationId);
+      expect(logged).not.toContain("unhandled_error");
+
+      const sent = await post("/api/v1/auth/login/mfa/email", { challengeId }, client);
+      expect(sent.status, await sent.clone().text()).toBe(200);
+      const code = (await emailedCodes()).at(-1)!;
+      const recovered = await verify(challengeId, code, client);
+      const recoveredBody = await recovered.json() as any;
+      expect(recovered.status, JSON.stringify(recoveredBody)).toBe(200);
+      expect(recoveredBody.csrfToken).toBeTruthy();
+      const [challenge] = await sql`select verified_method, failed_attempts from auth_challenges where id = ${challengeId}`;
+      expect(challenge).toMatchObject({ verifiedMethod: "email", failedAttempts: 0 });
+    } finally {
+      await sql`update users set totp_secret_enc = ${original?.totpSecretEnc} where email = ${email}`;
+      errors.mockRestore();
+    }
   });
 });
