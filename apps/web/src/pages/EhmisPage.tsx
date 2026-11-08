@@ -21,7 +21,7 @@ interface Mapping {
   elements: Array<{ metric: string; sex: string; ageBand: string; dataElementUid: string; categoryOptionComboUid: string; label?: string }>;
   status: string; approvalReference: string | null; approvedAt: string | null; approvedByName: string | null; version: number;
 }
-interface Rule { scope: "facility" | "platform"; submissionDueDay: number; validationStartDay: number; validationEndDay: number; lockAfterDay: number; source: string; verifiedOn: string }
+interface Rule { scope: "facility" | "platform"; submissionDueDay: number; validationStartDay: number; validationEndDay: number; lockAfterDay: number; source: string; verifiedOn: string; jurisdiction?: string }
 interface Overview {
   integration: {
     nhfrId: string | null; dhis2BaseUrl: string | null; dhis2OrgUnitUid: string | null; dhis2OrgUnitName: string | null; eligibilityStatus: string;
@@ -400,7 +400,7 @@ function Rules({ data, onChanged }: { data: Overview; onChanged: () => void }) {
         <Table head={["Period type", "Submission due", "Validation", "Locked after", "Source", "Applies"]} caption="Effective reporting rules">
           {(["Monthly", "Weekly", "Quarterly"] as const).map((type) => {
             const rule = data.rules[type];
-            return <tr key={type}><td>{type}</td>{rule ? <><td>day {rule.submissionDueDay}</td><td>days {rule.validationStartDay}–{rule.validationEndDay}</td><td>day {rule.lockAfterDay}</td><td className="mv-small">{rule.source}<div className="mv-muted">checked {rule.verifiedOn}</div></td><td>{rule.scope === "facility" ? "This facility" : "Platform default"}</td></> : <td colSpan={5} className="mv-small mv-muted">No rule configured</td>}</tr>;
+            return <tr key={type}><td>{type}</td>{rule ? <><td>day {rule.submissionDueDay}</td><td>days {rule.validationStartDay}–{rule.validationEndDay}</td><td>day {rule.lockAfterDay}</td><td className="mv-small">{rule.source}<div className="mv-muted">checked {rule.verifiedOn}{rule.jurisdiction ? ` · ${rule.jurisdiction}` : ""}</div></td><td>{rule.scope === "facility" ? "This facility" : "Platform default"}</td></> : <td colSpan={5} className="mv-small mv-muted">No rule configured</td>}</tr>;
           })}
         </Table>
       </Card>

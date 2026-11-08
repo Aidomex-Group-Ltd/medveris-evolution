@@ -95,6 +95,8 @@ export interface ReportingRule {
   lockAfterDay: number;
   source: string;
   verifiedOn: string;
+  /** Jurisdiction the obligation applies to (e.g. Uganda for the MoH eHMIS programme). */
+  jurisdiction?: string;
 }
 
 export interface PeriodSchedule {

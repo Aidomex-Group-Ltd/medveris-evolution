@@ -86,7 +86,7 @@ export async function liveReadiness(config: AppConfig, row: Record<string, unkno
 
 export async function effectiveRule(tx: Tx, tenantId: string, periodType: PeriodType): Promise<(ReportingRule & { scope: "facility" | "platform" }) | null> {
   const rows = await tx`
-    select tenant_id, submission_due_day, validation_start_day, validation_end_day, lock_after_day, source, to_char(verified_on, 'YYYY-MM-DD') as verified_on
+    select tenant_id, submission_due_day, validation_start_day, validation_end_day, lock_after_day, source, to_char(verified_on, 'YYYY-MM-DD') as verified_on, jurisdiction
       from hmis_reporting_rules where period_type = ${periodType} and (tenant_id = ${tenantId} or tenant_id is null)
      order by tenant_id nulls last limit 1`;
   const row = rows[0];
@@ -96,6 +96,7 @@ export async function effectiveRule(tx: Tx, tenantId: string, periodType: Period
     submissionDueDay: Number(row.submissionDueDay), validationStartDay: Number(row.validationStartDay),
     validationEndDay: Number(row.validationEndDay), lockAfterDay: Number(row.lockAfterDay),
     source: String(row.source), verifiedOn: String(row.verifiedOn),
+    jurisdiction: row.jurisdiction == null ? "Uganda" : String(row.jurisdiction),
   };
 }
 
