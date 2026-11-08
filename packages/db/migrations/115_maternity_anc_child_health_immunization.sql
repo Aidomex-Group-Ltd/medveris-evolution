@@ -158,7 +158,8 @@ CREATE TABLE IF NOT EXISTS immunization_schedules (
   route text,
   site text,
   schedule_note text,
-  created_by uuid NOT NULL REFERENCES users(id),
+  -- NULL when the schedule is seeded by the migration itself rather than by a user.
+  created_by uuid REFERENCES users(id),
   created_at timestamptz NOT NULL DEFAULT now(),
 
   UNIQUE (tenant_id, vaccine_code, recommended_at_months)
@@ -203,7 +204,7 @@ SELECT
   v.route,
   v.site,
   v.note,
-  t.created_by_user_id
+  NULL
 FROM tenants t
 CROSS JOIN (
   VALUES
@@ -225,8 +226,7 @@ CROSS JOIN (
     ('MCV1',     'Measles-Rubella',                          2, 9.0,  'subcutaneous', 'left upper arm', 'First measles-containing dose at 9 months.'),
     ('MCV2',     'Measles-Rubella',                          2, 18.0, 'subcutaneous', 'left upper arm', 'Second measles-containing dose at 18 months where adopted.')
 ) AS v(code, name, total_doses, recommended_at_months, route, site, note)
-WHERE t.created_by_user_id IS NOT NULL
-  AND NOT EXISTS (
+WHERE NOT EXISTS (
     SELECT 1 FROM immunization_schedules s WHERE s.tenant_id = t.id
   );
 
