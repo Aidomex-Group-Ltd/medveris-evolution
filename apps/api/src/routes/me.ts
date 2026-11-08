@@ -5,6 +5,7 @@ import { withActor, requireAuth, requirePatient } from "../auth/middleware.js";
 import { auditMeta, parseJson } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
 import { NotFoundError } from "../lib/errors.js";
+import { legalAcceptanceStatus } from "../lib/legal.js";
 import type { AppEnv } from "../types.js";
 
 export const meRoutes = new Hono<AppEnv>();
@@ -14,6 +15,8 @@ meRoutes.get("/me", async (c) => {
   const organizations = await withContext(c.get("deps").sql, { userId: auth.user.id, actorKind: "staff" }, async (tx) => tx`
     select o.id, o.name, m.role from organization_memberships m join organizations o on o.id = m.organization_id
      where m.user_id = ${auth.user.id} and m.status = 'active' and o.status = 'active' order by o.name`);
+  // Lets every client hold the session until the documents this release bundles are accepted.
+  const legal = await withActor(c, (tx) => legalAcceptanceStatus(tx, auth.user.id));
   return c.json({
     organizations: organizations.map((row) => ({ id: row.id, name: row.name, role: row.role })),
     user: {
@@ -31,6 +34,7 @@ meRoutes.get("/me", async (c) => {
     patientId: auth.patientId,
     platformRoles: auth.platformRoles,
     csrfToken: auth.session.csrfToken,
+    requiresLegalAcceptance: legal.requiresAcceptance,
   });
 });
 

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "@medveris/ui";
 import { useAuth } from "../lib/auth";
+import { LegalReacceptance } from "./LegalReacceptance";
 import type { Role } from "../lib/types";
 
 export function ProtectedRoute({ children, roles, platform, patient, staff, organization }: {
@@ -19,6 +20,7 @@ export function ProtectedRoute({ children, roles, platform, patient, staff, orga
   if (loading) return <LoadingState label="Restoring session" variant="page" />;
   if (!me) return <Navigate to="/login" replace state={signedOut ? null : { from: `${location.pathname}${location.search}` }} />;
   if (error) return <ErrorState message={error} onRetry={() => void refresh()} />;
+  if (me.requiresLegalAcceptance) return <LegalReacceptance />;
   const staffContext = Boolean(me.activeTenant) && !patient && (!me.patientId || Boolean(roles));
   if (staffContext && !(me.user.mfaEnrolled && me.user.mfaVerified)) return <Navigate to="/mfa-setup" replace />;
   if (patient && !me.patientId) return <EmptyState title="Patient account required" description="This area is available only to a verified patient account." />;

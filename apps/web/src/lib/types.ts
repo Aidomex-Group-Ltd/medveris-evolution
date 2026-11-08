@@ -96,6 +96,8 @@ export interface MeResponse {
   patientId: string | null;
   platformRoles: string[];
   csrfToken: string;
+  /** True when this release bundles document versions this account has not accepted yet. */
+  requiresLegalAcceptance?: boolean;
 }
 
 export interface PublicConfig {
