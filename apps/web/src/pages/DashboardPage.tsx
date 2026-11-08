@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
 import { Badge, Card, DataList, EmptyState, ErrorState, LoadingState, PageHeader, Table } from "@medveris/ui";
 import { PriorityBadge, RequestStatusBadge, VisitStateBadge } from "../components/WorkflowBadges";
+import { NavIcon } from "../components/NavIcon";
 import { useAuth } from "../lib/auth";
 import { useAppEnvironment } from "../lib/environment";
+import { navDestinationsFor, quickActionsFor } from "../lib/nav";
 import { CASHIER_ROLES, DEPARTMENT_QUEUE_ROLES, VISIT_ROLES } from "../lib/roles";
 import { useQuery } from "../lib/useQuery";
 import { departmentLabel, workspaceProfile } from "../lib/workspace";
@@ -40,6 +42,75 @@ function human(value: string | null | undefined): string {
   return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+/** Quick actions derive from the navigation SSOT, so the dashboard never hardcodes destinations. */
+function QuickActions() {
+  const { me } = useAuth();
+  if (!me) return null;
+  const actions = quickActionsFor(me).filter((item) => item.id !== "dashboard");
+  if (!actions.length) return null;
+  return (
+    <section aria-label="Quick actions">
+      <div className="mv-quick-actions">
+        {actions.map((item) => (
+          <Link key={item.id} to={item.to} className="mv-quick-action">
+            <NavIcon name={item.icon} size={20} />
+            <span>
+              <strong>{item.label}</strong>
+              {item.description ? <small>{item.description}</small> : null}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Connected Care status links (Virtual Care / IoT). No counts are invented: links open the live workspaces. */
+function ConnectedCareCard() {
+  const { me } = useAuth();
+  if (!me) return null;
+  const destinations = navDestinationsFor(me).filter((item) => item.section === "virtual" || item.section === "iot");
+  if (!destinations.length) return null;
+  return (
+    <Card title="Connected Care" description="Virtual care and remote monitoring for this workspace.">
+      <div className="mv-connected">
+        {destinations.map((item) => (
+          <Link key={item.id} to={item.to} className="mv-quick-action">
+            <NavIcon name={item.icon} size={20} />
+            <span>
+              <strong>{item.label}</strong>
+              {item.description ? <small>{item.description}</small> : null}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/** Medveris Intelligence entry points, derived from the SSOT intelligence section. */
+function IntelligenceCard() {
+  const { me } = useAuth();
+  if (!me) return null;
+  const destinations = navDestinationsFor(me).filter((item) => item.section === "intelligence");
+  if (!destinations.length) return null;
+  return (
+    <Card title="Medveris Intelligence" description="Assistive decision support, reporting and the health library.">
+      <div className="mv-connected">
+        {destinations.map((item) => (
+          <Link key={item.id} to={item.to} className="mv-quick-action">
+            <NavIcon name={item.icon} size={20} />
+            <span>
+              <strong>{item.label}</strong>
+              {item.description ? <small>{item.description}</small> : null}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function ContentPreview({ items, total }: { items: FeedItem[]; total: number }) {
   if (!items.length) return <EmptyState title="No published content" description="Reviewed content for your role appears here once published." />;
   return (
@@ -67,6 +138,7 @@ function PatientHome() {
         <div className="mv-stat"><span>Pending follow-ups</span><strong>{dashboard.loading ? "…" : dashboard.data?.followUps.length ?? "—"}</strong><span>Instructions from your care team</span></div>
         <div className="mv-stat"><span>Facilities releasing records</span><strong>{dashboard.loading ? "…" : dashboard.data?.releases.facilities ?? "—"}</strong><span>Active sharing consents: {dashboard.data?.activeConsents ?? "—"}</span></div>
       </div>
+      <QuickActions />
       {dashboard.error ? <ErrorState message={dashboard.error} onRetry={dashboard.reload} /> : null}
       <div className="mv-grid mv-grid--2">
         <Card title="Your health record" description="Review released notes, observations, consent and access history.">
@@ -149,6 +221,7 @@ function UnitDashboard({ department }: { department: WorkflowDepartment }) {
         <div className="mv-stat"><span>In progress</span><strong>{summary.loading ? "…" : counts?.inProgress ?? 0}</strong><span>Completed today: {counts?.completedToday ?? 0}</span></div>
         <div className="mv-stat"><span>Open visits</span><strong>{visits.loading ? "…" : openVisits.length}</strong><span>{cashier && unpaid != null ? `${unpaid} with charges to collect` : "Registered today and not closed"}</span></div>
       </section>
+      <QuickActions />
       {summary.error ? <ErrorState message={summary.error} onRetry={summary.reload} /> : null}
       <div className="mv-grid mv-grid--2">
         <Card title={`Next in the ${label.toLowerCase()} queue`} description="Emergency and urgent work first.">
@@ -252,6 +325,11 @@ function FacilityOverview() {
         <div className="mv-stat"><span>Waiting in queue</span><strong>{queues.loading ? "…" : queues.data?.queues.reduce((sum, q) => sum + q.waiting, 0) ?? "—"}</strong><span>{frontDesk ? "Across active queues" : "Front-desk role required"}</span></div>
         <div className="mv-stat"><span>Active encounters</span><strong>{worklist.loading ? "…" : worklist.data?.encounters.length ?? "—"}</strong><span>{clinical ? "Arrived, triaged or in progress" : "Clinical role required"}</span></div>
       </section>
+      <QuickActions />
+      <div className="mv-grid mv-grid--2">
+        <ConnectedCareCard />
+        <IntelligenceCard />
+      </div>
 
       <div className="mv-grid mv-grid--2">
         <Card title="Queue snapshot" description="Counts only; clinical detail requires an authorized chart read.">
@@ -326,6 +404,13 @@ function FacilityOverview() {
       ) : null}
 
       <Card title="Health library" description="Published advisories, guidelines and learning selected for your role and department.">
+        <div className="mv-knowledge-links" style={{ marginBottom: 12 }}>
+          <Link to="/content">Research</Link>
+          <Link to="/content">Clinical guidelines</Link>
+          <Link to="/content">Global health updates</Link>
+          <Link to="/content">CPD</Link>
+          <Link to="/content">Professional opportunities</Link>
+        </div>
         {knowledge.loading ? <LoadingState /> : knowledge.error ? <ErrorState message={knowledge.error} onRetry={knowledge.reload} /> : <ContentPreview items={knowledge.data?.items ?? []} total={knowledge.data?.total ?? 0} />}
       </Card>
 
