@@ -148,7 +148,14 @@ export async function createCheckout(tx: Tx, config: AppConfig, deps: Pick<AppDe
   const quote = await quoteCheckout(tx, config, deps, input.billingAccountId, input.interval, input.now ?? new Date());
   const [subscription] = await tx`select id from subscriptions where billing_account_id = ${input.billingAccountId} order by (status <> 'cancelled') desc, created_at desc limit 1`;
   const checkoutId = crypto.randomUUID();
-  const externalReference = `MS-${checkoutId.replace(/-/g, "").toUpperCase()}`;
+  const provider = config.payments.provider;
+  // LivePay refuses references longer than 30 characters; the Yo! reference keeps its existing shape
+  // so in-flight sandbox checkouts and notifications remain reconcilable.
+  const externalReference = provider === "livepay"
+    ? `MS${checkoutId.replace(/-/g, "").slice(0, 20).toUpperCase()}`
+    : `MS-${checkoutId.replace(/-/g, "").toUpperCase()}`;
+  const providerMode = provider === "livepay" ? "live" : config.yo.mode;
+  const providerLabel = provider === "livepay" ? "LivePay" : "Yo!";
   await tx`
     insert into subscription_checkouts (
       id, billing_account_id, subscription_id, interval, seats, unit_price_usd_minor, amount_usd_minor, amount_ugx,
@@ -159,14 +166,14 @@ export async function createCheckout(tx: Tx, config: AppConfig, deps: Pick<AppDe
       ${checkoutId}, ${input.billingAccountId}, ${subscription ? String(subscription.id) : null}, ${quote.interval}, ${quote.seats},
       ${quote.unitPriceUsdMinor}, ${quote.amountUsdMinor}, ${quote.amountUgx},
       ${quote.fx.base}, ${quote.fx.quote}, ${quote.fx.rate}, ${quote.fx.source}, ${quote.fx.providerTimestamp}, ${quote.fx.recordedAt}, 'ceil-whole-shilling',
-      ${quote.periodStart}, ${quote.periodEnd}, ${quote.product}, ${quote.disclosure}, ${input.msisdn}, 'yo', ${config.yo.mode},
-      ${externalReference}, ${input.idempotencyKey}, ${input.initiatedBy}, 'Sending the payment prompt to Yo!'
+      ${quote.periodStart}, ${quote.periodEnd}, ${quote.product}, ${quote.disclosure}, ${input.msisdn}, ${provider}, ${providerMode},
+      ${externalReference}, ${input.idempotencyKey}, ${input.initiatedBy}, ${`Sending the payment prompt to ${providerLabel}`}
     )
   `;
   await writeAudit(tx, config, {
     tenantId: input.actor.tenantId, actorKind: input.actor.kind, actorUserId: input.actor.userId, actorRoles: [],
     action: "subscription.checkout.request", resourceType: "SubscriptionCheckout", resourceId: checkoutId,
-    metadata: { interval: quote.interval, seats: quote.seats, amountUsdMinor: quote.amountUsdMinor, amountUgx: quote.amountUgx, rate: quote.fx.rate, rateSource: quote.fx.source, msisdn: maskMsisdn(input.msisdn), mode: config.yo.mode },
+    metadata: { interval: quote.interval, seats: quote.seats, amountUsdMinor: quote.amountUsdMinor, amountUgx: quote.amountUgx, rate: quote.fx.rate, rateSource: quote.fx.source, msisdn: maskMsisdn(input.msisdn), provider, mode: providerMode },
   });
   return { checkoutId, externalReference, quote };
 }
@@ -199,6 +206,7 @@ export async function applyCheckoutEvidence(tx: Tx, config: AppConfig, checkoutI
   const [checkout] = await tx`select * from subscription_checkouts where id = ${checkoutId} for update`;
   if (!checkout) throw new NotFoundError("Subscription checkout not found");
   const current = String(checkout.status);
+  const provider = String(checkout.provider) === "livepay" ? "LivePay" : "Yo!";
   const [seen] = await tx`
     insert into subscription_checkout_events (id, checkout_id, kind, dedupe_key, outcome, provider_status, payload_digest, detail)
     values (${crypto.randomUUID()}, ${checkoutId}, ${evidence.kind}, ${evidence.dedupeKey}, 'ignored', ${evidence.providerStatus},
@@ -217,7 +225,7 @@ export async function applyCheckoutEvidence(tx: Tx, config: AppConfig, checkoutI
     const confirmed = evidence.confirmedAmount == null ? null : Math.round(evidence.confirmedAmount);
     if (confirmed == null || !Number.isFinite(confirmed)) {
       next = current === "pending" ? "indeterminate" : current;
-      detail = "Yo! reported success without an amount; nothing was applied. Check the status again to reconcile.";
+      detail = `${provider} reported success without an amount; nothing was applied. Check the status again to reconcile.`;
       await writeAudit(tx, config, {
         tenantId: actor.tenantId, actorKind: actor.kind, actorUserId: actor.userId, actorRoles: [],
         action: "subscription.checkout.amount-missing", resourceType: "SubscriptionCheckout", resourceId: checkoutId,
@@ -225,7 +233,7 @@ export async function applyCheckoutEvidence(tx: Tx, config: AppConfig, checkoutI
       });
     } else if (confirmed !== amount) {
       next = current === "pending" ? "indeterminate" : current;
-      detail = `Yo! confirmed ${confirmed.toLocaleString("en-UG")} UGX but ${amount.toLocaleString("en-UG")} UGX was requested; not applied. Reconcile with Yo! before taking another payment.`;
+      detail = `${provider} confirmed ${confirmed.toLocaleString("en-UG")} UGX but ${amount.toLocaleString("en-UG")} UGX was requested; not applied. Reconcile with ${provider} before taking another payment.`;
       await writeAudit(tx, config, {
         tenantId: actor.tenantId, actorKind: actor.kind, actorUserId: actor.userId, actorRoles: [],
         action: "subscription.checkout.amount-mismatch", resourceType: "SubscriptionCheckout", resourceId: checkoutId,
@@ -234,7 +242,7 @@ export async function applyCheckoutEvidence(tx: Tx, config: AppConfig, checkoutI
     } else {
       next = "succeeded";
       applied = true;
-      detail = "Payment confirmed by Yo!";
+      detail = `Payment confirmed by ${provider}`;
       await tx`
         update subscription_checkouts set status = 'succeeded', completed_at = now(), updated_at = now(),
           provider_reference = coalesce(provider_reference, ${evidence.providerReference ?? null}),
@@ -249,20 +257,20 @@ export async function applyCheckoutEvidence(tx: Tx, config: AppConfig, checkoutI
         update subscriptions set status = 'active',
           current_period_start = ${checkout.periodStart}, current_period_end = ${checkout.periodEnd},
           billing_interval = ${checkout.interval}, seats = ${Number(checkout.seats)}, renewal_mode = 'manual',
-          next_renewal_at = ${checkout.periodEnd}, status_reason = ${`Paid for one ${String(checkout.interval)} with Yo! mobile money`},
+          next_renewal_at = ${checkout.periodEnd}, status_reason = ${`Paid for one ${String(checkout.interval)} with ${provider === "LivePay" ? "LivePay" : "Yo!"} mobile money`},
           status_changed_at = now(), version = version + 1, updated_at = now()
          where id = ${checkout.subscriptionId}
       `;
       await recordSubscriptionEvent(tx, {
         subscriptionId: String(checkout.subscriptionId), billingAccountId: String(checkout.billingAccountId), event: "checkout-paid",
         fromStatus: String(subscription[0].status) as never, toStatus: "active",
-        detail: { checkoutId, interval: String(checkout.interval), seats: Number(checkout.seats), amountUgx: amount, amountUsdMinor: Number(checkout.amountUsdMinor), rate: Number(checkout.fxRate), periodEnd: new Date(checkout.periodEnd as Date).toISOString(), renewalMode: "manual", provider: "yo" },
+        detail: { checkoutId, interval: String(checkout.interval), seats: Number(checkout.seats), amountUgx: amount, amountUsdMinor: Number(checkout.amountUsdMinor), rate: Number(checkout.fxRate), periodEnd: new Date(checkout.periodEnd as Date).toISOString(), renewalMode: "manual", provider: String(checkout.provider) },
         actorKind: actor.kind === "system" ? "system" : "staff", actorUserId: actor.userId,
       });
       await notifyAccount(tx, {
         billingAccountId: String(checkout.billingAccountId), kind: "payment-received",
         title: "Subscription paid with mobile money",
-        body: `UGX ${amount.toLocaleString("en-UG")} was confirmed by Yo! for one ${String(checkout.interval)}. Access runs to ${new Date(checkout.periodEnd as Date).toISOString().slice(0, 10)}. Renewal is manual: you will be reminded before that date.`,
+        body: `UGX ${amount.toLocaleString("en-UG")} was confirmed by ${provider} for one ${String(checkout.interval)}. Access runs to ${new Date(checkout.periodEnd as Date).toISOString().slice(0, 10)}. Renewal is manual: you will be reminded before that date.`,
         dedupeKey: `subscription-checkout-paid:${checkoutId}`,
       });
       await writeAudit(tx, config, {
@@ -285,8 +293,7 @@ export async function applyCheckoutEvidence(tx: Tx, config: AppConfig, checkoutI
     detail = "Waiting for the payer to approve the prompt on their phone.";
   } else if (evidence.outcome === "indeterminate" && current === "pending") {
     next = "indeterminate";
-    applied = true;
-    detail = evidence.statusMessage || "Yo! has not resolved this transaction yet; check again before paying.";
+    applied = true;      detail = evidence.statusMessage || `${provider} has not resolved this transaction yet; check again before paying.`;
   }
 
   await tx`

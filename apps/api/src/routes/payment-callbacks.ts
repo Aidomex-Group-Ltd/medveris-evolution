@@ -1,6 +1,8 @@
 import { Hono, type Context } from "hono";
 import { sha256Hex } from "@medveris/auth";
+import { livepayWebhookSchema } from "@medveris/contracts";
 import { withAnonymous, withContext } from "@medveris/db";
+import { livePayWebhookOutcome, verifyLivePayWebhook } from "../integrations/livepay.js";
 import {
   parseFailureNotification,
   parsePaymentNotification,
@@ -121,6 +123,59 @@ paymentCallbackRoutes.post("/public/payments/yo/failures", async (c) => {
       statusMessage: "Yo! reported the payment as failed: the payer declined, cancelled or did not respond",
       detail: { initiatedAt: notification.transactionInitDate },
     }, systemActor(c)));
+  return c.json({ ok: true, status: result.status, duplicate: result.duplicate });
+});
+
+/**
+ * LivePay webhook. LivePay has no test mode, so this endpoint only accepts requests whose
+ * X-Webhook-Signature verifies against the exact configured webhook URL and secret. The checkout
+ * is settled only when the signed payload reports the exact UGX amount disclosed at checkout;
+ * retries and replays are acknowledged without applying the payment twice.
+ */
+paymentCallbackRoutes.post("/public/payments/livepay/webhook", async (c) => {
+  await enforceRateLimit(c, "payments.callback", requestAddress(c));
+  const { config } = c.get("deps");
+  const livepay = config.payments.livepay;
+  if (config.payments.provider !== "livepay" || !livepay.webhookSecret) {
+    return c.json({ error: { code: "not_configured", message: "LivePay webhook confirmation is not configured for this deployment" } }, 503);
+  }
+  const raw = await c.req.text();
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return c.json({ error: { code: "validation_error", message: "Webhook body must be JSON" } }, 400);
+  }
+  const parsed = livepayWebhookSchema.safeParse(json);
+  if (!parsed.success) return c.json({ error: { code: "validation_error", message: "Webhook payload is invalid" } }, 400);
+  const payload = parsed.data;
+  const verified = await verifyLivePayWebhook(payload, c.req.header("x-webhook-signature"), livepay.webhookUrl, livepay.webhookSecret);
+  if (!verified.ok) {
+    console.warn(JSON.stringify({ event: "livepay_webhook_rejected", reason: verified.reason, correlationId: auditMeta(c).correlationId }));
+    return c.json({ error: { code: "invalid_signature", message: "Webhook signature verification failed" } }, 403);
+  }
+  const target = await checkoutFor(c, payload.customer_reference);
+  if (!target) return c.json({ error: { code: "not_found", message: "Unknown payment reference" } }, 404);
+  // A provider success is only accepted for the currency and amount disclosed at checkout.
+  const currency = payload.currency?.toUpperCase() ?? null;
+  const wrongCurrency = currency !== "UGX";
+  const outcome = wrongCurrency ? "indeterminate" as const : livePayWebhookOutcome(payload.status);
+  const digest = await sha256Hex(raw);
+  const result = await withContext(c.get("deps").sql, { actorKind: "system", tenantId: target.tenantId }, (tx) =>
+    applyCheckoutEvidence(tx, config, target.checkoutId, {
+      kind: "ipn",
+      dedupeKey: `livepay:${payload.provider_transaction_id || payload.internal_reference || digest}`,
+      outcome,
+      providerStatus: payload.status,
+      providerReference: payload.internal_reference ?? payload.provider_transaction_id ?? null,
+      networkReference: payload.provider_transaction_id ?? null,
+      confirmedAmount: wrongCurrency ? null : payload.amount ?? null,
+      payloadDigest: digest,
+      statusMessage: wrongCurrency
+        ? `LivePay reported ${currency ?? "no currency"} but this checkout is in UGX; not applied. Reconcile before taking another payment.`
+        : null,
+      detail: { provider: "livepay", webhookStatus: payload.status, providerTransactionId: payload.provider_transaction_id ?? null },
+    }, { kind: "system", userId: null, tenantId: target.tenantId }));
   return c.json({ ok: true, status: result.status, duplicate: result.duplicate });
 });
 

@@ -208,8 +208,12 @@
 				// Statuses, reminders and banners only; growth features are not paused on staging.
 				"BILLING_ENFORCEMENT": "notify",
 				"USAGE_METERING": "true",
-				// LivePay payment provider. The API key and webhook secret are Worker secrets.
-				"LIVEPAY_ENDPOINT_URL": "https://medveris.online/webhook"
+				// LivePay is the primary provider. LIVEPAY_BASE_URL is the upstream REST API; the
+				// webhook URL is this deployment's inbound endpoint and is part of the signature.
+				// The API key, account number and webhook secret are Worker secrets.
+				"PAYMENT_PROVIDER": "livepay",
+				"LIVEPAY_BASE_URL": "https://livepay.me/api",
+				"LIVEPAY_WEBHOOK_URL": "https://medveris-staging.aidomexgroupltd.workers.dev/api/v1/public/payments/livepay/webhook"
 			},
 			"secrets": {
 				"required": [
@@ -355,10 +359,13 @@
 				"FEATURE_AI": "false",
 				// Yo! mobile money: set FEATURE_PAYMENTS=true and YO_MODE=production, and add YO_API_USERNAME,
 				// YO_API_PASSWORD and YO_PUBLIC_KEY to secrets.required (wrangler secret put) before enabling.
+				// LivePay provider selection is a plaintext feature flag, not a secret. Yo! stays disabled.
 				"FEATURE_PAYMENTS": "false",
+				"PAYMENT_PROVIDER": "livepay",
 				"YO_MODE": "disabled",
-				// LivePay payment provider. The API key and webhook secret are Worker secrets.
-				"LIVEPAY_ENDPOINT_URL": "https://medveris.online/webhook",
+				// LivePay: upstream API vs this deployment's inbound signed webhook URL.
+				"LIVEPAY_BASE_URL": "https://livepay.me/api",
+				"LIVEPAY_WEBHOOK_URL": "https://medveris.online/api/v1/public/payments/livepay/webhook",
 				"FEATURE_PUBLIC_HEALTH": "false",
 				"FEATURE_LEDGER_ANCHORING": "false",
 				// Off until staging failover and WebSocket verification are signed off.

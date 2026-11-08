@@ -46,6 +46,8 @@ export function SiteFooter() {
         <Link to="/about">About us</Link>
         <Link to="/help">Help &amp; support</Link>
         <Link to="/contacts">Contacts</Link>
+        <Link to="/terms">Terms of Service</Link>
+        <Link to="/privacy">Privacy Notice</Link>
         <Link to="/register">Create an account</Link>
       </nav>
     </footer>

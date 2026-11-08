@@ -24,8 +24,8 @@ function owner(label: string) {
   return { email: email(label), password: PASSWORD, givenName: "Synthetic", familyName: `Owner ${label}` };
 }
 
-async function register(body: unknown, status = 201): Promise<any> {
-  const response = await anonymous("/api/v1/auth/register/workspace", body);
+async function register(body: Record<string, unknown>, status = 201): Promise<any> {
+  const response = await anonymous("/api/v1/auth/register/workspace", { ...body, legal: await h.legalAcceptance() });
   const parsed = await h.json(response);
   expect(response.status, JSON.stringify(parsed)).toBe(status);
   return parsed;

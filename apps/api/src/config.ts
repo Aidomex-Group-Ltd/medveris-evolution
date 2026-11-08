@@ -338,7 +338,12 @@ export interface LivePayConfig {
   apiKey: string | null;
   /** LivePay business account number, e.g. LP2305443309. */
   accountNumber: string | null;
+  /** Upstream API root, e.g. https://livepay.me/api. Never the inbound webhook URL. */
   baseUrl: string;
+  /** Inbound URL LivePay posts to; the exact string is also part of the webhook signature. */
+  webhookUrl: string;
+  /** HMAC-SHA256 key for X-Webhook-Signature. Worker secret in staging and production. */
+  webhookSecret: string | null;
   timeoutMs: number;
 }
 
@@ -359,12 +364,25 @@ function paymentsConfig(env: EnvLike, appEnv: string): PaymentsConfig {
     throw new Error("LIVEPAY_BASE_URL must be an absolute URL");
   }
   if (parsed.protocol !== "https:" && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) throw new Error("LIVEPAY_BASE_URL must use HTTPS");
+  // The inbound webhook is a different URL from the upstream API root. It defaults to this
+  // deployment's own origin so no environment can accidentally sign against another host.
+  const origin = (env.APP_ORIGIN ?? "http://localhost:5173").trim().replace(/\/+$/, "");
+  const rawWebhookUrl = (env.LIVEPAY_WEBHOOK_URL ?? `${origin}/api/v1/public/payments/livepay/webhook`).trim();
+  let webhook: URL;
+  try {
+    webhook = new URL(rawWebhookUrl);
+  } catch {
+    throw new Error("LIVEPAY_WEBHOOK_URL must be an absolute URL");
+  }
+  if (webhook.protocol !== "https:" && !LOCAL_ONLY_ENVIRONMENTS.has(appEnv)) throw new Error("LIVEPAY_WEBHOOK_URL must use HTTPS");
   return {
     provider,
     livepay: {
       apiKey: (env.LIVEPAY_API_KEY ?? "").trim() || null,
       accountNumber: (env.LIVEPAY_ACCOUNT_NUMBER ?? "").trim() || null,
       baseUrl: rawUrl,
+      webhookUrl: webhook.toString(),
+      webhookSecret: (env.LIVEPAY_WEBHOOK_SECRET ?? "").trim() || null,
       timeoutMs: Math.max(1_000, Math.min(integer(env.LIVEPAY_TIMEOUT_MS, 20_000), 120_000)),
     },
   };

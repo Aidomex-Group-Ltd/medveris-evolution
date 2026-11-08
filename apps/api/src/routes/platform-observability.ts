@@ -211,3 +211,4 @@ platformObservabilityRoutes.get("/platform/observability/security", async (c) =>
     latency: requestLatency(),
   });
 });
+

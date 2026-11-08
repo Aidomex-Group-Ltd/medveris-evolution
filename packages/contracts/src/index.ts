@@ -94,6 +94,18 @@ export const codingSchema = z.object({
   userSelected: z.boolean().optional(),
 });
 
+/**
+ * Explicit platform-terms acceptance. Optional in the transport schema so an old client gets the
+ * route's precise 422 instead of a generic schema error; the route always requires it. Marketing,
+ * cookie and clinical consent are deliberately not part of this object.
+ */
+export const legalAcceptanceSchema = z.object({
+  termsVersion: z.string().trim().min(1).max(20),
+  privacyVersion: z.string().trim().min(1).max(20),
+  termsAccepted: z.boolean(),
+  privacyAcknowledged: z.boolean(),
+}).strict();
+
 export const registerPatientSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
@@ -102,6 +114,7 @@ export const registerPatientSchema = z.object({
   dateOfBirth: z.string().date(),
   sex: z.enum(["female", "male", "other", "unknown"]).default("unknown"),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
+  legal: legalAcceptanceSchema.optional(),
 });
 
 export const registerFacilitySchema = z.object({
@@ -113,6 +126,7 @@ export const registerFacilitySchema = z.object({
   facilityType: z.string().trim().min(1).max(80).default("outpatient"),
   city: z.string().trim().max(120).optional().or(z.literal("")),
   country: z.string().trim().max(120).default("Uganda"),
+  legal: legalAcceptanceSchema.optional(),
 });
 
 export const loginSchema = z.object({
@@ -143,6 +157,7 @@ export const invitationRegisterSchema = invitationTokenSchema.extend({
   password: passwordSchema,
   givenName: z.string().trim().min(1).max(120),
   familyName: z.string().trim().min(1).max(120),
+  legal: legalAcceptanceSchema.optional(),
 });
 
 export const membershipScopeSchema = z.object({
@@ -922,6 +937,64 @@ export const planDraftSchema = z.object({
 
 export const planApproveSchema = z.object({ approvalReference: z.string().trim().min(5).max(300) }).strict();
 
+export const legalAcknowledgmentSchema = z.object({
+  termsAccepted: z.boolean().default(false),
+  privacyPolicyAccepted: z.boolean().default(false),
+  termsDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  acceptedAt: z.string().datetime().optional(),
+}).strict();
+
+export const importExportSchema = z.object({
+  format: z.enum(["csv", "json", "xml"]),
+  scope: z.enum(["tenant", "department", "unit"]),
+  roleRequirement: z.enum(["any", "cashier", "finance", "department_admin", "unit_lead", "facility_admin"]),
+  allowPartial: z.boolean().default(false),
+  validateAgainstCatalogue: z.boolean().default(true),
+}).strict();
+
+export const importDataSchema = z.object({
+  sourceFormat: z.enum(["csv", "json", "fhir"]),
+  tenantId: uuidSchema.optional().nullable(),
+  departmentId: uuidSchema.optional().nullable(),
+  unitId: uuidSchema.optional().nullable(),
+  data: z.any(),
+  validate: z.boolean().default(true),
+}).strict();
+
+export const exportDataSchema = z.object({
+  format: z.enum(["csv", "json", "fhir"]),
+  scope: z.enum(["tenant", "department", "unit"]),
+  includeSensitive: z.boolean().default(false),
+  filterByRole: z.enum(["any", "cashier", "finance", "department_admin", "unit_lead", "facility_admin"]).optional(),
+}).strict();
+
+export const reportingRuleSchema = z.object({
+  code: z.string().min(3).max(80),
+  label: z.string().min(1).max(200),
+  metric: z.string().min(1).max(80),
+  periodType: z.enum(["Monthly", "Quarterly", "Weekly"]),
+  reportingFrequency: z.enum(["daily", "weekly", "monthly", "quarterly"]),
+  submissionDueDay: z.number().int().min(1).max(31),
+  validationStartDay: z.number().int().min(1).max(31),
+  validationEndDay: z.number().int().min(1).max(31),
+  lockAfterDay: z.number().int().min(1).max(31),
+  unitId: uuidSchema.optional().nullable(),
+  departmentId: uuidSchema.optional().nullable(),
+}).strict();
+
+export const reportingTemplateSchema = z.object({
+  code: z.string().min(3).max(80),
+  name: z.string().min(2).max(200),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+  metric: z.string().min(1).max(80),
+  periodType: z.enum(["Monthly", "Quarterly", "Weekly"]),
+  unitId: uuidSchema.optional().nullable(),
+  departmentId: uuidSchema.optional().nullable(),
+  filters: z.record(z.string(), z.string()).optional(),
+  aggregateFunctions: z.array(z.enum(["count", "sum", "average", "min", "max"])).default([]),
+  displayUnits: z.array(z.string().min(1).max(60)).default([]),
+}).strict();
+
 // ---------------------------------------------------------------- referral sharing
 
 export const REFERRAL_SHARE_CATEGORIES = ["encounter", "note", "observation", "condition", "allergy", "referral"] as const;
@@ -1145,7 +1218,6 @@ export const aiJobSchema = z.object({
   evidenceEntryIds: z.array(uuidSchema).default([]),
   studyId: uuidSchema.optional().nullable(),
 });
-
 export const carePlanUpdateSchema = carePlanSchema.extend({
   expectedVersion: z.number().int().min(1),
 });
@@ -1154,6 +1226,31 @@ export const labResultFinalizeSchema = z.object({
   expectedVersion: z.number().int().min(1),
   note: z.string().trim().max(2000).optional().or(z.literal("")),
 });
+
+export const operatorAlertSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().trim().min(2).max(200),
+  level: z.enum(["info", "warn", "error", "critical"]),
+  message: z.string().trim().min(5).max(2000),
+  category: z.string().trim().min(3).max(80).optional(),
+  operatorId: uuidSchema,
+  tenantId: uuidSchema,
+  departmentId: uuidSchema.optional().nullable(),
+  unitId: uuidSchema.optional().nullable(),
+  metadata: z.record(z.string(), z.string()).optional(),
+  createdAt: z.string().datetime(),
+  acknowledgedAt: z.string().datetime().optional(),
+}).strict();
+
+export const operatorNotificationSchema = z.object({
+  alertId: z.string().uuid(),
+  recipientRole: z.enum(["organization_admin", "department_admin", "unit_lead", "finance", "cashier"]),
+  recipientId: uuidSchema.optional(),
+  deliveryMethod: z.enum(["email", "sms", "in-app"]).default("email"),
+  sentAt: z.string().datetime().optional(),
+  deliveredAt: z.string().datetime().optional(),
+  readAt: z.string().datetime().optional(),
+}).strict();
 
 // Emergency care.
 export const emergencyCaseSchema = z
@@ -1187,6 +1284,96 @@ export const emergencyDispositionSchema = z.object({
   note: z.string().trim().min(5).max(4000),
   expectedVersion: z.number().int().min(1),
 });
+
+// Controlled interoperability.
+export const fhirBundleSchema = z.object({
+  resourceType: z.literal("Bundle"),
+  type: z.enum(["searchset", "collection", "document", "transaction", "batch", "history", "message", "history-instance"]).optional(),
+  timestamp: z.string().datetime().optional(),
+  entry: z.array(z.object({
+    fullUrl: z.string().url(),
+    resource: z.any(),
+    search: z.object({
+      mode: z.enum(["match", "include", "reset"]).optional(),
+    }).optional(),
+    searchParams: z.record(z.string(), z.string()).optional(),
+  })).optional(),
+  flag: z.object({
+    idle: z.boolean().default(false),
+    instant: z.boolean().default(false),
+    persist: z.boolean().default(false),
+  }).optional(),
+}).strict();
+
+export const fhirResourceSchema = z.object({
+  resourceType: z.string().min(1).max(100),
+  id: z.string().uuid().optional(),
+  meta: z.object({
+    lastUpdated: z.string().datetime().optional(),
+    source: z.string().url().optional(),
+    tag: z.array(z.object({
+      system: z.string().url(),
+      code: z.string().min(1).max(100),
+    })).optional(),
+    security: z.string().min(1).max(50).optional(),
+  }).optional(),
+  implicitRules: z.string().optional(),
+  language: z.string().regex(/^[a-z]{2,3}(-[a-z]{1,8})?$/).optional(),
+  text: z.object({
+    status: z.enum(["generated", "extensions", "additional", "empty"]).default("generated"),
+    div: z.string().optional(),
+  }).optional(),
+  metaExtension: z.array(z.object({
+    url: z.string().url(),
+    valueString: z.string().optional(),
+    valueBoolean: z.boolean().optional(),
+    valueInteger: z.number().optional(),
+  })).optional(),
+  extension: z.array(z.object({
+    url: z.string().url(),
+    valueString: z.string().optional(),
+    valueBoolean: z.boolean().optional(),
+    valueInteger: z.number().optional(),
+  })).optional(),
+  discriminator: z.object({
+    type: z.string(),
+    pattern: z.string().optional(),
+  }).optional(),
+  implicitlyKnowntype: z.boolean().default(false),
+}).strict();
+
+export const integrationClientSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(2).max(200),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+  kind: z.enum(["fhir-server", "hl7-v2", "rest-api", "smtp", "sms"]),
+  status: z.enum(["sandbox", "production", "retired"]).default("sandbox"),
+  endpoint: z.string().url().max(500).optional(),
+  authentication: z.object({
+    type: z.enum(["oauth2", "api-key", "client-certificate", "http-basic"]),
+    config: z.record(z.string(), z.string()).optional(),
+  }).optional(),
+  tenantId: uuidSchema.optional(),
+  departmentId: uuidSchema.optional().nullable(),
+  unitId: uuidSchema.optional().nullable(),
+  allowedRoles: z.array(z.string().min(1).max(80)).default([]),
+  authenticated: z.boolean().default(false),
+  lastVerification: z.string().datetime().optional(),
+  verificationMode: z.enum(["manual", "auto", "sandbox"]).default("manual"),
+}).strict();
+
+export const integrationVerificationSchema = z.object({
+  id: z.string().uuid(),
+  integrationId: z.string().uuid(),
+  endpoint: z.string().url(),
+  request: z.any(),
+  response: z.any().optional(),
+  status: z.enum(["pending", "passed", "failed"]).default("pending"),
+  mode: z.enum(["sandbox", "production"]).default("sandbox"),
+  testedAt: z.string().datetime(),
+  testedBy: uuidSchema.optional(),
+  notes: z.string().trim().max(1000).optional().or(z.literal("")),
+}).strict();
 
 // Local follow-up and referral tracking. These records are not external
 // referral transmissions.
@@ -2516,14 +2703,15 @@ export const joinCodeSchema = z.string().trim().min(12).max(64).regex(/^[A-Za-z0
 
 /** The three onboarding paths: an independent workspace, a new organization with its first site, or joining an organization. */
 export const registerWorkspaceSchema = z.discriminatedUnion("path", [
-  z.object({ path: z.literal("independent"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema }),
-  z.object({ path: z.literal("organization"), owner: workspaceOwnerSchema, organization: organizationDetailsSchema, workspace: workspaceDetailsSchema }),
+  z.object({ path: z.literal("independent"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema, legal: legalAcceptanceSchema.optional() }),
+  z.object({ path: z.literal("organization"), owner: workspaceOwnerSchema, organization: organizationDetailsSchema, workspace: workspaceDetailsSchema, legal: legalAcceptanceSchema.optional() }),
   z.object({
     path: z.literal("join"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema,
     /** A join code from the organization's administrator, or an organization found by name; both need approval. */
     joinCode: joinCodeSchema.optional(),
     organizationId: uuidSchema.optional(),
     historyVisibility: z.enum(["from-link-date", "full-history"]).default("from-link-date"),
+    legal: legalAcceptanceSchema.optional(),
   }),
 ]);
 
@@ -2755,6 +2943,21 @@ export const subscriptionCheckoutSchema = z.object({
 
 export const subscriptionCheckoutCancelSchema = z.object({
   reason: z.string().trim().min(3).max(500),
+});
+
+/** LivePay webhook body (docs.livepay.me/webhooks). Unknown fields are ignored, never trusted. */
+export const livepayWebhookSchema = z.object({
+  status: z.string().trim().min(1).max(40),
+  message: z.string().max(500).nullish(),
+  customer_reference: z.string().trim().min(1).max(120),
+  internal_reference: z.string().trim().max(120).nullish(),
+  provider_transaction_id: z.string().trim().max(120).nullish(),
+  msisdn: z.string().trim().max(40).nullish(),
+  amount: z.number().finite().nonnegative().nullish(),
+  currency: z.string().trim().length(3).nullish(),
+  provider: z.string().trim().max(40).nullish(),
+  charge: z.number().finite().nonnegative().nullish(),
+  completed_at: z.string().trim().max(60).nullish(),
 });
 
 export const hmisReportingRuleSchema = z.object({

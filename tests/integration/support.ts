@@ -147,6 +147,16 @@ export function createHarness(label: string, options: HarnessOptions = {}) {
     return expectOk(await call(session, path, { method: "POST", body: JSON.stringify(body), idempotencyKey }), status);
   }
 
+  /** Current published policy versions, so registration payloads accept what the release enforces. */
+  async function legalAcceptance(): Promise<{ termsVersion: string; privacyVersion: string; termsAccepted: true; privacyAcknowledged: true }> {
+    const body = await json(await app.fetch(new Request("http://localhost/api/v1/public/legal")));
+    const versions = new Map<string, string>((body.documents ?? []).map((document: any) => [document.kind, document.version]));
+    const termsVersion = versions.get("terms");
+    const privacyVersion = versions.get("privacy");
+    if (!termsVersion || !privacyVersion) throw new Error("public legal versions unavailable");
+    return { termsVersion, privacyVersion, termsAccepted: true, privacyAcknowledged: true };
+  }
+
   async function registerPatient(session: Session, familyName = `Synthetic${Date.now()}`): Promise<string> {
     const created = await post(session, "/api/v1/reception/patients", {
       givenName: "Synthetic", familyName, dateOfBirth: "1990-01-01", sex: "female", identityConfidence: "confirmed-verbal",
@@ -154,5 +164,5 @@ export function createHarness(label: string, options: HarnessOptions = {}) {
     return created.patient.patientId as string;
   }
 
-  return { app, sql, config, mailDir, json, login, call, expectOk, post, registerPatient };
+  return { app, sql, config, mailDir, json, login, call, expectOk, post, registerPatient, legalAcceptance };
 }

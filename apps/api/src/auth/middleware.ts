@@ -114,6 +114,8 @@ export function actorFrom(auth: AuthContext): ActorContext {
     roles,
     tenantId: auth.activeTenant?.id ?? null,
     patientId: auth.patientId,
+    unitId: auth.activeTenant?.scope?.unitId ?? null,
+    departmentId: auth.activeTenant?.scope?.departmentId ?? null,
     mfaVerified: auth.mfaVerified,
     mfaEnrolled: Boolean(auth.user.mfaEnrolledAt),
     platformRoles: auth.platformRoles,
@@ -132,6 +134,8 @@ function actorContext(auth: AuthContext): TenantContext {
       ? "platform_operator"
       : auth.platformRoles.includes("credential_reviewer") ? "credential_reviewer" : null,
     membershipId: auth.membershipId,
+    unitId: actor.unitId,
+    departmentId: actor.departmentId,
   };
 }
 

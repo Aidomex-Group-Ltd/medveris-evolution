@@ -36,6 +36,7 @@ import { enforceRateLimit, peekRateLimit, recordRateLimitHit, requestAddress } f
 import { writeAudit } from "../lib/audit.js";
 import { requireAuth, setSessionCookie, revokeCurrentSession } from "../auth/middleware.js";
 import { acceptInvitation, declineInvitation, describeInvitation, maskEmail, registerInvitee } from "../services/invitations.js";
+import { recordLegalAcceptance, requireLegalAcceptance } from "../lib/legal.js";
 import { createWorkspace, duplicateFindings, levelFrom, OWNER_ROLES, recordLinkEvent, unitOwnerRoles } from "../services/workspaces.js";
 import { attachTenantToAccount, provisionBillingAccount } from "../services/subscriptions.js";
 import { createSession, loadAuthContext, SESSION_COOKIE } from "../auth/session.js";
@@ -94,6 +95,7 @@ authRoutes.post("/register/patient", async (c) => {
   const deps = c.get("deps");
   await enforceRateLimit(c, "auth.register", requestAddress(c));
   const body = await parseJson(c, registerPatientSchema);
+  const legal = await requireLegalAcceptance(body.legal);
   const meta = requestMeta(c);
   const userId = crypto.randomUUID();
   const patientId = crypto.randomUUID();
@@ -112,6 +114,14 @@ authRoutes.post("/register/patient", async (c) => {
         ${body.email}, ${body.phone || null}, 'self-registration')
     `;
     await tx`insert into patient_accounts (id, user_id, patient_id, verified_at) values (${crypto.randomUUID()}, ${userId}, ${patientId}, ${new Date()})`;
+    await recordLegalAcceptance(tx, deps.config.sessionSecret, {
+      userId, tenantId: null, context: "registration", ipAddress: meta.ip, userAgent: meta.userAgent,
+    });
+    await writeAudit(tx, deps.config, {
+      actorKind: "registration", actorUserId: userId, action: "legal.acceptance",
+      resourceType: "LegalAcceptance", resourceId: userId, ipAddress: meta.ip,
+      metadata: { context: "registration", documents: legal.map((document) => ({ kind: document.kind, version: document.version, digest: document.digest })) },
+    });
     const token = await createEmailToken(tx, userId, "verify-email");
     await writeAudit(tx, deps.config, {
       actorKind: "registration",
@@ -136,6 +146,7 @@ authRoutes.post("/register/patient", async (c) => {
   return c.json({
     ok: true,
     patient: { publicId },
+    legal: { termsVersion: legal[0]!.version, privacyVersion: legal[1]!.version },
     verificationEmail: { delivered: delivery.delivered, detail: delivery.detail },
   }, 201);
 });
@@ -145,6 +156,8 @@ authRoutes.post("/register/facility", async (c) => {
   const deps = c.get("deps");
   await enforceRateLimit(c, "auth.facility-register", requestAddress(c));
   const body = await parseJson(c, registerFacilitySchema);
+  const legal = await requireLegalAcceptance(body.legal);
+  const meta = requestMeta(c);
   const userId = crypto.randomUUID();
   const passwordHash = await hashPassword(body.password);
   const category = categoryFromLegacyType(body.facilityType);
@@ -168,6 +181,14 @@ authRoutes.post("/register/facility", async (c) => {
       identity: { ownerEmail: body.email }, actorKind: "registration",
     });
     await attachTenantToAccount(tx, workspace.tenantId, billing.billingAccountId);
+    await recordLegalAcceptance(tx, deps.config.sessionSecret, {
+      userId, tenantId: workspace.tenantId, context: "registration", ipAddress: meta.ip, userAgent: meta.userAgent,
+    });
+    await writeAudit(tx, deps.config, {
+      actorKind: "registration", actorUserId: userId, tenantId: workspace.tenantId, action: "legal.acceptance",
+      resourceType: "LegalAcceptance", resourceId: userId, ipAddress: meta.ip,
+      metadata: { context: "registration", documents: legal.map((document) => ({ kind: document.kind, version: document.version, digest: document.digest })) },
+    });
     return { emailToken: await createEmailToken(tx, userId, "verify-email"), tenantId: workspace.tenantId };
   });
   const delivery = await deliver(
@@ -181,6 +202,7 @@ authRoutes.post("/register/facility", async (c) => {
   return c.json({
     ok: true,
     facility: { id: tenantId, name: body.facilityName },
+    legal: { termsVersion: legal[0]!.version, privacyVersion: legal[1]!.version },
     verificationEmail: { delivered: delivery.delivered, detail: delivery.detail },
   }, 201);
 });
@@ -195,6 +217,7 @@ authRoutes.post("/register/workspace", async (c) => {
   const deps = c.get("deps");
   await enforceRateLimit(c, "auth.facility-register", requestAddress(c));
   const body = await parseJson(c, registerWorkspaceSchema);
+  const legal = await requireLegalAcceptance(body.legal);
   if (body.path === "join" && !body.joinCode === !body.organizationId) {
     throw new ValidationError("Choose the organization to join, or enter the join code its administrator gave you", [{ path: "joinCode", message: "Organization or join code required" }]);
   }
@@ -294,8 +317,16 @@ authRoutes.post("/register/workspace", async (c) => {
       actorKind: "registration",
     });
     await attachTenantToAccount(tx, created.tenantId, billing.billingAccountId);
+    await recordLegalAcceptance(tx, deps.config.sessionSecret, {
+      userId, tenantId: created.tenantId, context: "registration", ipAddress: meta.ipAddress, userAgent: c.req.header("user-agent") ?? null,
+    });
+    await writeAudit(tx, deps.config, {
+      actorKind: "registration", actorUserId: userId, tenantId: created.tenantId, action: "legal.acceptance",
+      resourceType: "LegalAcceptance", resourceId: userId, ...meta,
+      metadata: { context: "registration", documents: legal.map((document) => ({ kind: document.kind, version: document.version, digest: document.digest })) },
+    });
     const emailToken = await createEmailToken(tx, userId, "verify-email");
-    return { tenantId: created.tenantId, organization, link, emailToken, billing };
+    return { tenantId: created.tenantId, organization, link, emailToken, billing, legal };
   });
   const delivery = await deliver(
     c,
@@ -313,6 +344,7 @@ authRoutes.post("/register/workspace", async (c) => {
     workspace: { id: result.tenantId, name: workspace.name, serviceCategory: workspace.serviceCategory, roles: ownerRoles },
     organization: result.organization,
     link: result.link,
+    legal: { termsVersion: legal[0]!.version, privacyVersion: legal[1]!.version },
     subscription: {
       onboardingFee: 0,
       status: result.billing.trialEligible ? "trialing" : "trial_expired",
@@ -754,7 +786,9 @@ authRoutes.post("/invitations/register", async (c) => {
   const body = await parseJson(c, invitationRegisterSchema);
   await enforceRateLimit(c, "invitation.register.token", await sha256Hex(body.token));
   if (c.get("auth")) throw new AppError(409, "invitation_signed_in", "Sign out before creating a new account for this invitation");
-  const { userId } = await registerInvitee(deps.sql, deps.config, { ...body, meta: auditMeta(c) });
+  await requireLegalAcceptance(body.legal);
+  const meta = requestMeta(c);
+  const { userId } = await registerInvitee(deps.sql, deps.config, { ...body, meta: auditMeta(c), acceptance: meta });
   const session = await createSession(deps.sql, deps.config, userId, { mfaVerified: false, activeTenantId: null, ...requestMeta(c) });
   setSessionCookie(c, session);
   return c.json({ ok: true, csrfToken: session.csrfToken }, 201);

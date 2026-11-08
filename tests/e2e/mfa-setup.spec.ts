@@ -4,8 +4,13 @@ import { totpCode } from "../../packages/auth/src/index.js";
 test("a newly registered facility admin enrols MFA before facility workspaces load", async ({ page }) => {
   const email = `mfa.${Date.now()}@example.test`;
   const password = "Synthetic-Mfa-Setup-2026!";
+  const advertised = await (await page.request.get("/api/v1/public/legal")).json() as any;
+  const versions = new Map<string, string>((advertised.documents ?? []).map((document: any) => [document.kind, document.version]));
   const registered = await page.request.post("/api/v1/auth/register/facility", {
-    data: { email, password, givenName: "Synthetic", familyName: "Enroller", facilityName: "Synthetic MFA Clinic", city: "Kampala" },
+    data: {
+      email, password, givenName: "Synthetic", familyName: "Enroller", facilityName: "Synthetic MFA Clinic", city: "Kampala",
+      legal: { termsVersion: versions.get("terms"), privacyVersion: versions.get("privacy"), termsAccepted: true, privacyAcknowledged: true },
+    },
   });
   expect(registered.status()).toBe(201);
 

@@ -12,6 +12,10 @@ export interface TenantContext {
   platformRole?: string | null;
   /** Optional membership id used by RLS policies that need the caller's assigned row, not just the tenant. */
   membershipId?: string | null;
+  /** Optional unit scope recorded on the actor's membership. */
+  unitId?: string | null;
+  /** Optional department scope recorded on the actor's membership. */
+  departmentId?: string | null;
   /** Optional platform override: when true, the caller is treated as a platform operator for RLS. */
   platformOperator?: boolean;
 }
@@ -52,6 +56,8 @@ export async function setLocalContext(tx: Tx, ctx: TenantContext): Promise<void>
       set_config('app.roles', ${roles}, true),
       set_config('app.platform_role', ${ctx.platformRole ?? (ctx.platformOperator ? 'platform_operator' : "")}, true),
       set_config('app.membership_id', ${ctx.membershipId ?? ""}, true),
+      set_config('app.unit_id', ${ctx.unitId ?? ""}, true),
+      set_config('app.department_id', ${ctx.departmentId ?? ""}, true),
       set_config('statement_timeout', ${String(STATEMENT_TIMEOUT_MS)}, true),
       set_config('idle_in_transaction_session_timeout', ${String(IDLE_IN_TRANSACTION_TIMEOUT_MS)}, true)
   `;

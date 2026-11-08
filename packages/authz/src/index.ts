@@ -63,10 +63,20 @@ export const IMPLIED_ROLES: Readonly<Partial<Record<Role, readonly Role[]>>> = O
 /** Roles whose authority is limited to the department or unit recorded on their membership. */
 export const SCOPED_ROLES: readonly Role[] = ["department_admin", "unit_lead"];
 
+/**
+ * True when the actor's membership is not limited to a department or unit. `department_admin` and
+ * `unit_lead` are the only roles that carry a scope; every other role keeps workspace-wide authority.
+ * This is the same rule `apps/api/src/lib/scope.ts` applies against the database.
+ */
+export function hasWorkspaceWideScope(actor: ActorContext): boolean {
+  return actor.tenantId !== null && !actor.roles.some((role) => SCOPED_ROLES.includes(role));
+}
+
 export function withImpliedRoles(roles: readonly Role[]): Role[] {
   const out = new Set<Role>(roles);
   for (const role of roles) for (const implied of IMPLIED_ROLES[role] ?? []) out.add(implied);
   return [...out];
+
 }
 
 export interface ActorContext {
@@ -74,6 +84,10 @@ export interface ActorContext {
   roles: Role[];
   tenantId: string | null;
   patientId: string | null;
+  /** Unit id recorded on the actor's membership; null/absent means no unit scope. */
+  unitId?: string | null;
+  /** Department id recorded on the actor's membership; null/absent means no department scope. */
+  departmentId?: string | null;
   mfaVerified: boolean;
   mfaEnrolled: boolean;
   platformRoles?: string[];
@@ -98,6 +112,23 @@ export function hasRole(actor: ActorContext, ...roles: Role[]): boolean {
   return roles.some((r) => actor.roles.includes(r));
 }
 
+/**
+ * Membership-level boundary check. Workspace-wide roles pass; a scoped role must carry the exact
+ * unit id. The authoritative check remains the database-backed actor scope, which also resolves a
+ * unit to its parent department; this helper is for code paths that already hold a unit id.
+ */
+export function hasUnitAccess(actor: ActorContext, unitId: string): boolean {
+  if (actor.tenantId === null) return false;
+  if (hasWorkspaceWideScope(actor)) return true;
+  return actor.unitId != null && actor.unitId === unitId;
+}
+
+export function hasDepartmentAccess(actor: ActorContext, departmentId: string): boolean {
+  if (actor.tenantId === null) return false;
+  if (hasWorkspaceWideScope(actor)) return true;
+  return actor.departmentId != null && actor.departmentId === departmentId;
+}
+
 export function canReadClinical(actor: ActorContext): boolean {
   return hasRole(actor, ...clinicalRoles);
 }
@@ -116,6 +147,14 @@ export function canManageTenant(actor: ActorContext): boolean {
 
 export function canReviewCredentials(actor: ActorContext): boolean {
   return actor.platformRoles?.includes("credential_reviewer") || hasRole(actor, "credential_reviewer");
+}
+
+export function assertUnitAccess(actor: ActorContext, unitId: string): void {
+  if (!hasUnitAccess(actor, unitId)) throw new AuthzError("Unit access is not permitted for this role and tenant");
+}
+
+export function assertDepartmentAccess(actor: ActorContext, departmentId: string): void {
+  if (!hasDepartmentAccess(actor, departmentId)) throw new AuthzError("Department access is not permitted for this role and tenant");
 }
 
 export function canAudit(actor: ActorContext): boolean {

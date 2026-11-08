@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button, Card, ErrorState, Field, Input, Notice, Select } from "@medveris/ui";
 import { BrandMark } from "../components/BrandMark";
@@ -12,6 +12,22 @@ export function RegisterPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ publicId?: string; delivery?: string } | null>(null);
+  const [legalVersions, setLegalVersions] = useState<{ terms: string; privacy: string } | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ documents: Array<{ kind: "terms" | "privacy"; version: string }> }>("/public/legal")
+      .then((payload) => {
+        if (cancelled) return;
+        const terms = payload.documents.find((document) => document.kind === "terms")?.version;
+        const privacy = payload.documents.find((document) => document.kind === "privacy")?.version;
+        if (terms && privacy) setLegalVersions({ terms, privacy });
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,6 +40,11 @@ export function RegisterPage() {
       givenName: String(data.get("givenName") ?? ""),
       familyName: String(data.get("familyName") ?? ""),
     };
+    if (!legalVersions || !termsAccepted || !privacyAcknowledged) {
+      setError("Accept the Terms of Service and acknowledge the Privacy Notice before registering.");
+      setBusy(false);
+      return;
+    }
     try {
       const response = await api<{ patient: { publicId: string }; verificationEmail: { delivered: boolean; detail?: string } }>("/auth/register/patient", {
         method: "POST",
@@ -32,6 +53,12 @@ export function RegisterPage() {
           dateOfBirth: String(data.get("dateOfBirth") ?? ""),
           sex: String(data.get("sex") ?? "unknown"),
           phone: String(data.get("phone") ?? ""),
+          legal: {
+            termsVersion: legalVersions.terms,
+            privacyVersion: legalVersions.privacy,
+            termsAccepted,
+            privacyAcknowledged,
+          },
         },
       });
       setResult({ publicId: response.patient.publicId, delivery: response.verificationEmail.delivered ? "Verification email delivered to the local mail sink." : response.verificationEmail.detail ?? "Verification email was not delivered." });
@@ -94,7 +121,21 @@ export function RegisterPage() {
                   <Field label="Sex"><Select name="sex" defaultValue="unknown"><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="unknown">Unknown</option></Select></Field>
                 </div>
                 <Field label="Phone" htmlFor="phone" hint="Optional. You may register without a phone or national ID."><Input id="phone" name="phone" autoComplete="tel" /></Field>
-                <Button type="submit" disabled={busy}>{busy ? "Registering…" : "Register"}</Button>
+                <label className="mv-check">
+                  <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
+                  <span>
+                    I have read and accept the <Link to="/terms" target="_blank" rel="noreferrer">Terms of Service</Link>
+                    {legalVersions ? ` (version ${legalVersions.terms})` : ""}.
+                  </span>
+                </label>
+                <label className="mv-check">
+                  <input type="checkbox" checked={privacyAcknowledged} onChange={(event) => setPrivacyAcknowledged(event.target.checked)} />
+                  <span>
+                    I have read the <Link to="/privacy" target="_blank" rel="noreferrer">Privacy Notice</Link>
+                    {legalVersions ? ` (version ${legalVersions.privacy})` : ""}.
+                  </span>
+                </label>
+                <Button type="submit" disabled={busy || !legalVersions || !termsAccepted || !privacyAcknowledged}>{busy ? "Registering…" : "Register"}</Button>
                 <div className="mv-row mv-small">
                   <span className="mv-muted">Already registered?</span>
                   <Link to="/login">Sign in</Link>

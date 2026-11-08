@@ -18,10 +18,17 @@ async function latestLink(email: string, path: "/reset-password" | "/verify-emai
 
 const latestResetLink = (email: string) => latestLink(email, "/reset-password");
 
+/** The registration routes require the versions the public page currently advertises. */
+async function legalAcceptance(request: { get: (path: string) => Promise<{ json: () => Promise<any> }> }) {
+  const body = await (await request.get("/api/v1/public/legal")).json();
+  const versions = new Map<string, string>((body.documents ?? []).map((document: any) => [document.kind, document.version]));
+  return { termsVersion: versions.get("terms"), privacyVersion: versions.get("privacy"), termsAccepted: true, privacyAcknowledged: true };
+}
+
 test("a new registrant verifies their email from the emailed link", async ({ page }) => {
   const email = `verify.${Date.now()}@example.test`;
   const registered = await page.request.post("/api/v1/auth/register/patient", {
-    data: { email, password: "Synthetic-Verify-2026!", givenName: "Synthetic", familyName: "Verifier", dateOfBirth: "1990-01-01" },
+    data: { email, password: "Synthetic-Verify-2026!", givenName: "Synthetic", familyName: "Verifier", dateOfBirth: "1990-01-01", legal: await legalAcceptance(page.request) },
   });
   expect(registered.status()).toBe(201);
   await page.goto(await latestLink(email, "/verify-email"));
@@ -34,7 +41,7 @@ test("a new registrant verifies their email from the emailed link", async ({ pag
 test("a user recovers a forgotten password from the sign-in page", async ({ page }) => {
   const email = `recovery.${Date.now()}@example.test`;
   const registered = await page.request.post("/api/v1/auth/register/facility", {
-    data: { email, password: "Synthetic-Original-2026!", givenName: "Synthetic", familyName: "Recovery", facilityName: "Synthetic Recovery Clinic" },
+    data: { email, password: "Synthetic-Original-2026!", givenName: "Synthetic", familyName: "Recovery", facilityName: "Synthetic Recovery Clinic", legal: await legalAcceptance(page.request) },
   });
   expect(registered.status()).toBe(201);
 

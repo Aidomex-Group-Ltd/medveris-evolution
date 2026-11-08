@@ -51,7 +51,9 @@ async function status(token: string, session?: Session): Promise<{ code: number;
 }
 
 async function registerInvitee(token: string): Promise<Session> {
-  const response = await anonymous("/api/v1/auth/invitations/register", { token, givenName: "Synthetic", familyName: "Invitee", password: PASSWORD });
+  const response = await anonymous("/api/v1/auth/invitations/register", {
+    token, givenName: "Synthetic", familyName: "Invitee", password: PASSWORD, legal: await h.legalAcceptance(),
+  });
   const body = await h.json(response);
   expect(response.status, JSON.stringify(body)).toBe(201);
   return { cookie: cookieFrom(response), csrf: body.csrfToken };
@@ -77,6 +79,7 @@ async function enrollMfa(session: Session): Promise<void> {
 async function registerFacility(): Promise<{ admin: Session; tenantId: string }> {
   const email = uniqueEmail("admin-b");
   const registered = await anonymous("/api/v1/auth/register/facility", {
+    legal: await h.legalAcceptance(),
     email, password: PASSWORD, givenName: "Synthetic", familyName: "Administrator", facilityName: "Synthetic Second Clinic",
   });
   const body = await h.json(registered);
@@ -207,7 +210,9 @@ describe("accepting an invitation", () => {
     const email = uniqueEmail("existing");
     const { token } = await invite(admin, email);
     await registerInvitee(token);
-    const again = await anonymous("/api/v1/auth/invitations/register", { token, givenName: "Dup", familyName: "Account", password: PASSWORD });
+    const again = await anonymous("/api/v1/auth/invitations/register", {
+      token, givenName: "Dup", familyName: "Account", password: PASSWORD, legal: await h.legalAcceptance(),
+    });
     expect(again.status).toBe(409);
     expect((await h.json(again)).error.code).toBe("invitation_account_exists");
   });

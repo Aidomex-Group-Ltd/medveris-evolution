@@ -23,11 +23,18 @@ const deps: AppDeps = {
 const app = createApp(deps);
 const password = "Synthetic-Registration-2026!";
 
-async function post(path: string, body: unknown): Promise<Response> {
+async function legalAcceptance() {
+  const body = await (await app.fetch(new Request("http://localhost/api/v1/public/legal"))).json() as any;
+  const versions = new Map<string, string>((body.documents ?? []).map((document: any) => [document.kind, document.version]));
+  return { termsVersion: versions.get("terms")!, privacyVersion: versions.get("privacy")!, termsAccepted: true, privacyAcknowledged: true };
+}
+
+async function post(path: string, body: Record<string, unknown>): Promise<Response> {
+  const payload = path.startsWith("/api/v1/auth/register/") ? { legal: await legalAcceptance(), ...body } : body;
   return await app.fetch(new Request(`http://localhost${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   }));
 }
 
@@ -102,6 +109,46 @@ describe("self-service registration", () => {
     const body = await response.json() as any;
     expect(response.status, JSON.stringify(body)).toBe(201);
     expect(body.patient.publicId).toMatch(/^MV-/);
+  });
+});
+
+describe("legal acceptance", () => {
+  const plainPost = (path: string, body: unknown) => app.fetch(new Request(`http://localhost${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  }));
+  const patient = () => ({
+    email: `legal.${crypto.randomUUID()}@example.test`,
+    password, givenName: "Synthetic", familyName: "Acceptance", dateOfBirth: "1990-01-01", sex: "female",
+  });
+
+  it("refuses registration without an explicit acceptance of the current versions", async () => {
+    const input = patient();
+    expect((await plainPost("/api/v1/auth/register/patient", input)).status).toBe(422);
+    expect((await plainPost("/api/v1/auth/register/patient", {
+      ...input, legal: { ...(await legalAcceptance()), termsVersion: "0.9" },
+    })).status).toBe(422);
+    expect((await plainPost("/api/v1/auth/register/patient", {
+      ...input, legal: { ...(await legalAcceptance()), termsAccepted: false },
+    })).status).toBe(422);
+  });
+
+  it("records both accepted documents and reports no outstanding acceptance", async () => {
+    const input = patient();
+    const created = await post("/api/v1/auth/register/patient", input);
+    expect(created.status).toBe(201);
+
+    const login = await post("/api/v1/auth/login", { email: input.email, password });
+    expect(login.status).toBe(200);
+    const cookie = (login.headers.getSetCookie?.() ?? []).find((value) => value.startsWith("mv_session="))!.split(";")[0]!;
+    const status = await (await app.fetch(new Request("http://localhost/api/v1/me/legal", { headers: { cookie } }))).json() as any;
+    expect(status.requiresAcceptance).toBe(false);
+    expect(status.current.map((document: any) => document.kind).sort()).toEqual(["privacy", "terms"]);
+    for (const document of status.current) {
+      expect(document.accepted).toBe(true);
+      expect(document.version).toBe("1.0");
+    }
   });
 });
 

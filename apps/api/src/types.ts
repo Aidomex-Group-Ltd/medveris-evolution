@@ -105,6 +105,8 @@ export interface AppDeps {
   dhis2Transport?: FetchLike;
   /** Transport for Yo! Payments; tests inject a fake gateway. */
   yoTransport?: FetchLike;
+  /** Transport for LivePay; tests inject a fake gateway. LivePay has no test mode. */
+  livepayTransport?: FetchLike;
   /** Exchange-rate provider; absent means one is built from `config.fx`. Tests inject a test double. */
   fxProvider?: FxProvider | null;
   /** Cloudflare observability proxy; absent means one is built from `config.cloudflare` per request. */

@@ -50,7 +50,23 @@ export function InvitationPage() {
   const [accepted, setAccepted] = useState<Accepted | null>(null);
   const [busy, setBusy] = useState<"accept" | "decline" | "register" | "switch" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [legalVersions, setLegalVersions] = useState<{ terms: string; privacy: string } | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ documents: Array<{ kind: "terms" | "privacy"; version: string }> }>("/public/legal")
+      .then((payload) => {
+        if (cancelled) return;
+        const terms = payload.documents.find((document) => document.kind === "terms")?.version;
+        const privacy = payload.documents.find((document) => document.kind === "privacy")?.version;
+        if (terms && privacy) setLegalVersions({ terms, privacy });
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -110,10 +126,21 @@ export function InvitationPage() {
       setActionError("The passwords do not match");
       return;
     }
+    if (!legalVersions || !termsAccepted || !privacyAcknowledged) {
+      setActionError("Accept the Terms of Service and acknowledge the Privacy Notice before creating your account.");
+      return;
+    }
     void run("register", async () => {
       const result = await api<{ csrfToken: string }>("/auth/invitations/register", {
         method: "POST",
-        body: { token, givenName: String(data.get("givenName") ?? ""), familyName: String(data.get("familyName") ?? ""), password: String(data.get("password") ?? "") },
+        body: {
+          token, givenName: String(data.get("givenName") ?? ""), familyName: String(data.get("familyName") ?? ""),
+          password: String(data.get("password") ?? ""),
+          legal: {
+            termsVersion: legalVersions.terms, privacyVersion: legalVersions.privacy,
+            termsAccepted, privacyAcknowledged,
+          },
+        },
       });
       setCsrfToken(result.csrfToken);
       await refresh();
@@ -224,7 +251,21 @@ export function InvitationPage() {
                 </div>
                 <Field label="Password" htmlFor="invite-password" hint="At least 10 characters."><Input id="invite-password" name="password" type="password" autoComplete="new-password" minLength={10} required /></Field>
                 <Field label="Confirm password" htmlFor="invite-confirm"><Input id="invite-confirm" name="confirm" type="password" autoComplete="new-password" minLength={10} required /></Field>
-                <Button type="submit" disabled={busy !== null}>{busy === "register" ? "Creating account…" : "Create account"}</Button>
+                <label className="mv-check">
+                  <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
+                  <span>
+                    I have read and accept the <Link to="/terms" target="_blank" rel="noreferrer">Terms of Service</Link>
+                    {legalVersions ? ` (version ${legalVersions.terms})` : ""}.
+                  </span>
+                </label>
+                <label className="mv-check">
+                  <input type="checkbox" checked={privacyAcknowledged} onChange={(event) => setPrivacyAcknowledged(event.target.checked)} />
+                  <span>
+                    I have read the <Link to="/privacy" target="_blank" rel="noreferrer">Privacy Notice</Link>
+                    {legalVersions ? ` (version ${legalVersions.privacy})` : ""} and understand how personal and health data is handled.
+                  </span>
+                </label>
+                <Button type="submit" disabled={busy !== null || !legalVersions || !termsAccepted || !privacyAcknowledged}>{busy === "register" ? "Creating account…" : "Create account"}</Button>
                 <Button variant="ghost" type="button" disabled={busy !== null} onClick={decline}>Decline invitation</Button>
                 <p className="mv-small mv-muted">Already have a Medveris account under this email? <Button variant="ghost" size="sm" type="button" onClick={signIn}>Sign in instead</Button></p>
               </form>

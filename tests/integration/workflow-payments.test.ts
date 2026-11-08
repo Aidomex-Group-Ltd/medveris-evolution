@@ -106,6 +106,7 @@ describe("onboarding and workspace restore", () => {
     const email = `lab.owner.${run}@example.test`;
     const response = await anonymous("/api/v1/auth/register/workspace", {
       body: JSON.stringify({
+        legal: await h.legalAcceptance(),
         path: "independent",
         owner: { email, password: PASSWORD, givenName: "Synthetic", familyName: "LabOwner" },
         workspace: { name: `Synthetic Diagnostic Laboratory ${run}`, workspaceKind: "service-unit", serviceCategory: "laboratory", ownership: "private-for-profit", levelStatus: "not-applicable", registrations: [] },

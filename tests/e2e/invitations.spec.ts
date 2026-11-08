@@ -19,6 +19,13 @@ async function invitationLink(email: string): Promise<string> {
   throw new Error(`no invitation email for ${email}`);
 }
 
+/** The registration routes require the versions the public page currently advertises. */
+async function legalAcceptance(request: Page["request"]) {
+  const body = await (await request.get("/api/v1/public/legal")).json();
+  const versions = new Map<string, string>((body.documents ?? []).map((document: any) => [document.kind, document.version]));
+  return { termsVersion: versions.get("terms"), privacyVersion: versions.get("privacy"), termsAccepted: true, privacyAcknowledged: true };
+}
+
 async function staffSignIn(page: Page, email: string, password = SEED_PASSWORD): Promise<void> {
   await page.goto("/login");
   await page.getByRole("tab", { name: "Facility staff sign-in" }).click();
@@ -66,6 +73,8 @@ test("an administrator's invitation takes a new staff member through confirmatio
   await page.getByLabel("Family name").fill("Invitee");
   await page.getByLabel(/^Password/).fill(password);
   await page.getByLabel("Confirm password").fill(password);
+  await page.getByRole("checkbox", { name: /Terms of Service/ }).check();
+  await page.getByRole("checkbox", { name: /Privacy Notice/ }).check();
   await page.getByRole("button", { name: "Create account" }).click();
   await page.getByRole("button", { name: "Accept invitation" }).click();
   await expect(page.getByText(`You are now registered as staff at ${KAMPALA}`)).toBeVisible();
@@ -95,7 +104,7 @@ test("an existing account signs in from the invitation and returns to it to acce
   const email = `existing.${Date.now()}@example.test`;
   const password = "Synthetic-Existing-2026!";
   expect((await page.request.post("/api/v1/auth/register/patient", {
-    data: { email, password, givenName: "Synthetic", familyName: "Existing", dateOfBirth: "1990-01-01" },
+    data: { email, password, givenName: "Synthetic", familyName: "Existing", dateOfBirth: "1990-01-01", legal: await legalAcceptance(page.request) },
   })).status()).toBe(201);
 
   const admin = await playwright.request.newContext({ baseURL: "http://localhost:5173" });

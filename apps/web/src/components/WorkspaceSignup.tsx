@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { defaultLevelStatus, OWNERSHIP_TYPES } from "@medveris/domain";
 import { Button, ErrorState, Field, Input, Notice, Select } from "@medveris/ui";
@@ -112,6 +112,22 @@ export function WorkspaceSignup() {
   const [failure, setFailure] = useState<{ title?: string; message: string; action?: ReactNode } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [created, setCreated] = useState<RegisterResult | null>(null);
+  const [legalVersions, setLegalVersions] = useState<{ terms: string; privacy: string } | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ documents: Array<{ kind: "terms" | "privacy"; version: string }> }>("/public/legal")
+      .then((result) => {
+        if (cancelled) return;
+        const terms = result.documents.find((document) => document.kind === "terms")?.version;
+        const privacy = result.documents.find((document) => document.kind === "privacy")?.version;
+        if (terms && privacy) setLegalVersions({ terms, privacy });
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   const steps = stepsFor(path);
   const step = steps[stepIndex] ?? null;
@@ -202,10 +218,16 @@ export function WorkspaceSignup() {
 
   function payload() {
     const ownerBody = { givenName: owner.givenName.trim(), familyName: owner.familyName.trim(), email: owner.email.trim(), password: owner.password };
+    const legal = legalVersions
+      ? {
+          termsVersion: legalVersions.terms, privacyVersion: legalVersions.privacy,
+          termsAccepted, privacyAcknowledged,
+        }
+      : undefined;
     if (path === "organization") {
       const site = SITE_TYPES.find((type) => type.value === organization.siteType)!;
       return {
-        path, owner: ownerBody,
+        path, owner: ownerBody, legal,
         organization: { name: organization.name.trim(), kind: organization.kind, ownership: organization.ownership },
         workspace: {
           name: organization.siteName.trim() || organization.name.trim(), workspaceKind: site.workspaceKind, serviceCategory: site.serviceCategory,
@@ -222,11 +244,11 @@ export function WorkspaceSignup() {
     };
     if (path === "join") {
       return {
-        path, owner: ownerBody, workspace, historyVisibility: shareHistory ? "full-history" : "from-link-date",
+        path, owner: ownerBody, workspace, legal, historyVisibility: shareHistory ? "full-history" : "from-link-date",
         ...(joinMethod === "code" ? { joinCode: joinCode.trim() } : { organizationId: target?.id }),
       };
     }
-    return { path, owner: ownerBody, workspace };
+    return { path, owner: ownerBody, workspace, legal };
   }
 
   /** Sends the user back to the step that can fix the problem, keeping everything they entered. */
@@ -278,6 +300,14 @@ export function WorkspaceSignup() {
         setStepIndex(steps.indexOf(id));
         return;
       }
+    }
+    if (!legalVersions) {
+      setFailure({ message: "The current Terms and Privacy versions could not be loaded. Check your connection and try again; nothing was created." });
+      return;
+    }
+    if (!termsAccepted || !privacyAcknowledged) {
+      setFailure({ message: "Accept the Terms of Service and acknowledge the Privacy Notice before creating your workspace." });
+      return;
     }
     setBusy("submit");
     setFailure(null);
@@ -469,6 +499,23 @@ export function WorkspaceSignup() {
               Include activity from before approval in the organization's summary reports (counts and amounts only)
             </label>
           ) : null}
+          <div className="mv-stack" style={{ gap: 8 }}>
+            <label className="mv-check">
+              <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
+              <span>
+                I have read and accept the <Link to="/terms" target="_blank" rel="noreferrer">Terms of Service</Link>
+                {legalVersions ? ` (version ${legalVersions.terms})` : ""}.
+              </span>
+            </label>
+            <label className="mv-check">
+              <input type="checkbox" checked={privacyAcknowledged} onChange={(event) => setPrivacyAcknowledged(event.target.checked)} />
+              <span>
+                I have read the <Link to="/privacy" target="_blank" rel="noreferrer">Privacy Notice</Link>
+                {legalVersions ? ` (version ${legalVersions.privacy})` : ""} and understand how personal and health data is handled.
+              </span>
+            </label>
+            <p className="mv-small mv-muted" style={{ margin: 0 }}>Accepting the Terms is separate from marketing, cookie and clinical consent, which are asked for only where they apply.</p>
+          </div>
           <p className="mv-small mv-muted" style={{ margin: 0 }}>Next you will set up two-step verification, then {path === "organization" ? "open your organization's main site" : "go straight to your unit's dashboard"}. Licences and registry numbers can be added later in the workspace profile.</p>
         </div>
       ) : null}
@@ -476,7 +523,7 @@ export function WorkspaceSignup() {
       {steps.length ? (
         <div className="mv-row mv-row--between">
           {stepIndex > 0 ? <Button variant="ghost" onClick={back} disabled={busy === "submit"}>Back</Button> : <span />}
-          <Button type="submit" disabled={busy === "submit"}>
+          <Button type="submit" disabled={busy === "submit" || (step === "review" && (!legalVersions || !termsAccepted || !privacyAcknowledged))}>
             {step === "review" ? (busy === "submit" ? "Creating…" : path === "join" ? "Create and request to join" : "Create workspace")
               : step === "find" && joinMethod === "invitation" ? "Open invitation" : "Continue"}
           </Button>

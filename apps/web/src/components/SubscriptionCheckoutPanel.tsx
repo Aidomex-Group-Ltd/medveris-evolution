@@ -45,14 +45,17 @@ interface Checkout {
   failureReason: string | null;
   canCancel: boolean;
   disclosure: string;
+  provider: string;
+  providerMode: string;
 }
 
 const tone = (status: Checkout["status"]) =>
   status === "succeeded" ? "success" : status === "failed" ? "danger" : status === "cancelled" ? "neutral" : status === "indeterminate" ? "warning" : "info";
 
 /**
- * Pays for one subscription period with a Yo! mobile-money prompt. The amount, period, exchange
- * rate and manual-renewal terms are shown before the prompt is sent. Nothing renews automatically.
+ * Pays for one subscription period with a mobile-money prompt. The amount, period, exchange rate
+ * and manual-renewal terms are shown before the prompt is sent. Nothing renews automatically, and
+ * a browser redirect is never treated as proof of payment.
  */
 export function SubscriptionCheckoutPanel() {
   const [interval, setInterval] = useState<Interval>("monthly");
@@ -97,7 +100,7 @@ export function SubscriptionCheckoutPanel() {
         body: { interval, msisdn, consent: true },
       });
       setCheckout(result.checkout);
-      return "Approach the payment prompt on your phone. Nothing is marked paid until Yo! confirms it.";
+      return "Approach the payment prompt on your phone. Nothing is marked paid until the provider confirms it.";
     });
   }
 
@@ -106,7 +109,9 @@ export function SubscriptionCheckoutPanel() {
     await action.run("check", async () => {
       const result = await api<{ checkout: Checkout }>(`/billing/subscription-checkout/${checkout.id}/check`, { method: "POST" });
       setCheckout(result.checkout);
-      return result.checkout.status === "succeeded" ? "Payment confirmed by Yo!." : `Status: ${result.checkout.status}.`;
+      return result.checkout.status === "succeeded"
+        ? `Payment confirmed by ${result.checkout.provider === "livepay" ? "LivePay" : "the payment provider"}.`
+        : `Status: ${result.checkout.status}.`;
     });
   }
 
@@ -133,7 +138,7 @@ export function SubscriptionCheckoutPanel() {
   return (
     <Card
       title="Pay for a period with mobile money"
-      description="USD 0.50 per active user for the period you choose, collected in its UGX equivalent. Renewal is manual — no automatic charge."
+      description="USD 0.50 per active user for the period you choose, collected in its UGX equivalent through the configured payment provider. Renewal is manual — no automatic charge."
     >
       {action.error ? <ErrorState message={action.error} /> : null}
       {action.message ? <Notice tone="info">{action.message}</Notice> : null}

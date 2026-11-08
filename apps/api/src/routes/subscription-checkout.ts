@@ -3,6 +3,7 @@ import { billingIntervalSchema, subscriptionCheckoutCancelSchema, subscriptionCh
 import { maskMsisdn, normalizeUgandaMsisdn } from "@medveris/domain";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
 import { assertIntegrationAvailable } from "../integrations/registry.js";
+import { createLivePayClient, LivePayTransportError } from "../integrations/livepay.js";
 import { createYoClient, YoTransportError, yoOutcome } from "../integrations/yo.js";
 import { writeAudit } from "../lib/audit.js";
 import { ConflictError, ValidationError } from "../lib/errors.js";
@@ -105,30 +106,60 @@ subscriptionCheckoutRoutes.post("/billing/subscription-checkout", async (c) => {
   }
 
   let evidence;
-  try {
-    const response = await createYoClient(deps.config.yo, deps.yoTransport).depositFunds({
-      msisdn, amount: created.quote.amountUgx, externalReference: created.externalReference,
-      narrative: `${deps.config.subscription.productDescription} - ${created.quote.interval} (${created.quote.seats} users)`,
-      providerReferenceText: `Medveris subscription ${created.checkoutId.slice(0, 8)}`,
-    });
-    const outcome = yoOutcome(response);
-    evidence = {
-      kind: "initiate" as const,
-      dedupeKey: "initiate",
-      outcome,
-      providerStatus: [response.status, response.statusCode, response.transactionStatus].filter((part) => part !== null && part !== "").join(" "),
-      providerReference: response.transactionReference,
-      networkReference: response.mnoTransactionReferenceId,
-      confirmedAmount: outcome === "succeeded" ? created.quote.amountUgx : null,
-      statusMessage: response.status === "ERROR" ? `Yo! refused the request: ${response.errorMessage ?? response.statusMessage ?? "no reason given"}` : null,
-      detail: { errorCode: response.errorMessageCode ?? null },
-    };
-  } catch (error) {
-    if (!(error instanceof YoTransportError)) throw error;
-    evidence = {
-      kind: "initiate" as const, dedupeKey: "initiate", outcome: "indeterminate" as const, providerStatus: null,
-      statusMessage: `${error.message}. The prompt may or may not have been sent; check its status before trying again.`,
-    };
+  if (deps.config.payments.provider === "livepay") {
+    try {
+      const response = await createLivePayClient(deps.config.payments.livepay, deps.livepayTransport).collect({
+        reference: created.externalReference,
+        phoneNumber: msisdn,
+        amount: created.quote.amountUgx,
+        currency: "UGX",
+        description: `${deps.config.subscription.productDescription} - ${created.quote.interval} (${created.quote.seats} users)`.slice(0, 200),
+      });
+      // A collect response only proves the prompt was accepted, never that money moved. Settlement
+      // waits for a verified status check or webhook carrying the exact UGX amount.
+      evidence = {
+        kind: "initiate" as const,
+        dedupeKey: "initiate",
+        outcome: response.status === "failed" ? "failed" as const : response.status === "indeterminate" ? "indeterminate" as const : "pending" as const,
+        providerStatus: response.message,
+        providerReference: response.internalReference,
+        confirmedAmount: null,
+        statusMessage: response.status === "failed" ? `LivePay refused the request: ${response.message}` : null,
+        detail: { provider: "livepay", internalReference: response.internalReference },
+      };
+    } catch (error) {
+      if (!(error instanceof LivePayTransportError)) throw error;
+      evidence = {
+        kind: "initiate" as const, dedupeKey: "initiate", outcome: "indeterminate" as const, providerStatus: null,
+        statusMessage: `${error.message}. The prompt may or may not have been sent; check its status before trying again.`,
+      };
+    }
+  } else {
+    try {
+      const response = await createYoClient(deps.config.yo, deps.yoTransport).depositFunds({
+        msisdn, amount: created.quote.amountUgx, externalReference: created.externalReference,
+        narrative: `${deps.config.subscription.productDescription} - ${created.quote.interval} (${created.quote.seats} users)`,
+        providerReferenceText: `Medveris subscription ${created.checkoutId.slice(0, 8)}`,
+      });
+      const outcome = yoOutcome(response);
+      evidence = {
+        kind: "initiate" as const,
+        dedupeKey: "initiate",
+        outcome,
+        providerStatus: [response.status, response.statusCode, response.transactionStatus].filter((part) => part !== null && part !== "").join(" "),
+        providerReference: response.transactionReference,
+        networkReference: response.mnoTransactionReferenceId,
+        confirmedAmount: outcome === "succeeded" ? created.quote.amountUgx : null,
+        statusMessage: response.status === "ERROR" ? `Yo! refused the request: ${response.errorMessage ?? response.statusMessage ?? "no reason given"}` : null,
+        detail: { errorCode: response.errorMessageCode ?? null },
+      };
+    } catch (error) {
+      if (!(error instanceof YoTransportError)) throw error;
+      evidence = {
+        kind: "initiate" as const, dedupeKey: "initiate", outcome: "indeterminate" as const, providerStatus: null,
+        statusMessage: `${error.message}. The prompt may or may not have been sent; check its status before trying again.`,
+      };
+    }
   }
   const result = await withBillingSystem(c, async (tx) => {
     await applyCheckoutEvidence(tx, deps.config, created.checkoutId, evidence, { kind: "staff", userId: auth.user.id, tenantId: auth.activeTenant!.id });
@@ -170,22 +201,43 @@ subscriptionCheckoutRoutes.post("/billing/subscription-checkout/:id/check", asyn
   if (checkout.status === "succeeded" || checkout.status === "cancelled") return c.json({ checkout: checkoutView(checkout) });
   assertIntegrationAvailable(deps.config, "payments", "subscription.checkout", "the prompt status cannot be checked until mobile money is configured");
   let evidence;
-  try {
-    const response = await createYoClient(deps.config.yo, deps.yoTransport).checkStatus({ externalReference: String(checkout.externalReference) });
-    const outcome = yoOutcome(response);
-    evidence = {
-      kind: "status-check" as const,
-      dedupeKey: `status:${response.transactionReference ?? String(checkout.externalReference)}:${response.transactionStatus || response.status}`,
-      outcome,
-      providerStatus: [response.status, response.statusCode, response.transactionStatus].filter((part) => part !== null && part !== "").join(" "),
-      providerReference: response.transactionReference,
-      networkReference: response.mnoTransactionReferenceId,
-      confirmedAmount: outcome === "succeeded" ? Number(response.amount ?? checkout.amountUgx) : null,
-      statusMessage: response.status === "ERROR" ? `Yo! could not check this transaction: ${response.errorMessage ?? response.statusMessage ?? "no reason given"}` : null,
-    };
-  } catch (error) {
-    if (!(error instanceof YoTransportError)) throw error;
-    evidence = { kind: "status-check" as const, dedupeKey: `status:${String(checkout.externalReference)}:unreachable`, outcome: "indeterminate" as const, providerStatus: null, statusMessage: `${error.message}. The prompt may still be waiting; check again shortly.` };
+  if (deps.config.payments.provider === "livepay") {
+    try {
+      const response = await createLivePayClient(deps.config.payments.livepay, deps.livepayTransport).checkStatus(String(checkout.externalReference), "UGX");
+      const sameCurrency = response.currency == null || response.currency.toUpperCase() === "UGX";
+      evidence = {
+        kind: "status-check" as const,
+        dedupeKey: `status:${response.internalReference ?? String(checkout.externalReference)}:${response.status}`,
+        outcome: sameCurrency ? response.status : "indeterminate",
+        providerStatus: response.message,
+        providerReference: response.internalReference,
+        networkReference: null,
+        // Only the provider-reported amount settles the checkout; a missing amount stays unreconciled.
+        confirmedAmount: response.status === "succeeded" && sameCurrency ? response.amount : null,
+        statusMessage: sameCurrency ? null : `LivePay reported ${response.currency} but this checkout is in UGX; not applied. Reconcile before taking another payment.`,
+      };
+    } catch (error) {
+      if (!(error instanceof LivePayTransportError)) throw error;
+      evidence = { kind: "status-check" as const, dedupeKey: `status:${String(checkout.externalReference)}:unreachable`, outcome: "indeterminate" as const, providerStatus: null, statusMessage: `${error.message}. The prompt may still be waiting; check again shortly.` };
+    }
+  } else {
+    try {
+      const response = await createYoClient(deps.config.yo, deps.yoTransport).checkStatus({ externalReference: String(checkout.externalReference) });
+      const outcome = yoOutcome(response);
+      evidence = {
+        kind: "status-check" as const,
+        dedupeKey: `status:${response.transactionReference ?? String(checkout.externalReference)}:${response.transactionStatus || response.status}`,
+        outcome,
+        providerStatus: [response.status, response.statusCode, response.transactionStatus].filter((part) => part !== null && part !== "").join(" "),
+        providerReference: response.transactionReference,
+        networkReference: response.mnoTransactionReferenceId,
+        confirmedAmount: outcome === "succeeded" ? Number(response.amount ?? checkout.amountUgx) : null,
+        statusMessage: response.status === "ERROR" ? `Yo! could not check this transaction: ${response.errorMessage ?? response.statusMessage ?? "no reason given"}` : null,
+      };
+    } catch (error) {
+      if (!(error instanceof YoTransportError)) throw error;
+      evidence = { kind: "status-check" as const, dedupeKey: `status:${String(checkout.externalReference)}:unreachable`, outcome: "indeterminate" as const, providerStatus: null, statusMessage: `${error.message}. The prompt may still be waiting; check again shortly.` };
+    }
   }
   const result = await withBillingSystem(c, async (tx) => {
     await applyCheckoutEvidence(tx, deps.config, id, evidence, { kind: "staff", userId: auth.user.id, tenantId: auth.activeTenant!.id });

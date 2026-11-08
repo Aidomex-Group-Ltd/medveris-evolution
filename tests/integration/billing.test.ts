@@ -44,6 +44,7 @@ let approvedPlanId: string;
 beforeAll(async () => {
   ownerEmail = `billing.owner.${run}@example.test`;
   const response = await anonymous("/api/v1/auth/register/workspace", {
+    legal: await h.legalAcceptance(),
     path: "independent",
     owner: { email: ownerEmail, password: PASSWORD, givenName: "Synthetic", familyName: "BillOwner" },
     workspace: {

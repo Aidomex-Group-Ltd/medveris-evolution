@@ -96,6 +96,8 @@ const ReceiptPage = lazyPage(() => import("./pages/ReceiptPage"), "ReceiptPage")
 const AboutPage = lazyPage(() => import("./pages/AboutPage"), "AboutPage");
 const HelpSupportPage = lazyPage(() => import("./pages/HelpSupportPage"), "HelpSupportPage");
 const ContactsPage = lazyPage(() => import("./pages/ContactsPage"), "ContactsPage");
+const TermsPage = lazyPage(() => import("./pages/LegalPage"), "TermsPage");
+const PrivacyPage = lazyPage(() => import("./pages/LegalPage"), "PrivacyPage");
 const SubscriptionPage = lazyPage(() => import("./pages/SubscriptionPage"), "SubscriptionPage");
 const PlatformBillingPage = lazyPage(() => import("./pages/PlatformBillingPage"), "PlatformBillingPage");
 const PlatformObservabilityPage = lazyPage(() => import("./pages/PlatformObservabilityPage"), "PlatformObservabilityPage");
@@ -117,6 +119,8 @@ export function App() {
       <Route path="/about" element={<AboutPage />} />
       <Route path="/help" element={<HelpSupportPage />} />
       <Route path="/contacts" element={<ContactsPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />

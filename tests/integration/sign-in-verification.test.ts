@@ -34,6 +34,15 @@ async function post(path: string, body: unknown, headers: Record<string, string>
   }));
 }
 
+async function legalAcceptance(): Promise<{ termsVersion: string; privacyVersion: string; termsAccepted: true; privacyAcknowledged: true }> {
+  const body = await (await app.fetch(new Request("http://localhost/api/v1/public/legal"))).json() as any;
+  const versions = new Map<string, string>((body.documents ?? []).map((document: any) => [document.kind, document.version]));
+  const termsVersion = versions.get("terms");
+  const privacyVersion = versions.get("privacy");
+  if (!termsVersion || !privacyVersion) throw new Error("public legal versions unavailable");
+  return { termsVersion, privacyVersion, termsAccepted: true, privacyAcknowledged: true };
+}
+
 async function startChallenge(headers: Record<string, string> = {}): Promise<string> {
   const response = await post("/api/v1/auth/login", { email, password }, headers);
   const body = await response.json() as any;
@@ -68,6 +77,7 @@ async function emailedCodes(): Promise<string[]> {
 
 beforeAll(async () => {
   expect((await post("/api/v1/auth/register/facility", {
+    legal: await legalAcceptance(),
     email, password, givenName: "Synthetic", familyName: "SignIn", facilityName: "Synthetic Sign-in Clinic",
   })).status).toBe(201);
   const login = await post("/api/v1/auth/login", { email, password });

@@ -188,20 +188,19 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
   },
   {
     id: "payments",
-    name: "Mobile money (Yo! Payments)",
+    name: "Mobile money payments",
     flag: "FEATURE_PAYMENTS",
     baseline: "unavailable",
     baselineReason: "Mobile money is not enabled for this environment (FEATURE_PAYMENTS is not set)",
     requiredConfiguration: [
-      "YO_MODE (sandbox or production)",
-      "YO_API_USERNAME and YO_API_PASSWORD (Worker secrets)",
-      "YO_PUBLIC_KEY (Yo! public certificate for the selected mode, PEM)",
-      "YO_NOTIFICATION_BASE_URL (public HTTPS origin; defaults to APP_ORIGIN)",
+      "PAYMENT_PROVIDER (livepay is primary; yo stays disabled until its production access is verified)",
+      "LivePay: LIVEPAY_API_KEY and LIVEPAY_WEBHOOK_SECRET (Worker secrets), LIVEPAY_ACCOUNT_NUMBER and LIVEPAY_WEBHOOK_URL",
+      "Yo!: YO_MODE, YO_API_USERNAME and YO_API_PASSWORD (Worker secrets), YO_PUBLIC_KEY and YO_NOTIFICATION_BASE_URL",
     ],
-    prerequisites: ["Yo! Payments business account with collections enabled", "notification URLs reachable from Yo!"],
+    prerequisites: ["provider business account with collections enabled", "notification URL reachable from the provider"],
     capabilities: ["mobile money collection prompt", "signed payment notifications", "status reconciliation"],
     effectWhileUnavailable: "Bills and cash payments work; mobile money prompts cannot be sent and no payment is treated as provider-confirmed.",
-    remediation: "Set FEATURE_PAYMENTS=true, YO_MODE, the Yo! API credentials and public certificate, then take a sandbox payment end to end.",
+    remediation: "Configure the selected provider in a non-production environment, verify collect/status/webhook behaviour with mocks or a genuinely non-transactional sandbox, then enable FEATURE_PAYMENTS.",
     configurationProblems: paymentsConfigProblems,
     availableWhenConfigured: true,
     availableReason: (config) => config.payments.provider === "livepay"
@@ -283,7 +282,7 @@ const OFF_LABEL = "UNAVAILABLE — not configured for this environment";
 /** Environment variable that selects the mode for each integration, used in operator-facing text. */
 const MODE_ENV_VARS: Partial<Record<IntegrationId, string>> = {
   dicomweb: "DICOMWEB_MODE", lab: "LAB_MODE", pharmacy: "PHARMACY_MODE", telemedicine: "TELEMEDICINE_MODE",
-  devices: "DEVICES_MODE", ai: "AI_MODE", payments: "YO_MODE", ledgerAnchoring: "LEDGER_ANCHOR_MODE",
+  devices: "DEVICES_MODE", ai: "AI_MODE", payments: "PAYMENT_PROVIDER", ledgerAnchoring: "LEDGER_ANCHOR_MODE",
 };
 
 function hostOf(url: string | null): string {

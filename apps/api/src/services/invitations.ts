@@ -3,6 +3,7 @@ import { setLocalContext, type Sql, type Tx } from "@medveris/db";
 import type { AppConfig } from "../config.js";
 import { writeAudit } from "../lib/audit.js";
 import { AppError, ConflictError } from "../lib/errors.js";
+import { recordLegalAcceptance } from "../lib/legal.js";
 
 /**
  * Staff invitation lifecycle. The facility, role and inviter always come from the invitation row the
@@ -200,7 +201,15 @@ export async function describeInvitation(sql: Sql, token: string, viewer: Viewer
 export async function registerInvitee(
   sql: Sql,
   config: AppConfig,
-  input: { token: string; givenName: string; familyName: string; password: string; meta: AuditMeta },
+  input: {
+    token: string;
+    givenName: string;
+    familyName: string;
+    password: string;
+    meta: AuditMeta;
+    /** Request address and client, hashed with the session secret for the acceptance record. */
+    acceptance?: { ip: string | null; userAgent: string | null };
+  },
 ): Promise<{ userId: string }> {
   const passwordHash = await hashPassword(input.password);
   return sql.begin(async (tx) => {
@@ -218,6 +227,23 @@ export async function registerInvitee(
       insert into users (id, email, password_hash, display_name, given_name, family_name, email_verified_at)
       values (${userId}, ${invitation.email.toLowerCase()}, ${passwordHash}, ${`${input.givenName} ${input.familyName}`},
         ${input.givenName}, ${input.familyName}, now())`;
+    await recordLegalAcceptance(tx, config.sessionSecret, {
+      userId,
+      tenantId: invitation.tenantId,
+      context: "invitation",
+      ipAddress: input.acceptance?.ip ?? input.meta.ipAddress ?? null,
+      userAgent: input.acceptance?.userAgent ?? null,
+    });
+    await writeAudit(tx, config, {
+      tenantId: invitation.tenantId,
+      actorKind: "registration",
+      actorUserId: userId,
+      action: "legal.acceptance",
+      resourceType: "LegalAcceptance",
+      resourceId: userId,
+      ...input.meta,
+      metadata: { context: "invitation" },
+    });
     await writeAudit(tx, config, {
       tenantId: invitation.tenantId,
       actorKind: "registration",
