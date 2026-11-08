@@ -20,7 +20,12 @@ import {
 
 export const uuidSchema = z.string().uuid();
 export const emailSchema = z.string().trim().toLowerCase().email().max(254);
-export const passwordSchema = z.string().min(10).max(200);
+/**
+ * Medveris account passwords. Boundary whitespace is never significant: the sign-in and set-password
+ * schemas trim identically so a stray space when copying the seeded password cannot lock an account
+ * out, and enabling this at registration keeps the two in agreement. Interior spaces remain valid.
+ */
+export const passwordSchema = z.string().trim().min(10).max(200);
 /**
  * Canonicalises a typed public patient ID: case, spaces and dashes are ignored, and the Crockford
  * look-alikes O→0 and I/L→1 are corrected. Input that is not 16 ID characters after "MV" is returned
@@ -131,7 +136,7 @@ export const registerFacilitySchema = z.object({
 
 export const loginSchema = z.object({
   email: emailSchema,
-  password: z.string().min(1).max(200),
+  password: z.string().trim().min(1).max(200),
 });
 
 export const mfaLoginSchema = z.object({
@@ -384,7 +389,7 @@ export const emergencyOverrideSchema = z.object({
   patientId: uuidSchema,
   encounterId: uuidSchema,
   reason: z.string().trim().min(10).max(2000),
-  password: z.string().min(1).max(200),
+  password: z.string().trim().min(1).max(200),
   totpCode: z.string().trim().regex(/^\d{6}$/),
 });
 
