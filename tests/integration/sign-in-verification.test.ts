@@ -25,6 +25,7 @@ const password = "Synthetic-SignIn-2026!";
 const email = `signin.${crypto.randomUUID()}@example.test`;
 let secret = "";
 let recoveryCodes: string[] = [];
+let sessionHeaders: Record<string, string> = {};
 
 async function post(path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
   return await app.fetch(new Request(`http://localhost${path}`, {
@@ -84,6 +85,7 @@ beforeAll(async () => {
   const session = await login.json() as any;
   const cookie = (login.headers.getSetCookie?.() ?? []).find((value) => value.startsWith("mv_session="))!.split(";")[0]!;
   const headers = { cookie, [config.csrfHeader]: session.csrfToken as string };
+  sessionHeaders = headers;
   const started = await (await post("/api/v1/auth/mfa/enroll/start", {}, headers)).json() as any;
   secret = started.secret;
   const enrolled = await post("/api/v1/auth/mfa/enroll/verify", { code: await totpCode(secret) }, headers);
@@ -94,6 +96,26 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await sql.end({ timeout: 5 });
+});
+
+describe("local development codes", () => {
+  it("serves the signed-in account during enrolment and a named account for sign-in", async () => {
+    // Enrolment uses the session because no MFA challenge exists yet; the account already holds
+    // the setup key returned by /auth/mfa/enroll/start.
+    const own = await app.fetch(new Request("http://localhost/api/v1/auth/totp/dev", { headers: { cookie: sessionHeaders.cookie! } }));
+    const ownBody = await own.json() as any;
+    expect(own.status, JSON.stringify(ownBody)).toBe(200);
+    expect(ownBody.secret).toBe(secret);
+    expect(ownBody.code).toBe(await totpCode(secret));
+
+    // Sign-in has no session, so it names the account; addresses are matched case-insensitively.
+    const byEmail = await app.fetch(new Request(`http://localhost/api/v1/auth/totp/dev?email=${encodeURIComponent(email.toUpperCase())}`));
+    const byEmailBody = await byEmail.json() as any;
+    expect(byEmail.status, JSON.stringify(byEmailBody)).toBe(200);
+    expect(byEmailBody.code).toBe(await totpCode(secret));
+
+    expect((await app.fetch(new Request("http://localhost/api/v1/auth/totp/dev"))).status).toBe(404);
+  });
 });
 
 describe("emailed sign-in codes", () => {

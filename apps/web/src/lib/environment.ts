@@ -9,6 +9,8 @@ export interface AppEnvironment {
   synthetic: boolean;
   /** Local development or tests, the only environments where development sign-in helpers can be enabled. */
   local: boolean;
+  /** The server serves local-development authenticator codes. False until known, so no helper is offered by default. */
+  devTotpCodes: boolean;
 }
 
 const LOCAL_ENVIRONMENTS = new Set(["development", "test"]);
@@ -23,26 +25,27 @@ function publicConfig(): Promise<PublicConfig> {
   return request;
 }
 
-export function describeEnvironment(appEnv: string | null): AppEnvironment {
+export function describeEnvironment(appEnv: string | null, devTotpCodes = false): AppEnvironment {
   return {
     appEnv,
     synthetic: appEnv !== null && appEnv !== "production",
     local: appEnv !== null && LOCAL_ENVIRONMENTS.has(appEnv),
+    devTotpCodes: appEnv !== null && appEnv !== "production" && devTotpCodes,
   };
 }
 
 export function useAppEnvironment(): AppEnvironment {
-  const [appEnv, setAppEnv] = useState<string | null>(null);
+  const [state, setState] = useState<{ appEnv: string | null; devTotpCodes: boolean }>({ appEnv: null, devTotpCodes: false });
   useEffect(() => {
     let active = true;
     publicConfig()
       .then((config) => {
-        if (active) setAppEnv(config.appEnv);
+        if (active) setState({ appEnv: config.appEnv, devTotpCodes: config.devTotpCodes === true });
       })
       .catch(() => undefined);
     return () => {
       active = false;
     };
   }, []);
-  return describeEnvironment(appEnv);
+  return describeEnvironment(state.appEnv, state.devTotpCodes);
 }

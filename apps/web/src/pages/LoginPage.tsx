@@ -178,7 +178,7 @@ export function LoginPage() {
                     <Input id="mfa-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} required />
                   </Field>
                 )}
-                {devCode ? <Notice tone="warning" title="Local development code">A development-only endpoint supplied code <strong className="mv-id">{devCode}</strong>. Production builds disable this endpoint.</Notice> : null}
+                {devCode ? <Notice tone="warning" title="Local development code">A development-only endpoint supplied code <strong className="mv-id">{devCode}</strong>. It changes every 30 seconds; use the button again if it stops working. Production builds disable this endpoint.</Notice> : null}
                 <Button type="submit" disabled={busy || !codeReady}>{busy ? "Verifying…" : "Verify and continue"}</Button>
                 <Button variant="secondary" type="button" disabled={sending} onClick={() => void sendEmailCode()}>
                   {sending ? "Sending…" : method === "email" ? "Send a new code" : "Email me a code instead"}
@@ -186,7 +186,12 @@ export function LoginPage() {
                 {method !== "app" ? <Button variant="ghost" size="sm" type="button" onClick={() => chooseMethod("app")}>Use my authenticator app</Button> : null}
                 {method !== "recovery" ? <Button variant="ghost" size="sm" type="button" onClick={() => chooseMethod("recovery")}>Use a recovery code</Button> : null}
                 <Button variant="ghost" type="button" onClick={resetChallenge}>Use a different account</Button>
-                {environment.local ? <Button variant="ghost" size="sm" type="button" onClick={() => void useDevelopmentCode()}>Use local development code</Button> : null}
+                {environment.devTotpCodes ? <Button variant="ghost" size="sm" type="button" onClick={() => void useDevelopmentCode()}>Use local development code</Button> : null}
+                {environment.local && !environment.devTotpCodes ? (
+                  <p className="mv-small mv-muted">
+                    Local development codes are off. Set <span className="mv-inline-code">DEV_SHOW_TOTP_SECRETS=true</span> in the API environment and restart it to enable them.
+                  </p>
+                ) : null}
               </form>
             ) : (
               <form className="mv-stack" onSubmit={submitPassword}>

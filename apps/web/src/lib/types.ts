@@ -102,6 +102,8 @@ export interface PublicConfig {
   appEnv: string;
   terminology: { mode: string; synthetic: boolean; label: string };
   features: Record<string, boolean>;
+  /** Present only when the API serves the local-development authenticator-code helper. */
+  devTotpCodes?: boolean;
   release: string;
 }
 

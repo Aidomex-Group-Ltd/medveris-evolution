@@ -5,6 +5,7 @@ import { Button, Card, ErrorState, Field, Input, LoadingState, Notice } from "@m
 import { BrandMark } from "../components/BrandMark";
 import { api, errorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useAppEnvironment } from "../lib/environment";
 
 interface EnrollmentStart {
   secret: string;
@@ -21,12 +22,14 @@ function groupSecret(secret: string): string {
 
 export function MfaSetupPage() {
   const { me, loading, refresh, logout } = useAuth();
+  const environment = useAppEnvironment();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const welcome = params.get("welcome") === "1";
   const [enrollment, setEnrollment] = useState<EnrollmentStart | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  const [devCode, setDevCode] = useState<string | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,10 +59,22 @@ export function MfaSetupPage() {
     try {
       setEnrollment(await api<EnrollmentStart>("/auth/mfa/enroll/start", { method: "POST" }));
       setCode("");
+      setDevCode(null);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function useDevelopmentCode() {
+    setError(null);
+    try {
+      const result = await api<{ code: string }>("/auth/totp/dev");
+      setCode(result.code);
+      setDevCode(result.code);
+    } catch (cause) {
+      setError(errorMessage(cause));
     }
   }
 
@@ -144,7 +159,9 @@ export function MfaSetupPage() {
                 <Field label="Verification code" htmlFor="mfa-enroll-code" hint="Enter the current six-digit code from the app.">
                   <Input id="mfa-enroll-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} required />
                 </Field>
+                {devCode ? <Notice tone="warning" title="Local development code">A development-only endpoint supplied code <strong className="mv-id">{devCode}</strong>. It changes every 30 seconds; use the button again if it stops working. Production builds disable this endpoint.</Notice> : null}
                 <Button type="submit" disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Verify and turn on"}</Button>
+                {environment.devTotpCodes ? <Button variant="ghost" size="sm" type="button" disabled={busy} onClick={() => void useDevelopmentCode()}>Use local development code</Button> : null}
                 <Button variant="ghost" type="button" disabled={busy} onClick={() => void start()}>Generate a new setup key</Button>
               </form>
             ) : (

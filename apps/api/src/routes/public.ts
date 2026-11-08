@@ -37,6 +37,9 @@ publicRoutes.get("/public/config", async (c) => {
         : config.terminologyMode === "unavailable" ? UNAVAILABLE_LABEL : "Production terminology adapter configured",
     },
     features: Object.fromEntries(listIntegrations(config, await loadVerifications(c.get("deps").sql, config)).map((integration) => [integration.id, integration.state === "available"])),
+    // Only advertise development sign-in helpers when this server actually serves them, so the
+    // web app does not offer a button that would 404 on a local machine with the flag off.
+    devTotpCodes: config.devShowTotpSecrets && config.appEnv !== "production",
     release: "M1 outpatient foundation",
   });
 });

@@ -27,13 +27,13 @@ Smoke accounts use password `Medveris!2026`:
 - `patient@medveris.local` — patient portal
 - `nurse@medveris.local`, `clinician.b@medveris.local`, `reviewer@medveris.local`
 
-Staff accounts require TOTP. In local development, click **Use local development code** on the MFA screen, or query:
+Staff accounts require TOTP. In local development, click **Use local development code** on the sign-in MFA screen, or on the MFA setup screen right after creating an account or starting enrolment; it fills the field and shows the current six-digit code. The same helper is available as:
 
 ```bash
 curl 'http://localhost:8787/api/v1/auth/totp/dev?email=clinician@medveris.local'
 ```
 
-`DEV_SHOW_TOTP_SECRETS=true` enables that endpoint. It is refused in production.
+During enrolment the endpoint can instead use the signed-in session (`GET /api/v1/auth/totp/dev` with the session cookie), because the account has a setup key but has not completed verification yet. The local code buttons are shown only when the API advertises the helper. `DEV_SHOW_TOTP_SECRETS=true` in the local `.env` enables it; the setting is refused outside local development and tests, and production builds disable both the endpoint and the buttons.
 
 The MFA screen also offers **Email me a code instead** (delivered through the configured email provider; locally it lands in the mail sink) and **Use a recovery code**.
 

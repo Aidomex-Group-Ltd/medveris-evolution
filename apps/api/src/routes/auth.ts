@@ -816,11 +816,24 @@ authRoutes.post("/invitations/decline", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Local-development helper that returns the current authenticator code, so a developer can sign in
+ * and finish MFA enrolment without an authenticator app. It is refused unless
+ * DEV_SHOW_TOTP_SECRETS is enabled outside production.
+ *
+ * With `email` it looks up that account, which is what the sign-in challenge needs because no
+ * session exists yet. Without `email` it uses the signed-in account, which is what the MFA
+ * enrolment screen uses once the setup key has been stored but verification is still pending.
+ */
 authRoutes.get("/totp/dev", async (c) => {
   const deps = c.get("deps");
   if (!deps.config.devShowTotpSecrets || deps.config.appEnv === "production") throw new NotFoundError();
-  const email = c.req.query("email") ?? "";
-  const rows = await deps.sql`select totp_secret_enc from users where email = ${email} limit 1`;
+  const email = c.req.query("email")?.trim();
+  const auth = c.get("auth");
+  if (!email && !auth) throw new NotFoundError();
+  const rows = email
+    ? await deps.sql`select totp_secret_enc from users where lower(email) = lower(${email}) limit 1`
+    : await deps.sql`select totp_secret_enc from users where id = ${auth!.user.id} limit 1`;
   if (!rows[0]?.totpSecretEnc) throw new NotFoundError();
   const secret = await decryptSecret(String(rows[0].totpSecretEnc), deps.config.mfaEncryptionKey);
   return c.json({ secret, code: await totpCode(secret) });
