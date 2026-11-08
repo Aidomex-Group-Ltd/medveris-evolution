@@ -11,7 +11,9 @@ const prompts: string[] = [];
 const h = createHarness("ai-jobs", {
   env: { FEATURE_AI: "true", AI_MODEL: "@cf/test/model" },
 });
-const jobsSql = createSql(process.env.JOBS_DATABASE_URL, { max: 2 });
+const jobsDatabaseUrl = process.env.JOBS_DATABASE_URL ?? process.env.DATABASE_URL;
+if (!jobsDatabaseUrl) throw new Error("JOBS_DATABASE_URL or DATABASE_URL is required");
+const jobsSql = createSql(jobsDatabaseUrl, { max: 2 });
 
 const runtime: AiJobRuntime = {
   ai: {
