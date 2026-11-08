@@ -1,12 +1,19 @@
 import { Hono } from "hono";
 import {
+  administrationOmissionSchema,
   admissionBedSchema,
   admissionSchema,
   admissionTransitionSchema,
   bedSchema,
   bedStatusSchema,
+  fluidBalanceSchema,
   handoffSchema,
+  medicationAdministrationSchema,
+  medicationScheduleSchema,
   nursingAssessmentSchema,
+  nursingTaskAssignSchema,
+  nursingTaskEscalateSchema,
+  nursingTaskOmitSchema,
   nursingTaskSchema,
   nursingTaskUpdateSchema,
   uuidSchema,
@@ -421,7 +428,7 @@ inpatientRoutes.get("/admissions/:id/fluid-balance", async (c) => {
       select id, patient_id, status from admissions where id = ${id} and tenant_id = ${auth.activeTenant!.id}
     `, "Admission not found");
     if (admission.status !== "admitted") throw new ConflictError("Fluid balance requires an active admission");
-    const since = new Date();
+    let since = new Date();
     if (window === "24h") since.setHours(since.getHours() - 24);
     else if (window === "7d") since.setDate(since.getDate() - 7);
     else if (window === "all") since = new Date(0);
@@ -438,7 +445,7 @@ inpatientRoutes.get("/admissions/:id/fluid-balance", async (c) => {
         from fluid_balance_entries fe
        where fe.admission_id = ${id} and fe.occurred_at >= ${since}
     `;
-    const t = totals[0];
+    const t = totals[0] ?? { total_intake_ml: 0, total_output_ml: 0 };
     return {
       entries,
       summary: {
@@ -687,6 +694,7 @@ inpatientRoutes.post("/admissions/:id/administrations", async (c) => {
       // Create an ad-hoc order for schedule-driven administration when the caller
       // supplies a medicine id instead of an existing order id.
       if (!body.medicineId) throw new ValidationError("Provide either an existing order id or a medicine id for ad-hoc administration");
+      if (!body.route) throw new ValidationError("Ad-hoc administration requires the administration route");
       const medicine = await tx`
         select id from medicines where id = ${body.medicineId} and tenant_id = ${auth.activeTenant!.id}
       `;

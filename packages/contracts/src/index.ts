@@ -2988,6 +2988,11 @@ export const medicationScheduleSchema = z.object({
 });
 
 export const medicationAdministrationSchema = administrationSchema.extend({
+  /** Ad-hoc administration without an existing order creates one from the medicine, dose, route and frequency. */
+  orderId: uuidSchema.optional().nullable(),
+  medicineId: uuidSchema.optional().nullable(),
+  route: z.string().trim().min(1).max(100).optional(),
+  frequency: z.string().trim().min(1).max(200).optional(),
   status: z.enum(["administered", "refused", "held", "omitted"]).default("administered"),
   scheduledAt: z.string().datetime().optional().nullable(),
   scheduleId: uuidSchema.optional().nullable(),

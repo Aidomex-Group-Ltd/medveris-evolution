@@ -1,10 +1,16 @@
 import { Hono } from "hono";
 import {
+  antenatalVisitSchema,
+  childHealthEventSchema,
   deliveryRecordSchema,
+  immunizationSchema,
+  labourAlertSchema,
   labourObservationSchema,
   maternityEpisodeSchema,
   maternityEpisodeUpdateSchema,
+  newbornPatientCreateSchema,
   newbornRecordSchema,
+  newbornStatusUpdateSchema,
   uuidSchema,
 } from "@medveris/contracts";
 import { validateLabourObservation } from "@medveris/domain";
@@ -323,6 +329,7 @@ maternityRoutes.post("/maternity/newborns/:newbornId/patient", async (c) => {
   const auth = c.get("auth")!;
   const newbornId = uuidSchema.parse(c.req.param("newbornId"));
   const body = await parseJson(c, newbornPatientCreateSchema);
+  const newbornPatientId = crypto.randomUUID();
   await withStaffActor(c, async (tx) => {
     const newborn = await requireRows(await tx`
       select nr.id, nr.tenant_id, nr.episode_id, nr.patient_id, nr.status, e.patient_id as mother_patient_id
@@ -332,7 +339,7 @@ maternityRoutes.post("/maternity/newborns/:newbornId/patient", async (c) => {
     if (newborn.patient_id) throw new ConflictError("A patient identity is already linked to this newborn record");
     if (String(newborn.episode_id) !== String(body.episodeId)) throw new ValidationError("The episode id does not match the newborn record");
     // Create the newborn as a separate patient in the same facility.
-    const patientId = crypto.randomUUID();
+    const patientId = newbornPatientId;
     await tx`
       insert into patients (id, created_tenant_id, given_name, family_name, date_of_birth, sex, identity_confidence, assisted_without_contact_details, created_by, created_at, updated_at)
       values (${patientId}, ${auth.activeTenant!.id}, ${body.givenName}, ${body.familyName}, ${new Date(body.dateOfBirth)}, ${body.sex}, ${body.identityConfidence}, false, ${auth.user.id}, now(), now())
@@ -346,7 +353,7 @@ maternityRoutes.post("/maternity/newborns/:newbornId/patient", async (c) => {
       metadata: { newbornRecordId: newbornId, linkedFromEpisodeId: body.episodeId },
     }));
   });
-  return c.json({ ok: true, patientId }, 201);
+  return c.json({ ok: true, patientId: newbornPatientId }, 201);
 });
 
 // Antenatal care visits.
