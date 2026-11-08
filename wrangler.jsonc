@@ -243,15 +243,15 @@
 					"custom_domain": true
 				}
 			],
-			// Neon PostgreSQL production database (ep-long-rice-b543gbw4)
+			// Kamatera PostgreSQL production database (medveris-prod) via Workers VPC tunnel (medveris-pg18)
 "hyperdrive": [
 			{
 				"binding": "HYPERDRIVE",
-				"id": "d9437ca9486d4e608c3d315fdc46f25f"
+				"id": "6e4306de01004ce692878c7a61899fb7"
 			},
 			{
 				"binding": "HYPERDRIVE_JOBS",
-				"id": "21c6654b3c0545e39676597039b1d0ec"
+				"id": "4c4c1c38a5ea41ad9ac7b38489dd8838"
 			}
 		],
 			"r2_buckets": [
@@ -334,7 +334,7 @@
 			"vars": {
 				"APP_ENV": "production",
 				"APP_ORIGIN": "https://medveris.online",
-				"EXPECTED_DATABASE_NAME": "neondb",
+				"EXPECTED_DATABASE_NAME": "medveris-prod",
 				"AUDIT_SIGNING_KEY_ID": "production-key-1",
 				"EMAIL_ADAPTER": "resend",
 				"EMAIL_FROM": "Medveris <no-reply@medveris.online>",

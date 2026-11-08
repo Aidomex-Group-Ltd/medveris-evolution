@@ -10,8 +10,8 @@ import { checkScalingConfig } from "./staging-gate.mjs";
 export const PRODUCTION = Object.freeze({
   env: "production",
   worker: "medveris-production",
-  database: "neondb",
-  runtimeRole: "medveris_runtime",
+  database: "medveris-prod",
+  runtimeRole: "medveris_app",
   jobsRole: "medveris_jobs",
   bucket: "medveris-production-uploads",
   origin: "https://medveris.online",
@@ -185,11 +185,23 @@ export function checkProductionHyperdrive(binding, remote) {
   if (remote.caching?.disabled !== true) problems.push(`${binding}: query caching must be disabled`);
   if (remote.origin.database !== PRODUCTION.database) problems.push(`${binding}: origin database must be ${PRODUCTION.database}`);
   if (remote.origin.user !== role) problems.push(`${binding}: origin user must be ${role}`);
-  if (!VERIFIED_TLS.has(remote.mtls?.sslmode)) problems.push(`${binding}: TLS must verify the server certificate (sslmode verify-ca or verify-full)`);
-  const host = String(remote.origin.host ?? "");
-  if (!host) problems.push(`${binding}: origin host is missing`);
-  else if (LOCAL_HOST.test(host)) problems.push(`${binding}: origin host is a local or private address`);
-  if ([host, remote.name, remote.origin.database].some((value) => /staging/i.test(String(value ?? "")))) {
+  // Workers VPC origins (Kamatera PostgreSQL via Cloudflare Tunnel) have no public host or
+  // server certificate: the tunnel carries the TCP stream privately, so TLS/host checks do not apply.
+  const serviceId = String(remote.origin.service_id ?? "");
+  if (serviceId) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+      problems.push(`${binding}: Workers VPC service id is malformed`);
+    }
+  } else {
+    if (!VERIFIED_TLS.has(remote.mtls?.sslmode)) problems.push(`${binding}: TLS must verify the server certificate (sslmode verify-ca or verify-full)`);
+    const host = String(remote.origin.host ?? "");
+    if (!host) problems.push(`${binding}: origin host is missing`);
+    else if (LOCAL_HOST.test(host)) problems.push(`${binding}: origin host is a local or private address`);
+    if ([host, remote.name, remote.origin.database].some((value) => /staging/i.test(String(value ?? "")))) {
+      problems.push(`${binding}: Hyperdrive config references staging`);
+    }
+  }
+  if (serviceId && [remote.name, remote.origin.database].some((value) => /staging/i.test(String(value ?? "")))) {
     problems.push(`${binding}: Hyperdrive config references staging`);
   }
   return problems;
@@ -205,12 +217,24 @@ export function checkProductionHyperdrive(binding, remote) {
 export function checkProductionIsolation(production, staging) {
   const problems = [];
   const { runtime, jobs } = production;
-  if (runtime?.origin && jobs?.origin && !["host", "port", "database"].every((key) => runtime.origin[key] === jobs.origin[key])) {
-    problems.push("HYPERDRIVE and HYPERDRIVE_JOBS must target the same production host, port and database");
+  if (runtime?.origin && jobs?.origin) {
+    const runtimeService = String(runtime.origin.service_id ?? "");
+    const jobsService = String(jobs.origin.service_id ?? "");
+    if (runtimeService || jobsService) {
+      if (runtimeService !== jobsService || runtime.origin.database !== jobs.origin.database) {
+        problems.push("HYPERDRIVE and HYPERDRIVE_JOBS must target the same production VPC service and database");
+      }
+    } else if (!["host", "port", "database"].every((key) => runtime.origin[key] === jobs.origin[key])) {
+      problems.push("HYPERDRIVE and HYPERDRIVE_JOBS must target the same production host, port and database");
+    }
   }
-  const server = (/** @type {any} */ remote) => `${String(remote?.origin?.host ?? "").toLowerCase()}:${remote?.origin?.port ?? ""}`;
-  const stagingServers = new Set(staging.filter((remote) => remote?.origin?.host).map(server));
-  for (const shared of new Set([runtime, jobs].filter((remote) => remote?.origin?.host).map(server))) {
+  const server = (/** @type {any} */ remote) => {
+    const serviceId = String(remote?.origin?.service_id ?? "");
+    if (serviceId) return `vpc:${serviceId.toLowerCase()}`;
+    return `${String(remote?.origin?.host ?? "").toLowerCase()}:${remote?.origin?.port ?? ""}`;
+  };
+  const stagingServers = new Set(staging.filter((remote) => remote?.origin?.host || remote?.origin?.service_id).map(server));
+  for (const shared of new Set([runtime, jobs].filter((remote) => remote?.origin?.host || remote?.origin?.service_id).map(server))) {
     if (stagingServers.has(shared)) problems.push(`production Hyperdrive targets the staging PostgreSQL server ${shared}; production needs its own server`);
   }
   return problems;
