@@ -82,7 +82,7 @@ export interface IntegrationStatus {
  * they share. Each one reports `available` only when it is requested, fully configured and (where a
  * conformance run is required) has a passing, unexpired run against the configured endpoint.
  */
-export const IMPLEMENTED_ADAPTERS: ReadonlySet<IntegrationId> = new Set<IntegrationId>(["dicomweb", "payments", "telemedicine", "ledgerAnchoring"]);
+export const IMPLEMENTED_ADAPTERS: ReadonlySet<IntegrationId> = new Set<IntegrationId>(["dicomweb", "payments", "telemedicine", "ledgerAnchoring", "ai"]);
 
 /** Integrations with a sandbox adapter. Sandbox state is reachable only through these, and never in production. */
 export const SANDBOX_ADAPTERS: ReadonlySet<IntegrationId> = new Set<IntegrationId>([
@@ -90,7 +90,7 @@ export const SANDBOX_ADAPTERS: ReadonlySet<IntegrationId> = new Set<IntegrationI
 ]);
 
 /** Integrations that need a passing, unexpired conformance run before they report available. */
-export const VERIFICATION_REQUIRED: ReadonlySet<IntegrationId> = new Set<IntegrationId>(["dicomweb"]);
+export const VERIFICATION_REQUIRED: ReadonlySet<IntegrationId> = new Set<IntegrationId>(["dicomweb", "ai"]);
 
 export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
   {
@@ -173,15 +173,25 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
     flag: "FEATURE_AI",
     baseline: "unavailable",
     baselineReason: "No validated model, intended-use statement or clinical evaluation is approved",
-    requiredConfiguration: ["model provider credentials"],
-    prerequisites: ["provider adapter implementation", "risk assessment and privacy review", "clinically approved evaluation", "human-oversight workflow"],
+    requiredConfiguration: [
+      "model provider credentials",
+      "for the live Ollama path: AI_BASE_URL (HTTPS outside local development), AI_TOKEN (Worker secret) and AI_MODEL",
+      "for the sandbox path: OLLAMA_URL and OLLAMA_MODEL (local development only; refused in production)",
+    ],
+    prerequisites: ["provider adapter implementation", "risk assessment and privacy review", "clinically approved evaluation", "human-oversight workflow", "verified connection to the configured model provider"],
     capabilities: ["clinical decision support jobs"],
     effectWhileUnavailable: "No AI job can be submitted and no clinical inference is produced.",
-    remediation: "Complete the model validation, risk and privacy reviews, then implement and evaluate the provider adapter.",
-    // The Workers AI binding is a runtime dependency, so availability is requested by FEATURE_AI and
-    // the model settings; each job records its own provider, status and output digest.
-    availableWhenConfigured: true,
-    availableReason: (config) => `Configured to use ${config.aiModel.model}; every output is decision support only and must be reviewed by a qualified clinician`,
+    remediation: "Complete the model validation, risk and privacy reviews, then configure and verify the provider adapter.",
+    // The AI integration becomes available only after a passing verification run against the
+    // configured live endpoint (like DICOMweb). A sandbox run makes it usable for development,
+    // never live-available. Each job still records its own provider, model, status and output digest.
+    availableReason: (config) => {
+      if (config.ai.baseUrl) {
+        return `Configured to use Ollama at ${new URL(config.ai.baseUrl).host}; model ${config.aiModel.model}; every output is decision support only and must be reviewed by a qualified clinician`;
+      }
+      return `Configured to use ${config.aiModel.model}; every output is decision support only and must be reviewed by a qualified clinician`;
+    },
+    configurationProblems: aiConfigProblems,
     sandboxConfigurationProblems: (config) => config.ollama.url
       ? []
       : ["OLLAMA_URL is not set, so the sandbox Ollama adapter has no model to call"],
@@ -277,6 +287,31 @@ export function ehmisConfigProblems(config: AppConfig): string[] {
   return problems;
 }
 
+/** Configuration problems for the live Ollama AI provider path. The sandbox path has its own problems below the sandbox line. */
+export function aiConfigProblems(config: AppConfig): string[] {
+  const problems: string[] = [];
+  if (!config.features.ai) return problems;
+  const mode = config.modes.ai;
+  if (mode === "sandbox") {
+    // Sandbox problems are reported through sandboxConfigurationProblems, not here.
+    return problems;
+  }
+  if (!config.ai.baseUrl) {
+    problems.push("AI_BASE_URL is not set for the live AI provider");
+    return problems;
+  }
+  if (config.appEnv === "production" && !config.ai.baseUrl.startsWith("https://")) {
+    problems.push("AI_BASE_URL must use HTTPS in production");
+  }
+  if (!config.ai.token) {
+    problems.push("AI_TOKEN is not set for the live AI provider");
+  }
+  if (!config.aiModel.model) {
+    problems.push("AI_MODEL is not set for the live AI provider");
+  }
+  return problems;
+}
+
 const OFF_LABEL = "UNAVAILABLE — not configured for this environment";
 
 /** Environment variable that selects the mode for each integration, used in operator-facing text. */
@@ -313,7 +348,11 @@ const MODE_LABELS: Readonly<Record<string, (config: AppConfig, mode: Integration
       : OFF_LABEL,
   ai: (config, mode) => mode === "sandbox"
     ? `SANDBOX — local Ollama model at ${config.ollama.url ?? "no OLLAMA_URL"}; synthetic prompts only and no patient data leaves the facility`
-    : mode === "live" ? "LIVE — Cloudflare Workers AI binding; decision support only, reviewed by a qualified clinician" : OFF_LABEL,
+    : mode === "live" && config.ai.baseUrl
+      ? `LIVE — Ollama model provider at ${new URL(config.ai.baseUrl).host}; decision support only, reviewed by a qualified clinician`
+      : mode === "live"
+        ? "LIVE — Cloudflare Workers AI binding; decision support only, reviewed by a qualified clinician"
+        : OFF_LABEL,
   telemedicine: (config, mode) => mode === "sandbox"
     ? "SANDBOX — public meet.jit.si rooms with unguessable names; no contract, consent flow or privacy review covers this instance"
     : mode === "live" ? `LIVE — Jitsi server at ${hostOf(config.telemedicine.baseUrl)}` : OFF_LABEL,
@@ -457,8 +496,16 @@ function statusFor(config: AppConfig, definition: IntegrationDefinition, verific
   } else if (requested && needsVerification) {
     const maxAgeMs = config.dicomweb.verificationMaxAgeDays * 86_400_000;
     if (!verification) {
-      state = "verification_failed";
-      reason = "The adapter has never been verified against its configured endpoint";
+      if (sandbox) {
+        // A sandbox adapter is usable for development without a real verification run; it is
+        // labelled sandbox so it can never be read as a live connection.
+        state = "sandbox";
+        reason = `Sandbox adapter configured and usable for development. ${modeLabel}`;
+        missingPrerequisites = [];
+      } else {
+        state = "verification_failed";
+        reason = "The adapter has never been verified against its configured endpoint";
+      }
     } else if (verification.outcome === "failed") {
       state = "verification_failed";
       lastVerificationOutcome = "failed";

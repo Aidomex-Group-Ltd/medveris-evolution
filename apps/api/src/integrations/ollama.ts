@@ -1,12 +1,17 @@
 /**
- * Ollama (ollama.com) local AI model runner, used as the sandbox AI adapter.
+ * Ollama AI model runner.
+ *
+ * Used in two distinct roles in this codebase:
+ *  - Sandbox role: local/dev Ollama adapter behind OLLAMA_URL (not available in production).
+ *  - Live role: production AI provider at AI_BASE_URL (HTTPS only in production), authenticated
+ *    with AI_TOKEN, with model inventory discovered from the live /api/tags endpoint.
  *
  * Ollama exposes a REST API: POST /api/chat provides a streaming or non-streaming chat completion.
- * The sandbox adapter uses non-streaming mode and maps the medveris AI inputs to Ollama's format.
+ * This client uses non-streaming mode and maps the medveris AI inputs to Ollama's format.
  */
 
-import type { OllamaConfig } from "../config.js";
-import type { AiRunInput } from "@medveris/ai";
+import type { AiModelConfig, AiRunInput } from "@medveris/ai";
+import { loadVerifications } from "./verification.js";
 
 export class OllamaError extends Error {
   readonly retryable = true;
@@ -16,11 +21,112 @@ export interface OllamaClient {
   run(params: AiRunInput): Promise<unknown>;
 }
 
+/** Shape returned by Ollama /api/tags. */
+export interface OllamaModel {
+  name: string;
+  model: string;
+  modified_at: string;
+  size: number;
+  digest: string;
+  /** Present on newer Ollama versions. */
+  details?: {
+    parent_model?: string;
+    format?: string;
+    family?: string;
+    families?: string[];
+    parameter_size?: string;
+    quantization_level?: string;
+    context_length?: number;
+    embedding_length?: number;
+    runner?: string;
+  };
+  capabilities?: string[];
+}
+
+export interface OllamaTagsResponse {
+  models: OllamaModel[];
+}
+
+export interface OllamaVersionResponse {
+  version: string;
+}
+
+/** Minimal connection summary for status reporting. */
+export interface OllamaConnectionStatus {
+  url: string;
+  /** The Ollama server version observed during the last successful verification. */
+  version: string | null;
+  /** Models reported by the server during the last successful verification. Empty until verified. */
+  models: OllamaModel[];
+  /** When the server was last successfully verified. Null before any successful verification. */
+  lastVerifiedAt: string | null;
+}
+
+function ollamaUrl(base: string): string {
+  return base.replace(/\/+$/, "");
+}
+
+async function ollamaFetch(base: string, path: string, init?: RequestInit, timeoutMs: number): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${ollamaUrl(base)}${path}`, {
+      ...init,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const error = await response.text().catch(() => "Unknown error");
+      throw new OllamaError(`Ollama reported HTTP ${response.status}: ${error}`);
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function createOllamaClient(settings: OllamaConfig): OllamaClient {
-  return {
+  return createLiveOllamaClient({
+    baseUrl: settings.url ?? "",
+    token: null,
+    model: settings.model,
+    timeoutMs: settings.timeoutMs,
+    provider: "ollama",
+  });
+}
+
+/**
+ * Production/discovery-capable Ollama client. Unlike the sandbox client returned by
+ * `createOllamaClient`, this one is intended for a live, authenticated HTTPS endpoint and exposes
+ * model discovery and connection status for status/health reporting.
+ */
+export function createLiveOllamaClient(settings: {
+  baseUrl: string;
+  token: string | null;
+  model: string;
+  timeoutMs: number;
+  provider: "ollama";
+}): OllamaClient & {
+  discoverModels: () => Promise<OllamaTagsResponse>;
+  verifyConnection: () => Promise<OllamaConnectionStatus>;
+  status: OllamaConnectionStatus;
+} {
+  const status: OllamaConnectionStatus = {
+    url: ollamaUrl(settings.baseUrl),
+    version: null,
+    models: [],
+    lastVerifiedAt: null,
+  };
+
+  const client: OllamaClient & {
+    discoverModels: () => Promise<OllamaTagsResponse>;
+    verifyConnection: () => Promise<OllamaConnectionStatus>;
+    status: OllamaConnectionStatus;
+  } = {
+    status,
+
     async run(params) {
-      if (!settings.url) throw new OllamaError("OLLAMA_URL is not set");
-      
+      if (!settings.baseUrl) throw new OllamaError("AI_BASE_URL is not set");
+
       const messages: Array<{ role: string; content: string }> = [];
       if (params.system) messages.push({ role: "system", content: params.system });
       if (params.context) {
@@ -30,14 +136,17 @@ export function createOllamaClient(settings: OllamaConfig): OllamaClient {
       }
       messages.push({ role: "user", content: params.prompt });
 
-      const url = `${settings.url.replace(/\/+$/, "")}/api/chat`;
+      const url = `${ollamaUrl(settings.baseUrl)}/api/chat`;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), settings.timeoutMs);
-      
+
       try {
         const response = await fetch(url, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            ...(settings.token ? { authorization: `Bearer ${settings.token}` } : {}),
+          },
           body: JSON.stringify({
             model: settings.model,
             messages,
@@ -77,5 +186,54 @@ export function createOllamaClient(settings: OllamaConfig): OllamaClient {
         clearTimeout(timer);
       }
     },
-  };
+
+    async discoverModels() {
+      const payload = (await ollamaFetch(settings.baseUrl, "/api/tags", { method: "GET" }, settings.timeoutMs)) as OllamaTagsResponse;
+      return payload;
+    },
+
+    async verifyConnection() {
+      let version: string | null = null;
+      try {
+        const payload = (await ollamaFetch(settings.baseUrl, "/api/version", { method: "GET" }, settings.timeoutMs)) as OllamaVersionResponse;
+        if (payload && typeof (payload as Record<string, unknown>).version === "string") {
+          version = (payload as { version: string }).version;
+        }
+      } catch {
+        // Fall through: status stays unverified.
+      }
+
+      let models: OllamaModel[] = [];
+      if (version) {
+        try {
+          const tags = await client.discoverModels();
+          models = Array.isArray(tags.models) ? tags.models : [];
+        } catch {
+          // A model-inventory failure does not undo a successful version probe.
+        }
+      }
+
+      status.version = version;
+      status.models = models;
+      status.lastVerifiedAt = version ? new Date().toISOString() : status.lastVerifiedAt;
+      return status;
+    },   };
+
+  return client;
 }
+
+/** Returns only a verified connection status when a passing verification record exists; otherwise
+ * null so callers can report "configured but not yet verified". */
+export async function loadAiStatus(sql: Sql, config: AppConfig): Promise<OllamaConnectionStatus | null> {
+  const verifications = await loadVerifications(sql, config);
+  const ai = verifications.ai;
+  if (!ai || ai.outcome !== "passed" || ai.mode === "sandbox") return null;
+  return createLiveOllamaClient({
+    baseUrl: config.ai.baseUrl,
+    token: config.ai.token,
+    model: config.aiModel.model,
+    timeoutMs: config.aiModel.timeoutMs,
+    provider: "ollama",
+  }).verifyConnection();
+}
+

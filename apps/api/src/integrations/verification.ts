@@ -1,6 +1,7 @@
 import type { Sql, Tx } from "@medveris/db";
 import type { AppConfig } from "../config.js";
 import { DicomwebClient, dicomwebConfigProblems, dicomwebFingerprint, isDicomUid, PacsError } from "./dicomweb.js";
+import { createLiveOllamaClient } from "./ollama.js";
 import { VERIFICATION_REQUIRED, type IntegrationId, type IntegrationMode, type VerificationLookup, type VerificationRecord } from "./registry.js";
 
 export interface VerificationCheck {
@@ -24,12 +25,26 @@ export function clearVerificationCache(): void {
 }
 
 async function cacheKey(config: AppConfig, id: IntegrationId): Promise<{ key: string; fingerprint: string }> {
+  if (id === "ai") {
+    const fingerprint = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([config.appEnv, config.ai.baseUrl ?? "", config.aiModel.model ?? "", config.ai.token ? "set" : "unset"])));
+    const hex = [...new Uint8Array(fingerprint)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return { key: `${id}|${config.appEnv}|${config.ai.baseUrl ?? ""}|${config.aiModel.model ?? ""}`, fingerprint };
+  }
   const fingerprint = await dicomwebFingerprint(config.dicomweb);
   return { key: `${id}|${config.appEnv}|${fingerprint}`, fingerprint };
 }
 
 function needsLookup(config: AppConfig, id: IntegrationId): boolean {
-  return VERIFICATION_REQUIRED.has(id) && Boolean(config.features[id]) && dicomwebConfigProblems(config).length === 0;
+  if (!VERIFICATION_REQUIRED.has(id)) return false;
+  if (!Boolean(config.features[id])) return false;
+  if (id === "ai") return aiConfiguredForVerification(config);
+  return dicomwebConfigProblems(config).length === 0;
+}
+
+function aiConfiguredForVerification(config: AppConfig): boolean {
+  if (!config.features.ai || !config.ai.baseUrl) return false;
+  if (config.modes.ai === "sandbox") return false;
+  return true;
 }
 
 /** The mode a verification run executes against, recorded with the run so a sandbox run is never read as a live one. */

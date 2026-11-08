@@ -16,7 +16,9 @@ import { assertStaffCapacity, staffSeatUsage, workspaceCapacity } from "../servi
 import { integrationStatus, listIntegrations } from "../integrations/registry.js";
 import { dicomwebClientFor } from "../integrations/dicomweb.js";
 import { loadVerifications, recordVerification, runDicomwebVerification } from "../integrations/verification.js";
+import { runAiVerification } from "../integrations/ai-verification.js";
 import { UNAVAILABLE_LABEL } from "../terminology/unavailable.js";
+import { createLiveOllamaClient } from "../integrations/ollama.js";
 import type { AppEnv } from "../types.js";
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -408,6 +410,57 @@ adminRoutes.post("/integrations/dicomweb/verify", async (c) => {
   });
   const status = integrationStatus(deps.config, "dicomweb", (await loadVerifications(deps.sql, deps.config)).dicomweb);
   return c.json({ id, outcome: run.outcome, checks: run.checks, status });
+});
+
+/**
+ * Verification run against the configured live Ollama AI provider, from this runtime. The stored
+ * outcome is what makes the AI integration available; a failed run makes it unavailable until a
+ * later run passes. The run discovers the real model inventory from /api/version and /api/tags, so
+ * availability is grounded in what the provider actually exposes, never in an assumption.
+ */
+const aiVerifySchema = z.object({
+  model: z.string().min(1).optional(),
+}).nullable();
+adminRoutes.post("/integrations/ai/verify", async (c) => {
+  if (!isPlatformOperator(c)) throw new ForbiddenError("Platform operator permission is required");
+  const deps = c.get("deps");
+  const body = await parseJson(c, aiVerifySchema);
+  const auth = c.get("auth")!;
+  const startedAt = new Date();
+  if (deps.config.modes.ai === "sandbox") {
+    return c.json({ error: { code: "ai_verification_sandbox", message: "AI verification is only supported for a live provider; the sandbox path is not a real connection" } }, 400);
+  }
+  if (!deps.config.ai.baseUrl) {
+    return c.json({ error: { code: "ai_verification_no_endpoint", message: "AI_BASE_URL is not configured, so the AI provider cannot be verified" } }, 400);
+  }
+  const requestedModel = body?.model ?? deps.config.aiModel.model;
+  const run = await runAiVerification(deps.sql, { ...deps.config, aiModel: { ...deps.config.aiModel, model: requestedModel } }, auth.user.id, startedAt);
+  const recordId = await withPlatformActor(c, async (tx) => {
+    const recordId = await recordVerification(tx, deps.config, "ai", run, auth.user.id, startedAt);
+    await writeAudit(tx, deps.config, {
+      tenantId: null,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: [],
+      action: "integration.verify",
+      resourceType: "IntegrationVerification",
+      resourceId: recordId,
+      ...auditMeta(c),
+      metadata: { integration: "ai", outcome: run.outcome, requestedModel, failedCheck: run.checks.find((check) => !check.passed)?.name ?? null },
+    });
+    return recordId;
+  });
+  const verifications = await loadVerifications(deps.sql, deps.config);
+  const status = integrationStatus(deps.config, "ai", verifications.ai);
+  const client = createLiveOllamaClient({
+    baseUrl: deps.config.ai.baseUrl,
+    token: deps.config.ai.token,
+    model: requestedModel,
+    timeoutMs: deps.config.aiModel.timeoutMs,
+    provider: "ollama",
+  });
+  const connectionStatus = await client.verifyConnection();
+  return c.json({ id: recordId, outcome: run.outcome, checks: run.checks, status, connection: connectionStatus });
 });
 
 /**

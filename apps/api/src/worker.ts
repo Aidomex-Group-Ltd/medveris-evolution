@@ -218,15 +218,39 @@ async function handleFetch(request: Request, env: WorkerEnv, ctx: WorkerContext)
   );
 }
 
-/** AI inference runtime for the background path; never exposes the model to requests or browsers. */
+/** AI inference runtime for the background path; never exposes the model to requests or browsers.
+ * Two distinct paths:
+ *  - sandbox: local/dev Ollama adapter (refused in production).
+ *  - live Ollama: production AI provider at AI_BASE_URL (HTTPS only in production), authenticated with
+ *    AI_TOKEN. The model inventory is discovered from the live endpoint at verification time.
+ */
 function aiJobRuntime(config: AppConfig): AiJobRuntime | undefined {
-  if (config.modes.ai !== "sandbox") return undefined;
-  return {
-    ai: createOllamaClient(config.ollama),
-    providerName: "ollama",
-    modelConfig: config.aiModel,
-    logAiRun: () => undefined,
-  };
+  if (config.modes.ai === "sandbox") {
+    return {
+      ai: createOllamaClient(config.ollama),
+      providerName: "ollama",
+      modelConfig: config.aiModel,
+      logAiRun: () => undefined,
+      source: "sandbox:ollama",
+    };
+  }
+  if (config.features.ai && config.ai.baseUrl) {
+    const client = createLiveOllamaClient({
+      baseUrl: config.ai.baseUrl,
+      token: config.ai.token,
+      model: config.aiModel.model,
+      timeoutMs: config.aiModel.timeoutMs,
+      provider: "ollama",
+    });
+    return {
+      ai: client,
+      providerName: "ollama",
+      modelConfig: config.aiModel,
+      logAiRun: () => undefined,
+      source: "live:ollama",
+    };
+  }
+  return undefined;
 }
 
 function jobsSql(env: WorkerEnv): Sql {

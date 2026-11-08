@@ -12,6 +12,18 @@ import type { AppEnv } from "../types.js";
 
 export const aiRoutes = new Hono<AppEnv>();
 
+/** Provider string recorded on the job. "ollama" is used for both the sandbox and live Ollama
+ * paths, because in both cases the inference is produced by an Ollama server; the job's `source`
+ * column distinguishes sandbox from live when that matters for reporting. "workers-ai" remains the
+ * fallback for a Cloudflare Workers AI binding when it is configured.
+ */
+function aiProvider(deps: { config: AppConfig }): string {
+  // Live Ollama provider path takes precedence; sandbox path is next; otherwise Workers AI.
+  if (deps.config.features.ai && deps.config.ai.baseUrl) return "ollama";
+  if (deps.config.modes.ai === "sandbox") return "ollama";
+  return "workers-ai";
+}
+
 aiRoutes.get("/ai/jobs", async (c) => {
   requireStaff(c);
   const auth = c.get("auth")!;
@@ -45,7 +57,7 @@ aiRoutes.post("/ai/jobs", async (c) => {
       insert into ai_jobs (id, tenant_id, patient_id, task_type, evidence_entry_ids, study_id, provider, model, status,
         request_digest, disclaimer, created_by)
       values (${id}, ${auth.activeTenant!.id}, ${body.patientId}, ${body.taskType}, ${body.evidenceEntryIds},
-        ${studyId}, ${deps.config.modes.ai === "sandbox" ? "ollama" : "workers-ai"}, ${deps.config.aiModel.model}, 'queued', ${digest}, ${AI_DISCLAIMER}, ${auth.user.id})
+        ${studyId}, ${aiProvider(deps)}, ${deps.config.aiModel.model}, 'queued', ${digest}, ${AI_DISCLAIMER}, ${auth.user.id})
     `;
     await writeAudit(tx, deps.config, requestAudit(c, "ai.job.create", {
       subjectPatientId: body.patientId, resourceType: "AIJob", resourceId: id,
@@ -63,7 +75,7 @@ aiRoutes.post("/ai/jobs", async (c) => {
   });
   return c.json({
     ok: true,
-    job: { id, status: "queued", provider: deps.config.modes.ai === "sandbox" ? "ollama" : "workers-ai", responseSummary: null, completedAt: null, disclaimer: AI_DISCLAIMER },
+    job: { id, status: "queued", provider: aiProvider(deps), responseSummary: null, completedAt: null, disclaimer: AI_DISCLAIMER },
   }, 202);
 });
 

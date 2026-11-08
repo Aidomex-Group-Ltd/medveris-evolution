@@ -18,6 +18,8 @@ export interface AiJobRuntime {
   modelConfig: AiModelConfig;
   /** Debug logging only; never logs prompts, outputs or patient data. */
   logAiRun: AiDependencies["logAiRun"];
+  /** Adapter source recorded on the job, e.g. "sandbox:ollama", "live:ollama" or "workers-ai". */
+  source: "sandbox:ollama" | "live:ollama" | "workers-ai";
 }
 
 export async function handleAiJobRequested(sql: Sql, runtime: AiJobRuntime | undefined, event: OutboxEvent): Promise<DispatchResult> {
@@ -53,7 +55,7 @@ export async function handleAiJobRequested(sql: Sql, runtime: AiJobRuntime | und
     const summary = ok ? (result.output?.text?.trim() || null) : null;
     await withContext(sql, { actorKind: "system" }, async (tx) => tx`
       update ai_jobs set status = ${ok ? "completed" : "failed"}, provider = ${result.provider}, model = ${runtime.modelConfig.model},
-        response_summary = ${summary}, completed_at = now()
+        response_summary = ${summary}, completed_at = now(), source = ${runtime.source}
        where id = ${jobId} and tenant_id = ${event.tenantId}`);
     metric("ai.job.completed", 1, { ok: ok ? "true" : "false", provider: result.provider });
     return { handled: true, detail: ok ? "ai-job-completed" : "ai-job-inference-failed" };
@@ -110,5 +112,6 @@ export function aiRuntimeFromEnv(env: NodeJS.ProcessEnv): AiJobRuntime | undefin
     providerName: "ollama",
     modelConfig: { provider: "ollama", model, inputTokensMax: Math.max(64, Number(env.AI_INPUT_TOKENS_MAX ?? 4096) || 4096), timeoutMs },
     logAiRun: () => undefined,
+    source: "sandbox:ollama",
   };
 }
