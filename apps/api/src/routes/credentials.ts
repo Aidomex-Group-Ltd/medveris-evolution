@@ -12,6 +12,7 @@ import { auditMeta, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
 import { enforceRateLimit } from "../lib/rate-limit.js";
+import { assertStorageCapacity, storedBytes, workspaceCapacity } from "../services/capacity.js";
 import type { AppEnv } from "../types.js";
 
 export const credentialRoutes = new Hono<AppEnv>();
@@ -70,7 +71,11 @@ credentialRoutes.post("/uploads", async (c) => {
   const digest = [...new Uint8Array(sha256)].map((b) => b.toString(16).padStart(2, "0")).join("");
   const id = crypto.randomUUID();
   const objectKey = `${auth.activeTenant!.id}/${id}`;
+  const limits = await workspaceCapacity(deps.sql, auth.activeTenant!.id);
   const result = await withStaffActor(c, async (tx) => {
+    await tx`select id from tenants where id = ${auth.activeTenant!.id} for update`;
+    const usedBytes = await storedBytes(tx, auth.activeTenant!.id);
+    assertStorageCapacity(usedBytes, bytes.length, limits.storageLimitBytes);
     await tx`
       insert into uploads (id, tenant_id, owner_user_id, filename, declared_type, detected_type, size_bytes, sha256, object_key, scan_status, status)
       values (${id}, ${auth.activeTenant!.id}, ${auth.user.id}, ${body.filename}, ${body.declaredType}, ${detected}, ${bytes.length}, ${digest}, ${objectKey}, 'quarantined', 'pending')

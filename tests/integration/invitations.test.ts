@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { totpCode } from "@medveris/auth";
 import { withContext } from "@medveris/db";
 import { createHarness, KAMPALA_TENANT, type Session } from "./support.js";
+import { assertStaffCapacity, staffSeatUsage } from "../../apps/api/src/services/capacity.js";
 
 const h = createHarness("invitations");
 const PASSWORD = "Synthetic-Invitee-2026!";
@@ -356,3 +357,22 @@ async function signInWithMfa(email: string, challengeId: string): Promise<{ sess
   expect(response.status, JSON.stringify(body)).toBe(200);
   return { session: { cookie: cookieFrom(response), csrf: body.csrfToken }, body };
 }
+
+describe("staff seat capacity", () => {
+  it("counts active seats against a hard allowance and refuses the extra seat", async () => {
+    const { tenantId } = await registerFacility();
+    const usage = await withContext(h.sql, { tenantId, actorKind: "system" }, (tx) => staffSeatUsage(tx, tenantId, 1));
+    expect(usage.active).toBe(1);
+    expect(() => assertStaffCapacity(usage, 1)).toThrowError(/staff account/);
+  });
+
+  it("counts pending invitations as reserved seats", async () => {
+    const { admin: facilityAdmin, tenantId } = await registerFacility();
+    await invite(facilityAdmin, uniqueEmail("seat-reserve"));
+    const usage = await withContext(h.sql, { tenantId, actorKind: "system" }, (tx) => staffSeatUsage(tx, tenantId, null));
+    expect(usage.active).toBe(1);
+    expect(usage.pending).toBe(1);
+    expect(() => assertStaffCapacity({ ...usage, limit: 1 }, 1)).toThrowError(/staff account/);
+    expect(() => assertStaffCapacity({ ...usage, limit: 3 }, 1)).not.toThrow();
+  });
+});

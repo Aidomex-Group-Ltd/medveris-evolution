@@ -4,6 +4,7 @@ import type { AppConfig } from "../config.js";
 import { writeAudit } from "../lib/audit.js";
 import { AppError, ConflictError } from "../lib/errors.js";
 import { recordLegalAcceptance } from "../lib/legal.js";
+import { assertStaffCapacity, staffSeatUsage, workspaceCapacity } from "./capacity.js";
 
 /**
  * Staff invitation lifecycle. The facility, role and inviter always come from the invitation row the
@@ -280,6 +281,11 @@ export async function acceptInvitation(
   input: { token: string; user: Viewer; meta: AuditMeta },
 ): Promise<Accepted> {
   const result = await sql.begin(async (tx): Promise<AcceptResult> => {
+    // Lock order is tenant → invitation everywhere (the invitation creation path does the same), so a
+    // concurrent administrator invitation cannot deadlock with an accept.
+    const peek = await loadByToken(tx, input.token, { lock: false, userId: input.user.id });
+    if (!peek) throw INVALID();
+    await tx`select id from tenants where id = ${peek.invitation.tenantId} for update`;
     const loaded = await loadByToken(tx, input.token, { lock: true, userId: input.user.id });
     if (!loaded) throw INVALID();
     const { invitation, facility } = loaded;
@@ -305,6 +311,12 @@ export async function acceptInvitation(
 
     const [existing] = await tx`
       select id, roles, status, updated_at from memberships where tenant_id = ${invitation.tenantId} and user_id = ${input.user.id}`;
+    const consumesSeat = !existing || (existing.status === "removed" && invitation.createdAt > (existing.updatedAt as Date));
+    if (consumesSeat) {
+      const capacity = await workspaceCapacity(sql, invitation.tenantId);
+      const usage = await staffSeatUsage(tx, invitation.tenantId, capacity.staffLimit, { excludeInvitationId: invitation.id });
+      assertStaffCapacity(usage, 1);
+    }
     let membershipId: string;
     let roles: string[];
     if (!existing) {

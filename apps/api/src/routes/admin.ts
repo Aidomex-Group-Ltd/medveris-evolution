@@ -12,6 +12,7 @@ import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError
 import type { AppConfig } from "../config.js";
 import { createPlatformRoleRequest, approvePlatformRoleRequest, denyPlatformRoleRequest, cancelPlatformRoleRequest, revokePlatformRoleGrant, legacyGrantPlatformRole, legacyRevokePlatformRole } from "../lib/platform-roles.js";
 import { adminInvitationStatus, assertInvitable, INVITATION_TTL_MS, invitationEmail } from "../services/invitations.js";
+import { assertStaffCapacity, staffSeatUsage, workspaceCapacity } from "../services/capacity.js";
 import { integrationStatus, listIntegrations } from "../integrations/registry.js";
 import { dicomwebClientFor } from "../integrations/dicomweb.js";
 import { loadVerifications, recordVerification, runDicomwebVerification } from "../integrations/verification.js";
@@ -111,13 +112,16 @@ adminRoutes.post("/invitations", async (c) => {
   const refused = assertInvitable(body.roles);
   if (refused) throw new ValidationError(refused);
   const tenantId = auth.activeTenant!.id;
+  const limits = await workspaceCapacity(deps.sql, tenantId);
   const token = randomToken(32);
   const tokenHash = await sha256Hex(token);
   const id = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
   const facilityName = await withStaffActor(c, async (tx) => {
-    const [facility] = await tx`select name, status from tenants where id = ${tenantId}`;
+    const [facility] = await tx`select name, status from tenants where id = ${tenantId} for update`;
     if (facility?.status !== "active") throw new ValidationError("This facility is not active and cannot onboard staff");
+    const seatUsage = await staffSeatUsage(tx, tenantId, limits.staffLimit, { excludeEmail: body.email });
+    assertStaffCapacity(seatUsage, 1);
     const scope = await checkedScope(tx, tenantId, manager, body.roles, body);
     const member = await tx`
       select m.roles from memberships m join users u on u.id = m.user_id
