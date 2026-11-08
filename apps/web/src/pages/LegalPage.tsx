@@ -1,6 +1,5 @@
 import { Card, ErrorState, LoadingState, Notice, PageHeader } from "@medveris/ui";
 import { PublicSiteLayout } from "../components/PublicSiteLayout";
-import { api } from "../lib/api";
 import { useQuery } from "../lib/useQuery";
 
 interface LegalSection {
