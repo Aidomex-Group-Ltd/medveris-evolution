@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withContext } from "@medveris/db";
 import { CLINICIAN_ID, KAMPALA_TENANT, createHarness, type Session } from "./support.js";
+import { purgeExpiredExports } from "../../apps/jobs/src/exports.js";
 
 const h = createHarness("data-exchange");
 const stamp = Date.now();
@@ -288,5 +289,21 @@ describe("export and download", () => {
         tx`update memberships set roles = ${["receptionist"]}, scope_department_id = null
              where tenant_id = ${KAMPALA_TENANT} and user_id = (select id from users where email = 'reception@medveris.local')`);
     }
+  });
+});
+
+
+describe("export retention", () => {
+  it("purges the payload and token of an expired export while keeping the audit record", async () => {
+    const created = await h.post(reception, "/api/v1/data/exports", { dataset: "patients", format: "csv" }, 201);
+    await withContext(h.sql, { tenantId: KAMPALA_TENANT, userId: CLINICIAN_ID, actorKind: "staff", roles: ["facility_admin"] }, (tx) =>
+      tx`update data_exchange_jobs set expires_at = now() - interval '1 minute' where id = ${created.export.id}`);
+    const purged = await withContext(h.sql, { actorKind: "system" }, (tx) => purgeExpiredExports(tx));
+    expect(purged).toBeGreaterThanOrEqual(1);
+    const [row] = await withContext(h.sql, { tenantId: KAMPALA_TENANT, userId: CLINICIAN_ID, actorKind: "staff", roles: ["facility_admin"] }, (tx) => tx`
+      select content, download_token_hash as "downloadTokenHash", content_digest as "contentDigest", kind, dataset, status
+        from data_exchange_jobs where id = ${created.export.id}`);
+    expect(row).toMatchObject({ content: null, downloadTokenHash: null, kind: "export", dataset: "patients", status: "completed" });
+    expect(row?.contentDigest).toMatch(/^[0-9a-f]{64}$/);
   });
 });

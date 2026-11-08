@@ -1,10 +1,12 @@
 import type { Sql } from "@medveris/db";
 import { errorFields, logEvent, metric } from "@medveris/platform";
 import { claimOutboxEvent, failOutboxEvent, outboxMetrics, reclaimStaleOutbox, type OutboxMetrics, type ReclaimResult } from "./outbox.js";
+import type { DispatchResult, OutboxEvent } from "./outbox.js";
 import { checkpointAllTenants, type CheckpointResult } from "./integrity.js";
 import { handleEvent, relayOutbox, type QueueProducer, type RealtimeSink, type RelayResult } from "./queue.js";
 import { runBillingCycle, type BillingCycleResult } from "./billing.js";
 import { maybeExpireStaleGrants, type GrantExpiryResult } from "./grants.js";
+import { maybePurgeExpiredExports, type ExportPurgeResult } from "./exports.js";
 
 export interface JobsCycleResult {
   processed: number;
@@ -19,6 +21,8 @@ export interface JobsCycleResult {
   notificationsError: string | null;
   grants: GrantExpiryResult | null;
   grantsError: string | null;
+  exports: ExportPurgeResult | null;
+  exportsError: string | null;
 }
 
 /** Subscription lifecycle work is daily or hourly in nature; running it every few minutes is enough. */
@@ -61,8 +65,15 @@ async function maybeRunGrants(sql: Sql, signingKey: string, keyId: string): Prom
   return { grants: result, grantsError: result.error };
 }
 
+async function maybeRunExportPurge(sql: Sql): Promise<{ exports: ExportPurgeResult | null; exportsError: string | null }> {
+  const result = await maybePurgeExpiredExports(sql);
+  return { exports: result, exportsError: result.error };
+}
+
 
 export interface JobsCycleOptions {
+  /** Optional override for the outbox dispatcher (the AI inference consumer uses this). */
+  dispatch?: (event: OutboxEvent) => DispatchResult | Promise<DispatchResult>;
   maxEvents?: number;
   /** With a queue, events are relayed to it; without one they are handled in-process. */
   producer?: QueueProducer | null;
@@ -72,9 +83,9 @@ export interface JobsCycleOptions {
   perTenantBatchLimit?: number;
 }
 
-export async function drainOutbox(sql: Sql, maxEvents = Number.POSITIVE_INFINITY, options: Pick<JobsCycleOptions, "realtime" | "realtimeEventTypes"> = {}): Promise<number> {
+export async function drainOutbox(sql: Sql, maxEvents = Number.POSITIVE_INFINITY, options: Pick<JobsCycleOptions, "realtime" | "realtimeEventTypes" | "dispatch"> = {}): Promise<number> {
   let processed = 0;
-  const deps = { sql, dlq: null, realtime: options.realtime ?? null, realtimeEventTypes: options.realtimeEventTypes ?? [] };
+  const deps = { sql, dlq: null, realtime: options.realtime ?? null, realtimeEventTypes: options.realtimeEventTypes ?? [], dispatch: options.dispatch };
   for (let claimed = 0; claimed < maxEvents; claimed += 1) {
     const event = await claimOutboxEvent(sql);
     if (!event) break;
@@ -120,10 +131,11 @@ export async function runJobsCycle(
   const billing = await maybeRunBilling(sql);
   const notifications = await maybeScanNotifications(sql);
   const grants = await maybeRunGrants(sql, signingKey, keyId);
+  const exports = await maybeRunExportPurge(sql);
   try {
     const checkpoints = await checkpointAllTenants(sql, signingKey, keyId);
-    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing, ...notifications, ...grants };
+    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing, ...notifications, ...grants, ...exports };
   } catch (error) {
-    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message, ...billing, ...notifications, ...grants };
+    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message, ...billing, ...notifications, ...grants, ...exports };
   }
 }
