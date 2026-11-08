@@ -147,6 +147,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
     c.header("x-content-type-options", "nosniff");
     c.header("x-frame-options", "DENY");
     c.header("referrer-policy", "no-referrer");
+    c.header("strict-transport-security", "max-age=31536000");
     c.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
   });
 
