@@ -408,3 +408,313 @@ inpatientRoutes.post("/admissions/:id/handoffs", async (c) => {
   });
   return c.json({ ok: true, handoff: { id: handoffId } }, 201);
 });
+
+// Fluid balance entries attached to an active admission.
+inpatientRoutes.get("/admissions/:id/fluid-balance", async (c) => {
+  requireStaff(c);
+  assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const window = c.req.query("window") ?? "24h";
+  const data = await withStaffActor(c, async (tx) => {
+    const admission = await requireRows(await tx`
+      select id, patient_id, status from admissions where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+    `, "Admission not found");
+    if (admission.status !== "admitted") throw new ConflictError("Fluid balance requires an active admission");
+    const since = new Date();
+    if (window === "24h") since.setHours(since.getHours() - 24);
+    else if (window === "7d") since.setDate(since.getDate() - 7);
+    else if (window === "all") since = new Date(0);
+    const entries = await tx`
+      select fe.*, u.display_name as recorded_by_name
+        from fluid_balance_entries fe join users u on u.id = fe.recorded_by
+       where fe.admission_id = ${id} and fe.occurred_at >= ${since}
+       order by fe.occurred_at desc
+    `;
+    const totals = await tx`
+      select
+        coalesce(sum(nullif(fe.intake_ml, null)), 0) as total_intake_ml,
+        coalesce(sum(nullif(fe.output_ml, null)), 0) as total_output_ml
+        from fluid_balance_entries fe
+       where fe.admission_id = ${id} and fe.occurred_at >= ${since}
+    `;
+    const t = totals[0];
+    return {
+      entries,
+      summary: {
+        totalIntakeMl: Number(t.total_intake_ml),
+        totalOutputMl: Number(t.total_output_ml),
+        netBalanceMl: Number(t.total_intake_ml) - Number(t.total_output_ml),
+        periodStart: since.toISOString(),
+        periodEnd: new Date().toISOString(),
+      },
+    };
+  });
+  await withStaffActor(c, async (tx) => writeAudit(tx, c.get("deps").config, requestAudit(c, "admission.fluid_balance.read", {
+    subjectPatientId: String(data.entries[0]?.patientId ?? ""), resourceType: "FluidBalanceQuery", resourceId: id,
+  })));
+  return c.json(data);
+});
+
+inpatientRoutes.post("/admissions/:id/fluid-balance", async (c) => {
+  requireStaff(c);
+  assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, fluidBalanceSchema);
+  const entryId = crypto.randomUUID();
+  await withStaffActor(c, async (tx) => {
+    const admission = await requireRows(await tx`
+      select id, patient_id, status from admissions where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+    `, "Admission not found");
+    if (admission.status !== "admitted") throw new ConflictError("Fluid balance requires an active admission");
+    if (body.intakeMl == null && body.outputMl == null) throw new ValidationError("Record at least one of intake or output");
+    await tx`
+      insert into fluid_balance_entries (id, tenant_id, admission_id, patient_id, occurred_at, intake_ml, output_ml, source, notes, recorded_by)
+      values (${entryId}, ${auth.activeTenant!.id}, ${id}, ${admission.patientId}, ${new Date(body.occurredAt)}, ${body.intakeMl ?? null}, ${body.outputMl ?? null}, ${body.source}, ${body.notes || null}, ${auth.user.id})
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "fluid_balance.create", {
+      subjectPatientId: String(admission.patientId), resourceType: "FluidBalanceEntry", resourceId: entryId,
+      metadata: { source: body.source, intakeMl: body.intakeMl ?? null, outputMl: body.outputMl ?? null },
+    }));
+  });
+  return c.json({ ok: true, entry: { id: entryId } }, 201);
+});
+
+// Nursing task assignment, escalation and omission.
+inpatientRoutes.patch("/admissions/:id/tasks/:taskId/assign", async (c) => {
+  requireStaff(c);
+  assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const taskId = uuidSchema.parse(c.req.param("taskId"));
+  const body = await parseJson(c, nursingTaskAssignSchema);
+  await withStaffActor(c, async (tx) => {
+    const task = await requireRows(await tx`
+      select nt.id, a.patient_id, nt.status, nt.assigned_to_user_id from nursing_tasks nt join admissions a on a.id = nt.admission_id
+       where nt.id = ${taskId} and nt.admission_id = ${id} and nt.tenant_id = ${auth.activeTenant!.id} for update
+    `, "Nursing task not found");
+    if (!["pending", "in-progress"].includes(task.status)) throw new ConflictError("Only pending or in-progress tasks can be reassigned");
+    const member = await tx`
+      select m.user_id from memberships m where m.tenant_id = ${auth.activeTenant!.id} and m.user_id = ${body.assignedToUserId} and m.status = 'active'
+    `;
+    if (!member[0]) throw new ValidationError("The assignee is not an active facility member");
+    await tx`
+      update nursing_tasks set assigned_to_user_id = ${body.assignedToUserId}, task_type = ${body.taskType || tx`task_type`}, updated_at = now()
+       where id = ${taskId}
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "nursing.task.assign", {
+      subjectPatientId: String(task.patientId), resourceType: "NursingTask", resourceId: taskId,
+      metadata: { assignedToUserId: body.assignedToUserId, taskType: body.taskType ?? null },
+    }));
+  });
+  return c.json({ ok: true });
+});
+
+inpatientRoutes.post("/admissions/:id/tasks/:taskId/escalate", async (c) => {
+  requireStaff(c);
+  assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const taskId = uuidSchema.parse(c.req.param("taskId"));
+  const body = await parseJson(c, nursingTaskEscalateSchema);
+  await withStaffActor(c, async (tx) => {
+    const task = await requireRows(await tx`
+      select nt.id, a.patient_id, nt.status, nt.escalated_at, nt.escalated_to_user_id from nursing_tasks nt join admissions a on a.id = nt.admission_id
+       where nt.id = ${taskId} and nt.admission_id = ${id} and nt.tenant_id = ${auth.activeTenant!.id} for update
+    `, "Nursing task not found");
+    if (task.status === "completed" || task.status === "cancelled") throw new ConflictError("Completed or cancelled tasks cannot be escalated");
+    const member = await tx`
+      select m.user_id from memberships m where m.tenant_id = ${auth.activeTenant!.id} and m.user_id = ${body.escalatedToUserId} and m.status = 'active'
+    `;
+    if (!member[0]) throw new ValidationError("The escalation recipient is not an active facility member");
+    await tx`
+      update nursing_tasks set escalated_to_user_id = ${body.escalatedToUserId}, escalated_at = now(), omitted_reason = ${body.reason || null} where id = ${taskId}
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "nursing.task.escalate", {
+      subjectPatientId: String(task.patientId), resourceType: "NursingTask", resourceId: taskId,
+      metadata: { escalatedToUserId: body.escalatedToUserId },
+    }));
+  });
+  return c.json({ ok: true });
+});
+
+inpatientRoutes.post("/admissions/:id/tasks/:taskId/omit", async (c) => {
+  requireStaff(c);
+  assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const taskId = uuidSchema.parse(c.req.param("taskId"));
+  const body = await parseJson(c, nursingTaskOmitSchema);
+  await withStaffActor(c, async (tx) => {
+    const task = await requireRows(await tx`
+      select nt.id, a.patient_id, nt.status from nursing_tasks nt join admissions a on a.id = nt.admission_id
+       where nt.id = ${taskId} and nt.admission_id = ${id} and nt.tenant_id = ${auth.activeTenant!.id} for update
+    `, "Nursing task not found");
+    if (task.status !== "pending") throw new ConflictError("Only pending tasks can be omitted");
+    await tx`
+      update nursing_tasks set status = 'completed', completed_by = ${auth.user.id}, completed_at = now(), omitted_reason = ${body.note} where id = ${taskId}
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "nursing.task.omit", {
+      subjectPatientId: String(task.patientId), resourceType: "NursingTask", resourceId: taskId,
+      metadata: { omitted: true },
+    }));
+  });
+  return c.json({ ok: true });
+});
+
+// Admission transfer history.
+inpatientRoutes.get("/admissions/:id/transfers", async (c) => {
+  requireStaff(c);
+  assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const data = await withStaffActor(c, async (tx) => {
+    const admission = await requireRows(await tx`
+      select id, patient_id from admissions where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+    `, "Admission not found");
+    const transfers = await tx`
+      select bt.*, b_from.label as from_bed_label, b_to.label as to_bed_label,
+             w_from.name as from_ward_name, w_to.name as to_ward_name,
+             u.display_name as transferred_by_name
+        from bed_transfers bt
+        join beds b_from on b_from.id = bt.from_bed_id
+        join beds b_to on b_to.id = bt.to_bed_id
+        join wards w_from on w_from.id = b_from.ward_id
+        join wards w_to on w_to.id = b_to.ward_id
+        join users u on u.id = bt.transferred_by
+       where bt.admission_id = ${id}
+       order by bt.created_at desc
+    `;
+    return { admissionId: id, patientId: String(admission.patientId), transfers };
+  });
+  await withStaffActor(c, async (tx) => writeAudit(tx, c.get("deps").config, requestAudit(c, "admission.transfers.read", {
+    subjectPatientId: String(data.patientId), resourceType: "BedTransfer", resourceId: id,
+  })));
+  return c.json(data);
+});
+
+// eMAR omission capture for a medication administration.
+// The medication administration APIs live in apps/api/src/routes/pharmacy.ts;
+// this endpoint records the clinical omission reason and prevents silent
+// re-administration of the same dose.
+inpatientRoutes.post("/admissions/:id/administrations/:administrationId/omit", async (c) => {
+  requireStaff(c);
+  assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const administrationId = uuidSchema.parse(c.req.param("administrationId"));
+  const body = await parseJson(c, administrationOmissionSchema);
+  await withStaffActor(c, async (tx) => {
+    const administration = await requireRows(await tx`
+      select ma.id, ma.tenant_id, ma.order_id, ma.status, ma.created_at, p.id as patient_id
+        from medication_administrations ma
+        join medication_orders mo on mo.id = ma.order_id
+        join patients p on p.id = mo.patient_id
+       where ma.id = ${administrationId} and ma.tenant_id = ${auth.activeTenant!.id}
+    `, "Medication administration not found");
+    if (String(administration.tenant_id) !== String(auth.activeTenant!.id)) throw new ValidationError("Unknown administration");
+    if (administration.status !== "administered") throw new ConflictError("Only an administered dose can be marked omitted");
+    if (String(administration.patient_id) !== c.req.param("id")) {
+      // The route key is the admission id; confirm the administration belongs
+      // to the same patient as the admission.
+      const admission = await tx`
+        select id from admissions where id = ${id} and tenant_id = ${auth.activeTenant!.id} and patient_id = ${administration.patient_id}
+      `;
+      if (!admission[0]) throw new NotFoundError("Admission not found");
+    }
+    if (body.expectedVersion && body.expectedVersion !== administration.created_at.getTime() / 1000) {
+      throw new ConflictError("The administration version has changed");
+    }
+    await tx`
+      update medication_administrations set status = 'omitted', reason = ${body.reason}, idempotency_key = ${body.expectedVersion ? String(body.expectedVersion) : null} where id = ${administrationId}
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "medication.administration.omit", {
+      subjectPatientId: String(administration.patient_id), resourceType: "MedicationAdministration", resourceId: administrationId,
+      metadata: { omitted: true },
+    }));
+  });
+  return c.json({ ok: true });
+});
+
+// Lightweight medication schedule + administration record for the ward eMAR.
+// These are convenience endpoints layered on the existing prescribing/administration
+// tables so the ward page can record schedule-driven administration without
+// rebuilding the pharmacy workflow.
+inpatientRoutes.post("/admissions/:id/medication-schedules", async (c) => {
+  requireStaff(c);
+  assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, medicationScheduleSchema);
+  await withStaffActor(c, async (tx) => {
+    const admission = await requireRows(await tx`
+      select id, patient_id, status, encounter_id from admissions where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+    `, "Admission not found");
+    if (admission.status !== "admitted") throw new ConflictError("Medication schedules require an active admission");
+    const medicine = await tx`
+      select id from medicines where id = ${body.medicineId} and tenant_id = ${auth.activeTenant!.id}
+    `;
+    if (!medicine[0]) throw new NotFoundError("Medicine not found");
+    const orderId = crypto.randomUUID();
+    await tx`
+      insert into medication_orders (id, tenant_id, patient_id, encounter_id, medicine_id, dose_text, route, frequency, duration_days, status)
+      values (${orderId}, ${auth.activeTenant!.id}, ${admission.patientId}, ${admission.encounter_id}, ${body.medicineId}, ${body.doseText}, ${body.route}, ${body.frequency}, ${body.durationDays ?? null}, 'active')
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "medication.schedule.create", {
+      subjectPatientId: String(admission.patientId), resourceType: "MedicationOrder", resourceId: orderId,
+      metadata: { medicineId: body.medicineId, route: body.route, frequency: body.frequency },
+    }));
+    // Return the created order plus a transient schedule id the ward eMAR can reference.
+    return c.json({ ok: true, order: { id: orderId, medicineId: body.medicineId } }, 201);
+  });
+});
+
+inpatientRoutes.post("/admissions/:id/administrations", async (c) => {
+  requireStaff(c);
+  assertWardAccess(requestActor(c));
+  const auth = c.get("auth")!;
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, medicationAdministrationSchema);
+  const administrationId = crypto.randomUUID();
+  await withStaffActor(c, async (tx) => {
+    const admission = await requireRows(await tx`
+      select id, patient_id, status, encounter_id from admissions where id = ${id} and tenant_id = ${auth.activeTenant!.id}
+    `, "Admission not found");
+    if (admission.status !== "admitted") throw new ConflictError("Medication administration requires an active admission");
+    let orderId = body.orderId ?? null;
+    if (!orderId) {
+      // Create an ad-hoc order for schedule-driven administration when the caller
+      // supplies a medicine id instead of an existing order id.
+      if (!body.medicineId) throw new ValidationError("Provide either an existing order id or a medicine id for ad-hoc administration");
+      const medicine = await tx`
+        select id from medicines where id = ${body.medicineId} and tenant_id = ${auth.activeTenant!.id}
+      `;
+      if (!medicine[0]) throw new NotFoundError("Medicine not found");
+      orderId = crypto.randomUUID();
+      await tx`
+        insert into medication_orders (id, tenant_id, patient_id, encounter_id, medicine_id, dose_text, route, frequency, status)
+        values (${orderId}, ${auth.activeTenant!.id}, ${admission.patientId}, ${admission.encounter_id}, ${body.medicineId}, ${body.doseText}, ${body.route}, ${body.frequency ?? 'as-ordered'}, 'active')
+      `;
+    } else {
+      const order = await tx`
+        select id, patient_id from medication_orders where id = ${orderId} and tenant_id = ${auth.activeTenant!.id}
+      `;
+      if (!order[0]) throw new NotFoundError("Medication order not found");
+      if (String(order[0].patient_id) !== String(admission.patientId)) throw new ValidationError("The selected order does not belong to this patient");
+    }
+    const existing = await tx`
+      select id from medication_administrations where tenant_id = ${auth.activeTenant!.id} and order_id = ${orderId} and administered_at = ${new Date(body.administeredAt)} and dose_text = ${body.doseText}
+    `;
+    if (existing.length) throw new ConflictError("A matching administration already exists for this dose and time");
+    await tx`
+      insert into medication_administrations (id, tenant_id, order_id, dose_text, administered_at, site, notes, status, witnessed_by, idempotency_key)
+      values (${administrationId}, ${auth.activeTenant!.id}, ${orderId}, ${body.doseText}, ${new Date(body.administeredAt)}, ${body.site || null}, ${body.notes || null}, ${body.status}, ${body.witnessBy || null}, ${crypto.randomUUID()})
+    `;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "medication.administration.create", {
+      subjectPatientId: String(admission.patientId), resourceType: "MedicationAdministration", resourceId: administrationId,
+      metadata: { orderId, status: body.status, doseText: body.doseText },
+    }));
+  });
+  return c.json({ ok: true, administration: { id: administrationId } }, 201);
+});

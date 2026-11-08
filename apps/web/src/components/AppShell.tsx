@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Badge, Button } from "@medveris/ui";
 import { BrandMark } from "./BrandMark";
@@ -8,6 +8,7 @@ import { useQuery } from "../lib/useQuery";
 import { api } from "../lib/api";
 import {
   MOBILE_TABS,
+  NAV_GROUPS,
   NAV_SECTIONS,
   activeDestination,
   activeMobileTabForPath,
@@ -21,6 +22,7 @@ import {
   type NavSectionId,
 } from "../lib/nav";
 import { workspaceProfile } from "../lib/workspace";
+import { useFocusTrap } from "../lib/focusTrap";
 import type { MeResponse } from "../lib/types";
 
 interface BillingStatusView {
@@ -172,6 +174,8 @@ function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: () => v
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, { active: open, onEscape: onClose });
   const destinations = useMemo(() => (me ? navDestinationsFor(me) : []), [me]);
   const sectionLabels = useMemo(() => new Map(NAV_SECTIONS.map((section) => [section.id, section.label])), []);
   const results = useMemo(() => {
@@ -186,8 +190,6 @@ function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: () => v
     if (!open) return;
     setQuery("");
     setIndex(0);
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 20);
-    return () => window.clearTimeout(timer);
   }, [open]);
 
   useEffect(() => {
@@ -204,7 +206,7 @@ function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: () => v
   return (
     <div className="mv-search" role="presentation">
       <button type="button" className="mv-search__scrim" aria-label="Close search" onClick={onClose} />
-      <div className="mv-search__panel" role="dialog" aria-modal="true" aria-label="Search workspace">
+      <div className="mv-search__panel" ref={panelRef} role="dialog" aria-modal="true" aria-label="Search workspace">
         <div className="mv-search__field">
           <NavIcon name="search" size={20} />
           <input
@@ -264,11 +266,13 @@ function MobileSheet({ tabId, onClose }: { tabId: MobileTabId; onClose: () => vo
   const { me } = useAuth();
   const sections = useMemo(() => (me ? mobileSectionsFor(me, tabId) : []), [me, tabId]);
   const tab = MOBILE_TABS.find((candidate) => candidate.id === tabId);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, { active: Boolean(tab), onEscape: onClose });
   if (!tab) return null;
   return (
     <div className="mv-sheet" role="presentation">
       <button type="button" className="mv-sheet__scrim" aria-label="Close menu" onClick={onClose} />
-      <div className="mv-sheet__panel" role="dialog" aria-modal="true" aria-label={`${tab.label} navigation`}>
+      <div className="mv-sheet__panel" ref={panelRef} role="dialog" aria-modal="true" aria-label={`${tab.label} navigation`}>
         <div className="mv-sheet__head">
           <h2>{tab.label}</h2>
           <button type="button" className="mv-icon-button" aria-label="Close menu" onClick={onClose}>
@@ -420,42 +424,51 @@ export function AppShell() {
         </div>
 
         <nav className="mv-nav" aria-label="Primary navigation">
-          {sections.map((section) => {
+          {sections.map((section, index) => {
+            const previousGroup = index > 0 ? sections[index - 1]!.group : undefined;
+            const groupHeading = section.group && section.group !== previousGroup
+              ? <p className="mv-nav__area-label">{NAV_GROUPS.find((group) => group.id === section.group)?.label}</p>
+              : null;
             if (section.items.length === 1) {
               const item = section.items[0]!;
               return (
-                <Link
-                  key={section.id}
-                  to={item.to}
-                  className={`mv-nav__area${active?.id === item.id ? " is-active" : ""}`}
-                  aria-current={active?.id === item.id ? "page" : undefined}
-                >
-                  <NavIcon name={section.icon} size={19} />
-                  <span>{section.label}</span>
-                </Link>
+                <Fragment key={section.id}>
+                  {groupHeading}
+                  <Link
+                    to={item.to}
+                    className={`mv-nav__area${active?.id === item.id ? " is-active" : ""}`}
+                    aria-current={active?.id === item.id ? "page" : undefined}
+                  >
+                    <NavIcon name={section.icon} size={19} />
+                    <span>{section.label}</span>
+                  </Link>
+                </Fragment>
               );
             }
             const expanded = openSections.includes(section.id);
             const panelId = `nav-section-${section.id}`;
             return (
-              <section className={`mv-nav__section${activeSection === section.id ? " is-active" : ""}`} key={section.id}>
-                <button
-                  type="button"
-                  className="mv-nav__toggle"
-                  aria-expanded={expanded}
-                  aria-controls={panelId}
-                  onClick={() => toggleSection(section.id)}
-                >
-                  <NavIcon name={section.icon} size={19} />
-                  <span className="mv-nav__label">{section.label}</span>
-                  <svg className={`mv-nav__chevron${expanded ? " is-open" : ""}`} viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                    <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                <div id={panelId} className="mv-nav__items" hidden={!expanded}>
-                  {section.items.map((item) => <SidebarDestination key={item.id} item={item} active={active?.id === item.id} />)}
-                </div>
-              </section>
+              <Fragment key={section.id}>
+                {groupHeading}
+                <section className={`mv-nav__section${activeSection === section.id ? " is-active" : ""}`}>
+                  <button
+                    type="button"
+                    className="mv-nav__toggle"
+                    aria-expanded={expanded}
+                    aria-controls={panelId}
+                    onClick={() => toggleSection(section.id)}
+                  >
+                    <NavIcon name={section.icon} size={19} />
+                    <span className="mv-nav__label">{section.label}</span>
+                    <svg className={`mv-nav__chevron${expanded ? " is-open" : ""}`} viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                      <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  <div id={panelId} className="mv-nav__items" hidden={!expanded}>
+                    {section.items.map((item) => <SidebarDestination key={item.id} item={item} active={active?.id === item.id} />)}
+                  </div>
+                </section>
+              </Fragment>
             );
           })}
           {platform.length ? (
@@ -481,8 +494,10 @@ export function AppShell() {
             <Link to="/about">About us</Link> · <Link to="/help">Help &amp; support</Link> · <Link to="/contacts">Contacts</Link>
           </div>
           <div className="mv-small mv-muted">A product of Aidomex Group Ltd.</div>
+          <p className="mv-nav__area-label">Account &amp; Preferences</p>
           <div className="mv-sidebar__actions">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/security")}>Security</Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/security")}>Profile</Button>
+            {me.activeTenant ? <Button variant="ghost" size="sm" onClick={() => navigate("/workspace")}>Settings</Button> : null}
             <Button variant="secondary" size="sm" onClick={() => void signOut()}>Sign out</Button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table } from "@medveris/ui";
 import { api, errorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -150,6 +150,11 @@ export function PatientsPage() {
 
   return (
     <div className="mv-stack">
+      <nav className="mv-tabs" aria-label="Patient areas">
+        <NavLink className={({ isActive }) => `mv-tab${isActive ? " is-active" : ""}`} end to="/patients">Patients</NavLink>
+        <NavLink className={({ isActive }) => `mv-tab${isActive ? " is-active" : ""}`} to="/visits">Visits</NavLink>
+        <NavLink className={({ isActive }) => `mv-tab${isActive ? " is-active" : ""}`} to="/queues">Queues</NavLink>
+      </nav>
       <PageHeader
         eyebrow="Reception"
         title="Patients"

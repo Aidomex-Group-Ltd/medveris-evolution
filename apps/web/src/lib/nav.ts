@@ -1,5 +1,5 @@
 import type { MeResponse, Role } from "./types";
-import { CASHIER_ROLES, DEPARTMENT_QUEUE_ROLES, INVENTORY_ROLES, PROCUREMENT_ROLES, VISIT_ROLES } from "./roles";
+import { CASHIER_ROLES, DEPARTMENT_QUEUE_ROLES, INVENTORY_ROLES, PROCUREMENT_ROLES } from "./roles";
 import { DEPARTMENT_MODULES, hasModule, workspaceProfile } from "./workspace";
 
 /**
@@ -27,6 +27,8 @@ export type NavSectionId =
   | "portal";
 
 export type MobileTabId = "home" | "care" | "analytics" | "knowledge" | "more";
+
+export type NavSectionGroupId = "operations" | "management" | "intelligence";
 
 export type NavIconName =
   | "dashboard"
@@ -119,7 +121,21 @@ export interface NavSection {
   id: NavSectionId;
   label: string;
   icon: NavIconName;
+  /** Sidebar grouping; `null` renders above the first group (Dashboard). */
+  group: NavSectionGroupId | null;
 }
+
+export interface NavGroup {
+  id: NavSectionGroupId;
+  label: string;
+}
+
+/** Sidebar groups in display order: operations, management, then intelligence. */
+export const NAV_GROUPS: readonly NavGroup[] = Object.freeze([
+  { id: "operations", label: "Facility Operations" },
+  { id: "management", label: "Facility Management" },
+  { id: "intelligence", label: "Intelligence & Engagement" },
+]);
 
 export interface VisibleNavSection extends NavSection {
   items: NavDestination[];
@@ -144,20 +160,20 @@ export interface VisibleMobileTab extends MobileTab {
 
 /** The fourteen desktop primary areas, in the approved order and labels. */
 export const NAV_SECTIONS: readonly NavSection[] = Object.freeze([
-  { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-  { id: "reception", label: "Reception & Patient Services", icon: "reception" },
-  { id: "outpatient", label: "Outpatient Care (OPD)", icon: "outpatient" },
-  { id: "inpatient", label: "Inpatient Care", icon: "inpatient" },
-  { id: "theatre", label: "Theatre & Procedures", icon: "theatre" },
-  { id: "diagnostics", label: "Diagnostics", icon: "diagnostics" },
-  { id: "pharmacy", label: "Pharmacy", icon: "pharmacy" },
-  { id: "chronic", label: "Chronic & Community Care", icon: "chronic" },
-  { id: "virtual", label: "Virtual Care", icon: "virtual" },
-  { id: "iot", label: "IoT & Remote Monitoring", icon: "iot" },
-  { id: "facility", label: "Facility & Location", icon: "facility" },
-  { id: "administration", label: "Administration", icon: "administration" },
-  { id: "intelligence", label: "Medveris Intelligence", icon: "intelligence" },
-  { id: "portal", label: "Patient Portal", icon: "portal" },
+  { id: "dashboard", label: "Dashboard", icon: "dashboard", group: null },
+  { id: "reception", label: "Reception & Billing", icon: "reception", group: "operations" },
+  { id: "outpatient", label: "OPD (Outpatient Care)", icon: "outpatient", group: "operations" },
+  { id: "inpatient", label: "Inpatient Care", icon: "inpatient", group: "operations" },
+  { id: "theatre", label: "Theatre & Procedures", icon: "theatre", group: "operations" },
+  { id: "diagnostics", label: "Diagnostics", icon: "diagnostics", group: "operations" },
+  { id: "pharmacy", label: "Pharmacy", icon: "pharmacy", group: "operations" },
+  { id: "chronic", label: "Chronic & Community Care", icon: "chronic", group: "operations" },
+  { id: "virtual", label: "Virtual Care", icon: "virtual", group: "operations" },
+  { id: "iot", label: "IoT & Remote Monitoring", icon: "iot", group: "operations" },
+  { id: "facility", label: "Facility & Location", icon: "facility", group: "management" },
+  { id: "administration", label: "Administration", icon: "administration", group: "management" },
+  { id: "intelligence", label: "Medveris Intelligence", icon: "intelligence", group: "intelligence" },
+  { id: "portal", label: "Patient Portal", icon: "portal", group: "intelligence" },
 ]);
 
 /** The five mobile bottom-navigation destinations. */
@@ -176,19 +192,12 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
     description: "Facility overview, daily priorities and quick actions", quickAction: true,
   },
 
-  // Reception & Patient Services ---------------------------------------------
+  // Reception & Billing ------------------------------------------------------
   {
     id: "patients", label: "Patients", to: "/patients", icon: "patients", section: "reception", mobile: "care",
     roles: ["receptionist", "nurse", "clinician", "facility_admin"],
+    activePrefixes: ["/visits", "/queues"],
     description: "Register a patient or search existing records", quickAction: true,
-  },
-  {
-    id: "visits", label: "Visits", to: "/visits", icon: "visits", section: "reception", mobile: "care",
-    roles: VISIT_ROLES, description: "Open visits and front-desk workflow", quickAction: true,
-  },
-  {
-    id: "queues", label: "Queues", to: "/queues", icon: "queues", section: "reception", mobile: "care",
-    roles: ["receptionist", "nurse", "clinician", "facility_admin"], modules: ["reception", "outpatient"],
   },
   {
     id: "appointments", label: "Appointments", to: "/appointments", icon: "calendar", section: "reception", mobile: "care",
@@ -200,7 +209,7 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
     description: "Patient-controlled exchange with other facilities",
   },
 
-  // Outpatient Care (OPD) ------------------------------------------------------
+  // OPD (Outpatient Care) ----------------------------------------------------
   {
     id: "worklist", label: "Clinical worklist", to: "/worklist", icon: "outpatient", section: "outpatient", mobile: "care",
     roles: ["nurse", "clinician"], modules: ["outpatient", "emergency", "inpatient"],
@@ -274,7 +283,7 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
 
   // Chronic & Community Care ---------------------------------------------------
   {
-    id: "care", label: "Follow-ups and referrals", to: "/care", icon: "chronic", section: "chronic", mobile: "care",
+    id: "care", label: "Follow-ups and referrals", to: "/care", icon: "chronic", section: "outpatient", mobile: "care",
     roles: ["nurse", "clinician"], modules: ["outpatient", "programmes"],
   },
   {
@@ -332,7 +341,7 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
   // Administration -------------------------------------------------------------
   {
     id: "admin", label: "Facility administration", to: "/admin", icon: "administration", section: "administration", mobile: "more",
-    roles: ["facility_admin", "department_admin"], description: "Staff, invitations, roles and facility settings",
+    roles: ["facility_admin"], description: "Staff, invitations, roles and facility settings",
   },
   {
     id: "organizations", label: "Organizations", to: "/organizations", icon: "organizations", section: "administration", mobile: "more",
@@ -371,15 +380,15 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
     roles: ["facility_admin"],
   },
   {
-    id: "finance", label: "Finance", to: "/finance", icon: "finance", section: "administration", mobile: "analytics",
+    id: "finance", label: "Finance", to: "/finance", icon: "finance", section: "reception", mobile: "analytics",
     roles: ["finance", "facility_admin"], modules: ["finance"],
   },
   {
-    id: "pos", label: "Point of sale", to: "/pos", icon: "pos", section: "administration", mobile: "more",
+    id: "pos", label: "Point of sale", to: "/pos", icon: "pos", section: "reception", mobile: "more",
     roles: CASHIER_ROLES, modules: ["finance"],
   },
   {
-    id: "price-list", label: "Price list", to: "/price-list", icon: "price-list", section: "administration", mobile: "more",
+    id: "price-list", label: "Price list", to: "/price-list", icon: "price-list", section: "reception", mobile: "more",
     roles: CASHIER_ROLES, modules: ["finance"],
   },
   {

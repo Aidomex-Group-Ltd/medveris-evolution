@@ -1704,53 +1704,7 @@ export const newbornRecordSchema = z.object({
 });
 
 // Ward operations, housekeeping, portering and mortuary.
-export const bedReadinessSchema = z.object({
-  status: z.enum(["available","occupied","vacated","awaiting-cleaning","cleaning-in-progress","cleaning","ready","out-of-service","unavailable"]),
-  reason: z.string().trim().max(1000).optional(),
-  cleaningTaskId: uuidSchema.optional().nullable(),
-  expectedVersion: z.number().int().min(1).optional(),
-});
-
-export const cleaningTaskSchema = z.object({
-  bedId: uuidSchema.optional().nullable(),
-  locationId: uuidSchema.optional().nullable(),
-  zone: z.string().trim().min(1).max(160),
-  taskType: z.enum(["routine","terminal","discharge","isolation","spill","inspection","other"]),
-  riskLevel: z.enum(["low","medium","high"]).default("low"),
-  assignedToUserId: uuidSchema.optional().nullable(),
-  instructions: z.string().trim().max(2000).optional().or(z.literal("")),
-});
-
-export const cleaningTransitionSchema = z.object({
-  status: z.enum(["in-progress","completed","verified","cancelled"]),
-  note: z.string().trim().max(2000).optional().or(z.literal("")),
-});
-
-export const porterTaskSchema = z.object({
-  requestType: z.enum(["patient-transfer","specimen","equipment","document","other"]),
-  patientId: uuidSchema.optional().nullable(),
-  encounterId: uuidSchema.optional().nullable(),
-  fromLocation: z.string().trim().min(1).max(200),
-  toLocation: z.string().trim().min(1).max(200),
-  assignedToUserId: uuidSchema.optional().nullable(),
-  specimenCustody: z.boolean().default(false),
-  notes: z.string().trim().max(2000).optional().or(z.literal("")),
-});
-
-export const porterTransitionSchema = z.object({
-  status: z.enum(["accepted","in-progress","completed","cancelled"]),
-  identityChecked: z.boolean().optional(),
-  delayReason: z.string().trim().max(1000).optional().or(z.literal("")),
-  note: z.string().trim().max(2000).optional().or(z.literal("")),
-});
-
-export const fluidBalanceSchema = z.object({
-  occurredAt: z.string().datetime(),
-  intakeMl: z.number().min(0).max(50000).optional().nullable(),
-  outputMl: z.number().min(0).max(50000).optional().nullable(),
-  source: z.enum(["oral","intravenous","urine","drain","vomit","stool","other"]),
-  notes: z.string().trim().max(2000).optional().or(z.literal("")),
-});
+// (Definitions provided later in the inpatient extensions section.)
 
 export const mortuaryCaseSchema = z.object({
   patientId: uuidSchema.optional().nullable(),
@@ -2974,3 +2928,271 @@ export const hmisReportingRuleSchema = z.object({
   source: z.string().trim().min(5).max(500),
 }).refine((rule) => rule.validationStartDay <= rule.validationEndDay && rule.validationEndDay <= rule.lockAfterDay,
   "Validation must start before it ends, and end on or before the lock day");
+
+// Inpatient extensions: fluid balance, nursing task assignment/escalation,
+// admission transfer history and eMAR omission capture.
+export const fluidBalanceSchema = z.object({
+  occurredAt: z.string().datetime(),
+  intakeMl: z.number().min(0).max(50000).optional().nullable(),
+  outputMl: z.number().min(0).max(50000).optional().nullable(),
+  source: z.enum(["oral", "intravenous", "urine", "drain", "vomit", "stool", "other"]),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const fluidBalanceSummarySchema = z.object({
+  totalIntakeMl: z.number().min(0),
+  totalOutputMl: z.number().min(0),
+  netBalanceMl: z.number().min(0),
+  periodStart: z.string().datetime(),
+  periodEnd: z.string().datetime(),
+});
+
+export const nursingTaskAssignSchema = z.object({
+  taskId: uuidSchema,
+  assignedToUserId: uuidSchema,
+  taskType: z.enum(["general", "vital-signs", "medication", "assessment", "wound-care", "feeding", "mobilisation", "catheter", "iv-care", "specimen", "turning", "isolation", "other"]).optional(),
+});
+
+export const nursingTaskEscalateSchema = z.object({
+  taskId: uuidSchema,
+  escalatedToUserId: uuidSchema,
+  reason: z.string().trim().min(5).max(2000),
+});
+
+export const nursingTaskOmitSchema = z.object({
+  taskId: uuidSchema,
+  note: z.string().trim().min(5).max(2000),
+});
+
+export const admissionTransferHistorySchema = z.object({
+  admissionId: uuidSchema,
+  bedId: uuidSchema.optional().nullable(),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+export const administrationOmissionSchema = z.object({
+  administrationId: uuidSchema,
+  reason: z.string().trim().min(5).max(2000),
+  expectedVersion: z.number().int().min(1),
+});
+
+export const medicationScheduleSchema = z.object({
+  medicineId: uuidSchema,
+  doseText: z.string().trim().min(1).max(300),
+  route: z.string().trim().min(1).max(100),
+  frequency: z.string().trim().min(1).max(200),
+  scheduledFrom: z.string().datetime(),
+  scheduledTo: z.string().datetime().nullable().optional(),
+  durationDays: z.number().int().min(1).max(365).optional().nullable(),
+  site: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
+export const medicationAdministrationSchema = administrationSchema.extend({
+  status: z.enum(["administered", "refused", "held", "omitted"]).default("administered"),
+  scheduledAt: z.string().datetime().optional().nullable(),
+  scheduleId: uuidSchema.optional().nullable(),
+  witnessBy: uuidSchema.optional().nullable(),
+});
+
+// Ward operations: cleaning and porter tasks.
+export const bedReadinessSchema = z.object({
+  status: z.enum(["available","occupied","vacated","awaiting-cleaning","cleaning-in-progress","cleaning","ready","out-of-service","unavailable"]),
+  reason: z.string().trim().max(1000).optional(),
+  cleaningTaskId: uuidSchema.optional().nullable(),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+export const cleaningTaskSchema = z.object({
+  bedId: uuidSchema.optional().nullable(),
+  locationId: uuidSchema.optional().nullable(),
+  zone: z.string().trim().min(1).max(160),
+  taskType: z.enum(["routine","terminal","discharge","isolation","spill","inspection","other"]),
+  riskLevel: z.enum(["low","medium","high"]).default("low"),
+  assignedToUserId: uuidSchema.optional().nullable(),
+  instructions: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const cleaningTransitionSchema = z.object({
+  status: z.enum(["in-progress","completed","verified","cancelled"]),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+export const porterTaskSchema = z.object({
+  requestType: z.enum(["patient-transfer","specimen","equipment","document","other"]),
+  patientId: uuidSchema.optional().nullable(),
+  encounterId: uuidSchema.optional().nullable(),
+  fromLocation: z.string().trim().min(1).max(200),
+  toLocation: z.string().trim().min(1).max(200),
+  assignedToUserId: uuidSchema.optional().nullable(),
+  specimenCustody: z.boolean().default(false),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const porterTransitionSchema = z.object({
+  status: z.enum(["accepted","in-progress","completed","cancelled"]),
+  identityChecked: z.boolean().optional(),
+  delayReason: z.string().trim().max(1000).optional().or(z.literal("")),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+
+// Maternity decision support and newborn follow-up.
+export const labourAlertSchema = z.object({
+  alert: z.string().trim().min(2).max(2000),
+  severity: z.enum(["info","warning","critical"]),
+  source: z.enum(["manual","partograph"]).default("manual"),
+  note: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const newbornStatusUpdateSchema = z.object({
+  status: z.enum(["observed","admitted","transferred","discharged","deceased"]),
+  expectedVersion: z.number().int().min(1),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const newbornPatientCreateSchema = z.object({
+  episodeId: uuidSchema,
+  givenName: z.string().trim().min(1).max(120).default("Baby"),
+  familyName: z.string().trim().min(1).max(120),
+  sex: z.enum(["female","male","other","unknown"]).default("unknown"),
+  dateOfBirth: z.string().date(),
+  bornAt: z.string().datetime().optional().nullable(),
+  weightG: z.number().int().min(200).max(10000).optional().nullable(),
+  apgar1: z.number().int().min(0).max(10).optional().nullable(),
+  apgar5: z.number().int().min(0).max(10).optional().nullable(),
+  feeding: z.string().trim().max(500).optional().or(z.literal("")),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+  identityConfidence: z.enum(["confirmed-document","confirmed-verbal","temporary","uncertain"]).default("confirmed-verbal"),
+});
+
+// Antenatal, child health and immunisation records.
+export const antenatalVisitSchema = z.object({
+  episodeId: uuidSchema,
+  occurredAt: z.string().datetime(),
+  gestationalAgeWeeks: z.number().int().min(0).max(50).optional().nullable(),
+  lmpDate: z.string().date().optional().nullable(),
+  edd: z.string().date().optional().nullable(),
+  datingBasis: z.enum(["lmp","ultrasound","clinical","unknown"]).optional().nullable(),
+  riskLevel: z.enum(["not-assessed","low","moderate","high"]).optional().nullable(),
+  bloodPressureSystolic: z.number().int().min(50).max(250).optional().nullable(),
+  bloodPressureDiastolic: z.number().int().min(30).max(150).optional().nullable(),
+  pulse: z.number().int().min(30).max(220).optional().nullable(),
+  temperatureC: z.number().min(30).max(43).optional().nullable(),
+  respiratoryRate: z.number().int().min(8).max(60).optional().nullable(),
+  oxygenSaturation: z.number().int().min(50).max(100).optional().nullable(),
+  weightKg: z.number().min(20).max(300).optional().nullable(),
+  heightCm: z.number().min(100).max(250).optional().nullable(),
+  bmi: z.number().min(10).max(60).optional().nullable(),
+  fundalHeightCm: z.number().int().min(0).max(50).optional().nullable(),
+  fetalHeartRate: z.number().int().min(60).max(200).optional().nullable(),
+  fetalPosition: z.string().trim().max(120).optional().nullable(),
+  fetalLie: z.string().trim().max(120).optional().nullable(),
+  presentation: z.string().trim().max(120).optional().nullable(),
+  contractionsPer10Min: z.number().int().min(0).max(10).optional().nullable(),
+  amnioticFluid: z.string().trim().max(120).optional().nullable(),
+  cervixDilatationCm: z.number().int().min(0).max(15).optional().nullable(),
+  cervixEffacementPercent: z.number().int().min(0).max(100).optional().nullable(),
+  station: z.string().trim().max(60).optional().nullable(),
+  urineProtein: z.string().trim().max(120).optional().nullable(),
+  urineSugar: z.string().trim().max(120).optional().nullable(),
+  hemoglobinGdl: z.number().min(2).max(25).optional().nullable(),
+  bloodGroup: z.string().trim().max(20).optional().nullable(),
+  rhesus: z.string().trim().max(20).optional().nullable(),
+  hivStatus: z.string().trim().max(120).optional().nullable(),
+  syphilisStatus: z.string().trim().max(120).optional().nullable(),
+  malariaStatus: z.string().trim().max(120).optional().nullable(),
+  receivedTetanusImmunization: z.boolean().optional().nullable(),
+  receivedIronFolicAcid: z.boolean().optional().nullable(),
+  receivedIntermittentPreventiveTreatment: z.boolean().optional().nullable(),
+  birthPreparednessCounselling: z.boolean().optional().nullable(),
+  dangerSignCounselling: z.boolean().optional().nullable(),
+  breastfeedingCounselling: z.boolean().optional().nullable(),
+  postnatalPlan: z.string().trim().max(2000).optional().or(z.literal("")),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+  recordedByName: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
+export const antenatalVisitSummarySchema = z.object({
+  visitCount: z.number().int().min(0),
+  lastVisitAt: z.string().datetime().nullable(),
+  riskLevel: z.enum(["not-assessed","low","moderate","high"]),
+  estimatedDueDate: z.string().date().nullable(),
+});
+
+export const childHealthEventSchema = z.object({
+  patientId: uuidSchema,
+  episodeId: uuidSchema.optional().nullable(),
+  eventDate: z.string().date(),
+  eventPoint: z.enum(["well-child","sick-child","immunization","growth-monitoring","developmental-review","nutrition-assESSMENT","vitamin-a","deworming","other"]),
+  weightKg: z.number().min(0.5).max(200).optional().nullable(),
+  heightCm: z.number().min(30).max(250).optional().nullable(),
+  headCircumferenceCm: z.number().min(20).max(70).optional().nullable(),
+  weightForAgeZ: z.number().min(-5).max(5).optional().nullable(),
+  heightForAgeZ: z.number().min(-5).max(5).optional().nullable(),
+  weightForHeightZ: z.number().min(-5).max(5).optional().nullable(),
+  muacCm: z.number().min(8).max(50).optional().nullable(),
+  developmentalMilestones: z.record(z.string(), z.boolean()).optional().nullable(),
+  nutritionStatus: z.string().trim().max(120).optional().nullable(),
+  feedingPractice: z.string().trim().max(200).optional().or(z.literal("")),
+  wheelchairs: z.array(z.string().trim().max(200)).max(20).optional().nullable(),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+  recordedByName: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
+export const immunizationSchema = z.object({
+  patientId: uuidSchema,
+  childHealthEventId: uuidSchema.optional().nullable(),
+  vaccineCode: z.string().trim().min(1).max(120),
+  vaccineName: z.string().trim().min(2).max(300),
+  doseNumber: z.number().int().min(1).max(20).optional().nullable(),
+  totalDoses: z.number().int().min(1).max(20).optional().nullable(),
+  scheduleDate: z.string().date().optional().nullable(),
+  administeredAt: z.string().datetime().nullable(),
+  route: z.string().trim().max(100).optional().or(z.literal("")),
+  site: z.string().trim().max(200).optional().or(z.literal("")),
+  lotNumber: z.string().trim().max(100).optional().or(z.literal("")),
+  batchExpiryDate: z.string().date().optional().nullable(),
+  manufacturer: z.string().trim().max(200).optional().or(z.literal("")),
+  coldChainObserved: z.boolean().optional().nullable(),
+  healthcareWorkerId: uuidSchema.optional().nullable(),
+  healthcareWorkerName: z.string().trim().max(200).optional().or(z.literal("")),
+  anaphylaxisObserved: z.boolean().optional().nullable(),
+  aefiNote: z.string().trim().max(2000).optional().or(z.literal("")),
+  missedDoseReason: z.string().trim().max(2000).optional().or(z.literal("")),
+  nextDoseDueDate: z.string().date().optional().nullable(),
+  notes: z.string().trim().max(5000).optional().or(z.literal("")),
+  recordedByName: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
+export const immunizationScheduleSchema = z.object({
+  vaccineCode: z.string().trim().min(1).max(120),
+  vaccineName: z.string().trim().min(2).max(300),
+  recommendedAtMonths: z.array(z.number().int().min(0).max(240)).min(1).max(20),
+  doseNumber: z.number().int().min(1).max(20),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export const immunizationCatchUpSchema = z.object({
+  patientId: uuidSchema,
+  fromDate: z.string().date(),
+  maxAgeMonths: z.number().int().min(1).max(240).optional().nullable(),
+});
+
+export const immunizationDueSummarySchema = z.object({
+  patientId: uuidSchema,
+  dueVaccines: z.array(z.object({
+    vaccineCode: z.string().trim().min(1).max(120),
+    vaccineName: z.string().trim().min(2).max(300),
+    lastDoseDate: z.string().date().nullable(),
+    recommendedNextDate: z.string().date().nullable(),
+    dueDays: z.number().int().nullable(),
+  })),
+  overdueVaccines: z.array(z.object({
+    vaccineCode: z.string().trim().min(1).max(120),
+    vaccineName: z.string().trim().min(2).max(300),
+    lastDoseDate: z.string().date().nullable(),
+    recommendedNextDate: z.string().date().nullable(),
+    overdueDays: z.number().int().nullable(),
+  })),
+});

@@ -527,7 +527,7 @@ button, input, select, textarea { font: inherit; }
   box-shadow: 0 24px 60px rgba(4, 20, 16, 0.3); overflow: hidden;
 }
 .mv-search__field { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--mv-border); }
-.mv-search__field input { flex: 1 1 auto; border: 0; outline: none; font: inherit; color: var(--mv-text); background: transparent; min-width: 0; }
+.mv-search__field input { flex: 1 1 auto; border: 0; font: inherit; color: var(--mv-text); background: transparent; min-width: 0; }
 .mv-search__results { max-height: 46vh; overflow-y: auto; padding: 6px; }
 .mv-search__result {
   display: flex; align-items: center; gap: 10px; width: 100%;
