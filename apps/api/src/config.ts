@@ -64,6 +64,8 @@ export interface AppConfig {
   emailFrom: string;
   mailSinkDir: string;
   resendApiKey: string | null;
+  /** Optional operator inbox for redacted operational alerts (dead-lettered jobs). Never carries patient data. */
+  operatorAlertEmail: string | null;
   storageAdapter: "local" | "r2";
   localUploadDir: string;
   maxUploadBytes: number;
@@ -651,6 +653,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     emailFrom: env.EMAIL_FROM ?? "Medveris <no-reply@medveris.local>",
     mailSinkDir: env.MAIL_SINK_DIR ?? ".mail-sink",
     resendApiKey: env.RESEND_API_KEY || null,
+    operatorAlertEmail: env.OPERATOR_ALERT_EMAIL?.trim() || null,
     storageAdapter: (env.STORAGE_ADAPTER ?? "local") === "r2" ? "r2" : "local",
     localUploadDir: env.LOCAL_UPLOAD_DIR ?? ".data/uploads",
     maxUploadBytes: integer(env.MAX_UPLOAD_BYTES, 5 * 1024 * 1024),

@@ -525,6 +525,22 @@ export async function generateAiNoteSuggestion(_input: {
 }
 
 /**
+ * The prompt carries the task and the shape of the request only: no patient identifiers, names or
+ * clinical text are sent to a provider from this prompt, so PHI never leaves the facility through it.
+ * Shared by the API request path and the background job handler so both produce the same input.
+ */
+export function clinicalAiPrompt(request: { taskType: string; evidenceEntryIds: string[] | number; studyId: string | null }): string {
+  const evidenceCount = typeof request.evidenceEntryIds === "number" ? request.evidenceEntryIds : request.evidenceEntryIds.length;
+  return [
+    `TASK_TYPE: ${request.taskType}`,
+    `EVIDENCE_ENTRY_COUNT: ${evidenceCount}`,
+    `STUDY_REFERENCE: ${request.studyId ? "provided" : "none"}`,
+    "Draft a short summary for clinician review from the task type and evidence counts above.",
+    "Do not invent patient facts, identifiers, measurements or diagnoses.",
+  ].join("\n");
+}
+
+/**
  * Optional, deployment-gated note suggestions for outpatient notes.
  *
  * This is decision support only. Suggestions never replace the authored note;
@@ -568,6 +584,8 @@ export async function buildAiNoteSuggestion(
         encounterState: input.encounterState,
         existingContent: input.existingContent,
       }),
+      // Bounded wait: a hung provider must degrade the note to defaults, never block signing.
+      signal: AbortSignal.timeout(10_000),
     });
     if (!aiResponse.ok) {
       return { reasoning: "AI service unavailable; clinical defaults are used" };

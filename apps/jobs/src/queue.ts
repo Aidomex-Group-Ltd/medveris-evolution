@@ -197,6 +197,18 @@ export async function consumeJobBatch(batch: QueueBatch, deps: ConsumerDeps): Pr
  * Dead-letter queue consumer: makes sure the outbox row shows `dead-letter` so the replay tool
  * lists it, then acknowledges. It never re-runs the job; replay is an operator decision.
  */
+/** Job ids of the messages a dead-letter batch carries, for the redacted operator alert. Never patient data. */
+export function deadLetterJobIds(batch: QueueBatch): string[] {
+  const ids: string[] = [];
+  for (const message of batch.messages) {
+    const body = message.body as { jobId?: unknown } | null;
+    const parsed = parseJobMessage(message.body);
+    const jobId = parsed.ok ? parsed.message.jobId : typeof body?.jobId === "string" && /^[0-9a-f-]{36}$/i.test(body.jobId) ? body.jobId : null;
+    if (jobId) ids.push(jobId);
+  }
+  return ids;
+}
+
 export async function consumeDeadLetters(batch: QueueBatch, sql: Sql): Promise<number> {
   let recorded = 0;
   for (const message of batch.messages) {

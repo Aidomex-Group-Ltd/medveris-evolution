@@ -2,7 +2,9 @@ import { createSql, DatabaseRouter, replicaMonitor, ShardRouter, type Sql } from
 import { CircuitOpenError, errorFields, logEvent } from "@medveris/platform";
 import { runJobsCycle } from "../../jobs/src/cycle.js";
 import { syncContentFeeds } from "../../jobs/src/feeds/sync.js";
-import { consumeDeadLetters, consumeJobBatch, type QueueBatch } from "../../jobs/src/queue.js";
+import { consumeDeadLetters, consumeJobBatch, deadLetterJobIds, type QueueBatch } from "../../jobs/src/queue.js";
+import { aiAwareDispatch, type AiJobRuntime } from "../../jobs/src/ai.js";
+import { createOllamaClient } from "./integrations/ollama.js";
 import { loadConfig, type AppConfig } from "./config.js";
 import { createApp } from "./app.js";
 import { ResendEmailAdapter, UnconfiguredEmailAdapter } from "./lib/email.js";
@@ -216,6 +218,17 @@ async function handleFetch(request: Request, env: WorkerEnv, ctx: WorkerContext)
   );
 }
 
+/** AI inference runtime for the background path; never exposes the model to requests or browsers. */
+function aiJobRuntime(config: AppConfig): AiJobRuntime | undefined {
+  if (config.modes.ai !== "sandbox") return undefined;
+  return {
+    ai: createOllamaClient(config.ollama),
+    providerName: "ollama",
+    modelConfig: config.aiModel,
+    logAiRun: () => undefined,
+  };
+}
+
 function jobsSql(env: WorkerEnv): Sql {
   const connectionString = env.HYPERDRIVE_JOBS?.connectionString;
   if (!connectionString) throw new Error("HYPERDRIVE_JOBS binding is required for scheduled jobs");
@@ -239,6 +252,7 @@ export default {
         realtimeEventTypes: config.realtime.eventTypes,
         relayBatchSize: config.jobs.relayBatchSize,
         perTenantBatchLimit: config.jobs.perTenantBatchLimit,
+        dispatch: aiAwareDispatch(sql, aiJobRuntime(config)),
       });
       if (result.checkpointError) {
         console.error(JSON.stringify({ event: "checkpoint_failed", message: result.checkpointError }));
@@ -276,8 +290,23 @@ export default {
     try {
       await assertExpectedDatabase(env, sql);
       if (batch.queue.endsWith("-dlq")) {
+        const jobIds = deadLetterJobIds(batch);
         const recorded = await consumeDeadLetters(batch, sql);
         logEvent("warn", "dead_letter_batch", { queue: batch.queue, messages: batch.messages.length, recorded });
+        if (recorded > 0 && config.operatorAlertEmail) {
+          const adapter = config.emailAdapter === "resend" ? new ResendEmailAdapter(config.resendApiKey, config.emailFrom) : null;
+          const alert = await adapter?.send({
+            to: config.operatorAlertEmail,
+            subject: `Medveris jobs dead-lettered (${recorded})`,
+            text: [
+              `Jobs queue ${batch.queue} dead-lettered ${recorded} message(s).`,
+              `Job ids: ${jobIds.slice(0, 5).join(", ")}${jobIds.length > 5 ? ` … and ${jobIds.length - 5} more` : ""}.`,
+              "No patient, clinical or payment data is included in this alert.",
+              "Replay is an operator decision; inspect the dead-letter queue and the outbox replay tool.",
+            ].join("\n"),
+          });
+          if (alert && !alert.delivered) logEvent("error", "dead_letter_alert_failed", { detail: alert.detail });
+        }
         return;
       }
       const counts = await consumeJobBatch(batch, {
@@ -285,6 +314,7 @@ export default {
         dlq: env.JOBS_DLQ ?? null,
         realtime: env.REALTIME && config.realtime.enabled ? new DurableRealtimePublisher(env.REALTIME) : null,
         realtimeEventTypes: config.realtime.eventTypes,
+        dispatch: aiAwareDispatch(sql, aiJobRuntime(config)),
       });
       logEvent("info", "job_batch", { queue: batch.queue, messages: batch.messages.length, ...counts });
     } catch (error) {

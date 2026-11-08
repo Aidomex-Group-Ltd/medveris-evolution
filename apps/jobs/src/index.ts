@@ -2,6 +2,7 @@ import { createSql } from "@medveris/db";
 import { checkpointAllTenants } from "./integrity.js";
 import { runJobsCycle } from "./cycle.js";
 import { syncContentFeeds } from "./feeds/sync.js";
+import { aiAwareDispatch, aiRuntimeFromEnv } from "./ai.js";
 
 try {
   process.loadEnvFile(`${process.cwd()}/.env`);
@@ -35,7 +36,7 @@ async function feedCycle(): Promise<void> {
 
 async function cycle(): Promise<void> {
   await feedCycle();
-  const { processed, checkpoints, checkpointError } = await runJobsCycle(sql, signingKey!, keyId);
+  const { processed, checkpoints, checkpointError } = await runJobsCycle(sql, signingKey!, keyId, { dispatch: aiAwareDispatch(sql, aiRuntimeFromEnv(process.env)) });
   if (checkpointError) {
     console.error(JSON.stringify({ event: "checkpoint_failed", message: checkpointError }));
   } else if (processed || checkpoints.length) {
