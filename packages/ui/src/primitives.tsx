@@ -1,15 +1,22 @@
-import { Fragment, useId, useMemo, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "ghost" | "danger";
+  size?: "sm" | "md";
+  busy?: boolean;
+}
 
 export function Button({
   variant = "primary",
   size = "md",
+  busy = false,
   className = "",
   type = "button",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger"; size?: "sm" | "md" }) {
-  return <button type={type} className={`mv-button mv-button--${variant} mv-button--${size} ${className}`} {...props} />;
+}: ButtonProps) {
+  return <button type={type} className={`mv-button mv-button--${variant} mv-button--${size} ${busy ? "mv-button--busy" : ""} ${className}`} {...props} disabled={props.disabled || busy} />;
 }
 
 export function Field({ label, hint, error, htmlFor, children }: { label: string; hint?: string; error?: string; htmlFor?: string; children: ReactNode }) {
@@ -23,16 +30,16 @@ export function Field({ label, hint, error, htmlFor, children }: { label: string
   );
 }
 
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className="mv-input" {...props} />;
+export function Input({ ref, className = "", ...rest }: InputHTMLAttributes<HTMLInputElement> & { ref?: React.Ref<HTMLInputElement> }) {
+  return <input ref={ref} className={`mv-input ${className}`.trim()} {...rest} />;
 }
 
-export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className="mv-input mv-textarea" {...props} />;
+export function Textarea({ ref, className = "", ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: React.Ref<HTMLTextAreaElement> }) {
+  return <textarea ref={ref} className={`mv-input mv-textarea ${className}`.trim()} {...rest} />;
 }
 
-export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className="mv-input mv-select" {...props} />;
+export function Select({ ref, className = "", ...rest }: SelectHTMLAttributes<HTMLSelectElement> & { ref?: React.Ref<HTMLSelectElement> }) {
+  return <select ref={ref} className={`mv-input mv-select ${className}`.trim()} {...rest} />;
 }
 
 export interface SearchOption {
@@ -386,14 +393,107 @@ export function DataList({ items }: { items: { label: string; value: ReactNode }
   );
 }
 
-export function Table({ head, children, caption }: { head: ReactNode[]; children: ReactNode; caption?: string }) {
+export function Table({ head, children, caption, responsive = true }: { head: ReactNode[]; children: ReactNode; caption?: string; responsive?: boolean }) {
   return (
-    <div className="mv-table-wrap">
+    <div className={`mv-table-wrap${responsive ? " mv-table-wrap--responsive" : ""}`}>
       <table className="mv-table">
         {caption ? <caption>{caption}</caption> : null}
         <thead><tr>{head.map((cell, index) => <th key={index} scope="col">{cell}</th>)}</tr></thead>
         <tbody>{children}</tbody>
       </table>
     </div>
+  );
+}
+
+export interface DialogProps {
+  open: boolean;
+  onClose?: () => void;
+  title: string;
+  description?: string;
+  children: ReactNode;
+  className?: string;
+}
+
+/**
+ * Responsive modal primitive. Desktop dialogs are centered; on small screens
+ * the same content becomes a bottom sheet with safe-area padding.
+ */
+export function Dialog({ open, onClose, title, description, children, className = "" }: DialogProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panelRef.current?.focus({ preventScroll: true });
+
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") onClose?.();
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="mv-dialog">
+      <button type="button" className="mv-dialog__scrim" aria-label="Close dialog" onClick={onClose} />
+      <section
+        ref={panelRef}
+        className={`mv-dialog__panel ${className}`.trim()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+      >
+        <header className="mv-dialog__head">
+          <div>
+            <h2>{title}</h2>
+            {description ? <p className="mv-dialog__description">{description}</p> : null}
+          </div>
+          {onClose ? (
+            <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close dialog">
+              Close
+            </Button>
+          ) : null}
+        </header>
+        <div className="mv-dialog__body">{children}</div>
+      </section>
+    </div>
+  );
+}
+
+export interface ChartFrameProps {
+  title: string;
+  description?: string;
+  children: ReactNode;
+  emptyTitle?: string;
+  emptyMessage?: string;
+  className?: string;
+}
+
+/**
+ * Responsive chart container. Chart libraries should size to their parent;
+ * this frame provides the viewport, touch scrolling, and minimum height.
+ */
+export function ChartFrame({ title, description, children, emptyTitle, emptyMessage, className = "" }: ChartFrameProps) {
+  return (
+    <section className={`mv-chart ${className}`.trim()} aria-label={title}>
+      <header className="mv-chart__header">
+        <div>
+          <h3>{title}</h3>
+          {description ? <p className="mv-chart__description">{description}</p> : null}
+        </div>
+      </header>
+      <div className="mv-chart__viewport mv-scroll-x">
+        {children}
+        {emptyTitle ? <EmptyState title={emptyTitle} description={emptyMessage ?? "Chart data is not available yet."} /> : null}
+      </div>
+    </section>
   );
 }

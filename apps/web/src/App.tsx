@@ -63,6 +63,7 @@ const PublicHealthPage = lazyPage(() => import("./pages/PublicHealthPage"), "Pub
 const TelehealthPage = lazyPage(() => import("./pages/TelehealthPage"), "TelehealthPage");
 const DevicesPage = lazyPage(() => import("./pages/DevicesPage"), "DevicesPage");
 const AIPage = lazyPage(() => import("./pages/AIPage"), "AIPage");
+const AIChatPage = lazyPage(() => import("./pages/AIChatPage"), "AIChatPage");
 const EmergencyPage = lazyPage(() => import("./pages/EmergencyPage"), "EmergencyPage");
 const EmergencyCasePage = lazyPage(() => import("./pages/EmergencyCasePage"), "EmergencyCasePage");
 const CareCoordinationPage = lazyPage(() => import("./pages/CareCoordinationPage"), "CareCoordinationPage");
@@ -94,6 +95,7 @@ const PointOfSalePage = lazyPage(() => import("./pages/PointOfSalePage"), "Point
 const PriceListPage = lazyPage(() => import("./pages/PriceListPage"), "PriceListPage");
 const ReceiptPage = lazyPage(() => import("./pages/ReceiptPage"), "ReceiptPage");
 const AboutPage = lazyPage(() => import("./pages/AboutPage"), "AboutPage");
+const PricingPage = lazyPage(() => import("./pages/PricingPage"), "PricingPage");
 const HelpSupportPage = lazyPage(() => import("./pages/HelpSupportPage"), "HelpSupportPage");
 const ContactsPage = lazyPage(() => import("./pages/ContactsPage"), "ContactsPage");
 const TermsPage = lazyPage(() => import("./pages/LegalPage"), "TermsPage");
@@ -117,6 +119,7 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       {/* Public information pages; they never open a workspace. */}
       <Route path="/about" element={<AboutPage />} />
+      <Route path="/pricing" element={<PricingPage />} />
       <Route path="/help" element={<HelpSupportPage />} />
       <Route path="/contacts" element={<ContactsPage />} />
       <Route path="/terms" element={<TermsPage />} />
@@ -175,6 +178,7 @@ export function App() {
         <Route path="telehealth" element={<ProtectedRoute roles={["nurse", "clinician"]}><TelehealthPage /></ProtectedRoute>} />
         <Route path="devices" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin"]}><DevicesPage /></ProtectedRoute>} />
         <Route path="ai" element={<ProtectedRoute roles={["nurse", "clinician"]}><AIPage /></ProtectedRoute>} />
+        <Route path="ai/chat" element={<ProtectedRoute roles={["nurse", "clinician"]}><AIChatPage /></ProtectedRoute>} />
         <Route path="content" element={<ProtectedRoute><ContentPage /></ProtectedRoute>} />
         <Route path="portal" element={<ProtectedRoute patient><PatientPortalPage /></ProtectedRoute>} />
         <Route path="portal/consents" element={<ProtectedRoute patient><ConsentPage /></ProtectedRoute>} />

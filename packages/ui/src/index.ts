@@ -2,7 +2,9 @@ export {
   Badge,
   Button,
   Card,
+  ChartFrame,
   DataList,
+  Dialog,
   EmptyState,
   ErrorState,
   Field,
@@ -19,4 +21,5 @@ export {
   Tabs,
   Textarea,
 } from "./primitives";
-export type { FriendlyErrorProps, LoadingStateProps } from "./primitives";
+export { ConversationPanel } from "./ConversationPanel";
+export type { ChartFrameProps, DialogProps, FriendlyErrorProps, LoadingStateProps } from "./primitives";
