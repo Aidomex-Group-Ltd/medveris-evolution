@@ -207,7 +207,12 @@ export function EncounterPage() {
               <Badge tone={showTimeline ? "info" : "neutral"}>{showTimeline ? "Timeline view" : `Notes (${data.entries.length})`}</Badge>
             </div>
           ) : null}
-          {showTimeline ? (
+          {!("triaged" === data.encounter.state || "in-progress" === data.encounter.state) && !entry ? (
+            <div className="mv-stack">
+              <Notice tone="warning" title="Triage required before consultation note">Triage must be completed before a clinical note can be documented. Save triage below — only the presenting complaint and urgency are required — then you can create the consultation note.</Notice>
+              <TriagePanel encounterId={encounter.id} onSaved={detail.reload} />
+            </div>
+          ) : showTimeline ? (
             <div className="mv-stack">
               {timelineLoading ? <LoadingState label="Loading encounter timeline" /> : null}
               {error ? <FriendlyError {...describeError(error)} /> : null}

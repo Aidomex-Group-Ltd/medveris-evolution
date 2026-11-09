@@ -31,7 +31,7 @@ const NOTE_TYPES = [
   { value: "pediatric", label: "Pediatric" },
 ];
 
-const empty = { title: "Outpatient consultation note", subjective: "", objective: "", assessment: "", plan: "", changeNote: "", noteType: "consultation" };
+const empty = { title: "Outpatient consultation note", subjective: "", objective: "", assessment: "", plan: "", changeNote: "Initial consultation draft", noteType: "consultation" };
 
 const SECTION_LABELS: Record<"subjective" | "objective" | "assessment" | "plan", string> = {
   subjective: "Subjective — what the patient reports",
@@ -94,7 +94,8 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
       setForm(empty);
       onChanged();
     } catch (cause) {
-      setError(errorMessage(cause));
+      const msg = errorMessage(cause);
+      setError(msg.includes("Triage must be completed") ? `${msg} Complete triage (presenting complaint + urgency) first, then retry saving this draft.` : msg);
     } finally {
       setBusy(null);
     }
@@ -303,19 +304,40 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
       {showForm && canSign ? (
         <form className="mv-stack" onSubmit={submitHandler}>
           {amending ? <Notice tone="warning" title="Reasoned amendment">The original signed version is never overwritten. Provide a clear reason for this correction.</Notice> : null}
-          <div className="mv-grid mv-grid--2">
-            <Field label="Note type" htmlFor="note-type"><Select id="note-type" value={form.noteType} onChange={(e) => setForm({ ...form, noteType: e.target.value })}>{NOTE_TYPES.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}</Select></Field>
-            <Field label="Title" htmlFor="note-title"><Input id="note-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required maxLength={300} /></Field>
-          </div>
-          <div className="mv-grid mv-grid--2">
-            <Field label="Subjective" htmlFor="note-s"><Textarea id="note-s" value={form.subjective} onChange={(e) => setForm({ ...form, subjective: e.target.value })} /></Field>
-            <Field label="Objective" htmlFor="note-o"><Textarea id="note-o" value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} /></Field>
-            <Field label="Assessment" htmlFor="note-a"><Textarea id="note-a" value={form.assessment} onChange={(e) => setForm({ ...form, assessment: e.target.value })} /></Field>
-            <Field label="Plan" htmlFor="note-p"><Textarea id="note-p" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} /></Field>
-          </div>
-          <Field label={amending ? "Amendment reason (required)" : "Creation note (required)"} htmlFor="note-reason" hint={amending ? "Minimum 10 characters. Stored with this version and audit event." : "Minimum 5 characters. Draft edits also record audit notes."}>
-            <Input id="note-reason" value={form.changeNote} onChange={(e) => setForm({ ...form, changeNote: e.target.value })} required minLength={amending ? 10 : 5} maxLength={2000} />
-          </Field>
+          {!entry && !amending ? (
+            <>
+              <div className="mv-grid mv-grid--2">
+                <Field label="Title" htmlFor="note-title"><Input id="note-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required maxLength={300} /></Field>
+                <Field label="Note type" htmlFor="note-type"><Select id="note-type" value={form.noteType} onChange={(e) => setForm({ ...form, noteType: e.target.value })}>{NOTE_TYPES.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}</Select></Field>
+              </div>
+              <Field label="Consultation note" htmlFor="note-body"><Textarea id="note-body" value={form.subjective} onChange={(e) => setForm({ ...form, subjective: e.target.value })} placeholder="Enter consultation findings (subjective). Structured sections are optional." /></Field>
+              <details>
+                <summary className="mv-small" style={{ cursor: "pointer" }}>Advanced — structured sections (optional)</summary>
+                <div className="mv-grid mv-grid--2" style={{ marginTop: 10 }}>
+                  <Field label="Objective" htmlFor="note-o"><Textarea id="note-o" value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} /></Field>
+                  <Field label="Assessment" htmlFor="note-a"><Textarea id="note-a" value={form.assessment} onChange={(e) => setForm({ ...form, assessment: e.target.value })} /></Field>
+                  <Field label="Plan" htmlFor="note-p"><Textarea id="note-p" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} /></Field>
+                </div>
+              </details>
+              <Field label="Creation note" htmlFor="note-reason"><Input id="note-reason" value={form.changeNote} onChange={(e) => setForm({ ...form, changeNote: e.target.value })} required minLength={5} maxLength={2000} /></Field>
+            </>
+          ) : (
+            <>
+              <div className="mv-grid mv-grid--2">
+                <Field label="Note type" htmlFor="note-type"><Select id="note-type" value={form.noteType} onChange={(e) => setForm({ ...form, noteType: e.target.value })}>{NOTE_TYPES.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}</Select></Field>
+                <Field label="Title" htmlFor="note-title"><Input id="note-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required maxLength={300} /></Field>
+              </div>
+              <div className="mv-grid mv-grid--2">
+                <Field label="Subjective" htmlFor="note-s"><Textarea id="note-s" value={form.subjective} onChange={(e) => setForm({ ...form, subjective: e.target.value })} /></Field>
+                <Field label="Objective" htmlFor="note-o"><Textarea id="note-o" value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} /></Field>
+                <Field label="Assessment" htmlFor="note-a"><Textarea id="note-a" value={form.assessment} onChange={(e) => setForm({ ...form, assessment: e.target.value })} /></Field>
+                <Field label="Plan" htmlFor="note-p"><Textarea id="note-p" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} /></Field>
+              </div>
+              <Field label={amending ? "Amendment reason (required)" : "Creation note (required)"} htmlFor="note-reason" hint={amending ? "Minimum 10 characters. Stored with this version and audit event." : "Minimum 5 characters. Draft edits also record audit notes."}>
+                <Input id="note-reason" value={form.changeNote} onChange={(e) => setForm({ ...form, changeNote: e.target.value })} required minLength={amending ? 10 : 5} maxLength={2000} />
+              </Field>
+            </>
+          )}
           <div className="mv-row">
             <Button type="submit" disabled={busy !== null}>{busy === "save" || busy === "amend" ? "Saving…" : amending ? "Append amendment" : entry ? "Save draft revision" : "Create draft"}</Button>
             {amending ? <Button variant="ghost" onClick={() => setAmending(false)}>Cancel amendment</Button> : null}
