@@ -57,6 +57,7 @@ import { organizationsRoutes } from "./routes/organizations.js";
 import { procurementRoutes } from "./routes/procurement.js";
 import { ehmisRoutes } from "./routes/ehmis.js";
 import { workflowRoutes } from "./routes/workflow.js";
+import { workforceReferenceRoutes } from "./routes/workforce-reference.js";
 import { paymentCallbackRoutes } from "./routes/payment-callbacks.js";
 import { billingRoutes } from "./routes/billing.js";
 import { subscriptionCheckoutRoutes } from "./routes/subscription-checkout.js";
@@ -219,6 +220,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", aiRoutes);
   app.route("/api/v1", emergencyRoutes);
   app.route("/api/v1", careRoutes);
+  app.route("/api/v1", workforceReferenceRoutes);
   app.route("/api/v1", organizationRoutes);
   app.route("/api/v1", workspaceRoutes);
   app.route("/api/v1", organizationsRoutes);
