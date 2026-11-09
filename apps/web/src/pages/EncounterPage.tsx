@@ -24,6 +24,24 @@ export function EncounterPage() {
   const encounterPath = typeof id === "string" && uuidSchema.safeParse(id).success ? `/encounters/${id}` : null;
   const detail = useQuery<EncounterDetail>(encounterPath);
   const [tab, setTab] = useState<"summary" | "notes" | "requests">("summary");
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [timeline, setTimeline] = useState<Array<{
+    id: string;
+    status: string;
+    currentVersion: number;
+    latestVersion: number;
+    title: string;
+    noteType: string;
+    archivedAt: string | null;
+    voidReason: string | null;
+    occurredAt: string;
+    recordedAt: string;
+    signedAt: string | null;
+    changeNote: string;
+    authorName: string;
+    attachmentCount: number;
+  }> | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -34,6 +52,21 @@ export function EncounterPage() {
 
   const data = detail.data;
   const entry = selectedEntry === "new" ? null : data?.entries.find((row) => row.id === selectedEntry) ?? data?.entries[data.entries.length - 1] ?? null;
+  const noteTypes = [
+    { value: "consultation", label: "Consultation" },
+    { value: "progress", label: "Progress" },
+    { value: "admission", label: "Admission" },
+    { value: "nursing", label: "Nursing" },
+    { value: "discharge", label: "Discharge" },
+    { value: "referral", label: "Referral" },
+    { value: "procedure", label: "Procedure" },
+    { value: "followup", label: "Follow-up" },
+    { value: "maternity", label: "Maternity" },
+    { value: "pediatric", label: "Pediatric" },
+  ];
+  function noteTypeLabel(value: string) {
+    return noteTypes.find((n) => n.value === value)?.label ?? value;
+  }
 
   useEffect(() => {
     if (!selectedEntry && data?.entries.length) setSelectedEntry(data.entries[data.entries.length - 1]!.id);
@@ -53,6 +86,20 @@ export function EncounterPage() {
       setError(cause);
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function loadTimeline() {
+    if (!id) return;
+    setTimelineLoading(true);
+    setError(null);
+    try {
+      const response = await api<{ encounterId: string; entries: typeof timeline }>(`/encounters/${id}/timeline`);
+      setTimeline(response.entries);
+    } catch (cause) {
+      setError(cause);
+    } finally {
+      setTimelineLoading(false);
     }
   }
 
@@ -153,20 +200,48 @@ export function EncounterPage() {
       ) : !clinical ? (
         <EmptyState title="Clinical notes restricted" description="Your role does not permit reading clinical narratives." />
       ) : (
-        <div className="mv-grid" style={{ gridTemplateColumns: "minmax(220px, 0.32fr) minmax(0, 1fr)" }}>
-          <Card title="Entries" actions={canSign && ["triaged", "in-progress"].includes(encounter.state) ? <Button size="sm" variant="secondary" onClick={() => setSelectedEntry("new")} aria-pressed={selectedEntry === "new"}>New note</Button> : null}>
-            {!data.entries.length ? <p className="mv-small mv-muted">No notes yet.</p> : (
-              <div className="mv-stack" style={{ gap: 6 }}>
-                {data.entries.map((row) => (
-                  <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer" }} onClick={() => setSelectedEntry(row.id)} aria-pressed={row.id === entry?.id}>
-                    <strong>{row.title}</strong>
-                    <div className="mv-small mv-muted">v{row.currentVersion} · {row.status}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </Card>
-          <ClinicalNotePanel encounterId={encounter.id} entry={entry} canSign={canSign} onChanged={() => { if (selectedEntry === "new") setSelectedEntry(null); detail.reload(); }} />
+        <div className="mv-stack">
+          {canSign ? (
+            <div className="mv-row">
+              <Button variant="secondary" size="sm" onClick={() => setShowTimeline((v) => !v)} aria-pressed={showTimeline}>{showTimeline ? "Back to entries list" : "Show encounter timeline"}</Button>
+              <Badge tone={showTimeline ? "info" : "neutral"}>{showTimeline ? "Timeline view" : `Notes (${data.entries.length})`}</Badge>
+            </div>
+          ) : null}
+          {showTimeline ? (
+            <div className="mv-stack">
+              {timelineLoading ? <LoadingState label="Loading encounter timeline" /> : null}
+              {error ? <FriendlyError {...describeError(error)} /> : null}
+              {timeline ? (
+                <div className="mv-stack" style={{ gap: 8 }}>
+                  {timeline.map((row) => (
+                    <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer" }} onClick={() => { setSelectedEntry(row.id); setShowTimeline(false); }}>
+                      <div className="mv-spread"><strong>{row.title}</strong><Badge tone={row.status === "signed" || row.status === "amended" ? "success" : row.status === "draft" ? "warning" : "danger"}>{row.status}</Badge></div>
+                      <div className="mv-small mv-muted">{noteTypeLabel(row.noteType)} · v{row.currentVersion} (latest v{row.latestVersion}) · {row.authorName}{row.archivedAt ? ` · archived ${new Date(row.archivedAt).toLocaleString()}` : ""}{row.voidReason ? ` · voided: ${row.voidReason}` : ""}{row.attachmentCount ? ` · ${row.attachmentCount} attachment${row.attachmentCount === 1 ? "" : "s"}` : ""}</div>
+                    </button>
+                  ))}
+                </div>
+              ) : data.entries.length ? (
+                <p className="mv-small mv-muted">Timeline unavailable; showing entries list instead.</p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="mv-grid mv-split">
+              <Card title="Entries" actions={canSign && ["triaged", "in-progress"].includes(encounter.state) ? <Button size="sm" variant="secondary" onClick={() => setSelectedEntry("new")} aria-pressed={selectedEntry === "new"}>New note</Button> : null}>
+                {!data.entries.length ? <p className="mv-small mv-muted">No notes yet.</p> : (
+                  <div className="mv-stack" style={{ gap: 6 }}>
+                    {data.entries.map((row) => (
+                      <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer" }} onClick={() => setSelectedEntry(row.id)} aria-pressed={row.id === entry?.id}>
+                        <strong>{row.title}</strong>
+                        <div className="mv-small mv-muted">v{row.currentVersion} · {row.status}{row.archivedAt ? " · archived" : ""}{row.voidReason ? " · voided" : ""}</div>
+                        <div className="mv-small mv-muted">{noteTypeLabel(row.noteType)} · {row.authorName}{row.attachmentCount ? ` · ${row.attachmentCount} attachment${row.attachmentCount === 1 ? "" : "s"}` : ""}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Card>
+              <ClinicalNotePanel encounterId={encounter.id} entry={entry} canSign={canSign} onChanged={() => { if (selectedEntry === "new") setSelectedEntry(null); detail.reload(); }} />
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -7,7 +7,6 @@ import { useAuth } from "../lib/auth";
 import { useQuery } from "../lib/useQuery";
 import { api } from "../lib/api";
 import {
-  MOBILE_TABS,
   NAV_GROUPS,
   NAV_SECTIONS,
   activeDestination,
@@ -18,6 +17,8 @@ import {
   navDestinationsFor,
   navFor,
   type MobileTabId,
+  type PlatformNavItem,
+  MOBILE_TABS,
   type NavDestination,
   type NavSectionId,
 } from "../lib/nav";
@@ -309,6 +310,44 @@ function SidebarDestination({ item, active }: { item: NavDestination; active: bo
   );
 }
 
+function PrimaryNavStrip({ sections, platform, active, locationPathname }: { sections: ReturnType<typeof navFor>["sections"]; platform: readonly PlatformNavItem[]; active: NavDestination | undefined; locationPathname: string }) {
+  return (
+    <nav className="mv-nav-strip" aria-label="Primary navigation">
+      {sections.map((section) => {
+        const primaryItem = section.items[0];
+        const itemId = primaryItem?.id;
+        const isActive = active?.id === itemId;
+        const href = primaryItem?.to;
+        return (
+          <Link
+            key={section.id}
+            to={href ?? "#"}
+            className={`mv-nav-strip__item${isActive ? " is-active" : ""}`}
+            aria-current={isActive ? "page" : undefined}
+            aria-label={section.label}
+            title={section.label}
+          >
+            <NavIcon name={section.icon} size={17} />
+            <span className="mv-nav-strip__label">{section.label}</span>
+          </Link>
+        );
+      })}
+      {platform.map((item) => (
+        <Link
+          key={item.id}
+          to={item.to}
+          className={`mv-nav-strip__item${locationPathname === item.to || locationPathname.startsWith(`${item.to}/`) ? " is-active" : ""}`}
+          aria-label={item.label}
+          title={item.label}
+        >
+          <NavIcon name={item.icon} size={17} />
+          <span className="mv-nav-strip__label">{item.label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 export function AppShell() {
   const { me, logout } = useAuth();
   const navigate = useNavigate();
@@ -323,6 +362,9 @@ export function AppShell() {
   const { sections, platform } = me ? navFor(me) : { sections: [], platform: [] as const };
   const active = activeDestination(location.pathname);
   const activeSection = active?.section;
+  const mobileTabs = me ? mobileTabsFor(me) : [];
+  const activeMobileTab = activeMobileTabForPath(location.pathname);
+  const mobileHomeTarget = me?.patientId ? "/portal" : "/dashboard";
 
   useEffect(() => {
     setNavOpen(false);
@@ -380,20 +422,20 @@ export function AppShell() {
   }, [navOpen]);
 
   useEffect(() => {
-    const locked = navOpen || mobileSheet !== null || searchOpen;
-    if (!locked) return;
+    const locked = navOpen || searchOpen || Boolean(mobileSheet);
+    const app = document.querySelector(".mv-app") as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = locked ? "hidden" : previousOverflow;
+    if (app) app.classList.toggle("is-locked", locked);
     return () => {
       document.body.style.overflow = previousOverflow;
+      if (app) app.classList.remove("is-locked");
     };
-  }, [mobileSheet, navOpen, searchOpen]);
+  }, [navOpen, searchOpen, mobileSheet]);
 
   if (!me) return null;
 
   const profile = workspaceProfile(me.activeTenant);
-  const mobileTabs = mobileTabsFor(me);
-  const activeMobile = activeMobileTabForPath(location.pathname);
 
   function closeNavigation() {
     setNavOpen(false);
@@ -540,44 +582,45 @@ export function AppShell() {
             <ProfileMenu me={me} onSignOut={signOut} />
           </div>
         </header>
-        <div className="mv-mobile-context">
-          <FacilityContext me={me} />
-          <IntelligenceLink me={me} />
-        </div>
+        {me.activeTenant ? <PrimaryNavStrip sections={sections} platform={platform} active={active} locationPathname={location.pathname} /> : null}
         <SubscriptionBanner />
         <main className="mv-content" id="main-content">
           <Outlet />
         </main>
       </div>
 
-      <GlobalSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
-
-      <nav className="mv-bottom-nav" aria-label="Mobile navigation">
-        {mobileTabs.map((tab) => {
-          const isActive = activeMobile === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              className={`mv-bottom-nav__item${isActive ? " is-active" : ""}`}
-              aria-current={isActive ? "page" : undefined}
-              onClick={() => {
-                if (tab.id === "home") {
-                  setMobileSheet(null);
-                  navigate("/dashboard");
-                } else {
-                  setMobileSheet(tab.id);
-                }
-              }}
-            >
-              <NavIcon name={tab.icon} size={22} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {mobileTabs.length ? (
+        <nav className="mv-bottom-nav" aria-label="Mobile navigation">
+          {mobileTabs.map((tab) => {
+            const isActive = activeMobileTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`mv-bottom-nav__item${isActive ? " is-active" : ""}`}
+                aria-current={isActive ? "page" : undefined}
+                aria-label={tab.label}
+                onClick={() => {
+                  if (tab.id === "home") {
+                    navigate(mobileHomeTarget);
+                  } else {
+                    setMobileSheet(tab.id);
+                  }
+                }}
+              >
+                <NavIcon name={tab.icon} size={19} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      ) : null}
 
       {mobileSheet ? <MobileSheet tabId={mobileSheet} onClose={() => setMobileSheet(null)} /> : null}
+
+      <GlobalSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
+
+
       <span className="mv-visually-hidden" aria-live="polite">{profile.categoryLabel ?? ""}</span>
     </div>
   );

@@ -233,3 +233,43 @@ npm run dev           # Runs API (port 8787) and Web (port 5173) concurrently
 
 ---
 *This handoff generated from repository inspection on 2026-10-31. For continuation, run `npm install && cp .env.example .env && npm run db:setup && npm run db:migrate && npm run db:seed && npm run dev` to start local development.*
+## Global Mobile-First UI/UX Audit (2026-11-09)
+
+**Scope:** global responsive foundations, facility workspace top bar and navigation, mobile bottom navigation and sheets, public information site, pricing, forms/inputs, data tables, modals, grid/split layouts, safe-area and dynamic-viewport behaviour, and a Playwright responsive regression suite.
+
+### What changed
+
+- `packages/ui/src/styles.css`
+  - `html/body/#root` base rules: `100dvh` body sizing, `-webkit-text-size-adjust`, `overflow-wrap: break-word`, and `max-width: 100%` for media.
+  - Shared layout tokens now use `min()` in every `auto-fit` grid (`mv-grid--2`, `mv-grid--3`, `mv-form-grid`, `mv-datalist`, `mv-quick-actions`, `mv-pos-totals` equivalent in web styles) so no track forces horizontal overflow on 320/375/390 px viewports.
+  - `.mv-app` and `.mv-auth` use `100dvh` with `100vh` fallback; sidebar and top/bottom chrome account for `env(safe-area-inset-*)`; `.mv-content` padding bottom on mobile accounts for the fixed bottom navigation plus safe area.
+  - `.mv-table-wrap` supports `min-width: 0`, `max-width: 100%`, horizontal containment and touch scrolling; `.mv-input` uses `font-size: 1rem` and `min-height: 44px` to avoid iOS zoom and keep touch targets.
+  - Fixed the dead-code state in which the menu button and sidebar close button were permanently `display: none`, and the scrim was also `display: none`; the scrim is now a real fixed overlay and the menu button is available at every viewport.
+  - `.mv-nav-strip` is hidden at `<= 900px`; a fixed `.mv-bottom-nav` is shown at `<= 900px` instead.
+  - Consolidated duplicate `.mv-content` declarations and added `.mv-split` with a single-column collapse for note/entry split views.
+- `apps/web/src/styles.css` — same `min()` grid fix for `mv-grid-2`, `mv-form-grid`, `mv-pos-totals`; `100dvh` for `.mv-public`.
+- `apps/web/src/components/AppShell.tsx`
+  - Mobile navigation is now wired: `Home` navigates to `/dashboard` (staff) or `/portal` (patient); `Care`, `Analytics`, `Knowledge` and `More` open the `MobileSheet` bottom sheet derived from the navigation SSOT (`mobileTabsFor` / `mobileSectionsFor` / `activeMobileTabForPath` from `apps/web/src/lib/nav.ts`).
+  - Opening a sheet locks body scroll; the sheet is focus-trapped, closable by scrim/Escape/close button and closes on route change.
+- `apps/web/src/pages/EncounterPage.tsx` — inline fixed two-column grid replaced by responsive `.mv-split`.
+- `apps/web/src/pages/CatalogueEditorPage.tsx` — modal uses `90dvh` and fluid padding.
+
+### Test evidence
+
+- `npm run build:web` — passes (Vite production build completed).
+- `tsc -p tsconfig.json --noEmit` (full monorepo) — **not green** for the same reason recorded in prior work: pre-existing uncommitted `apps/api` WIP, e.g. `apps/api/src/integrations/ollama.ts(100,3) TS1016`. No web/UI type errors were reported.
+- `npx eslint AppsShell.tsx CatalogueEditorPage.tsx DashboardPage.tsx` — touched files clean. Note: `apps/web/src/pages/EncounterPage.tsx:92` still carries a pre-existing unused `loadTimeline` left by earlier in-progress work.
+- `npx vitest run tests/unit/nav-route-parity.test.ts tests/unit/site-content.test.ts` — 17 passed.
+- `npx playwright test tests/e2e/responsive.spec.ts` — 8 passed. Covers public routes (`/`, `/pricing`, `/about`, `/help`, `/contacts`) at 390x844 and 320x640, authenticated clinician mobile shell navigation (bottom nav, sidebar drawer, sheet), authenticated patient portal, and a desktop control (bottom nav absent, nav strip and menu button present).
+  - The suite accepts the updated legal documents for the local synthetic `clinician@medveris.local` and `patient@medveris.local` accounts when the reacceptance gate is shown; this is a one-time database change in the local synthetic data set.
+  - Horizontal overflow is asserted with `document.documentElement.scrollWidth <= window.innerWidth + 1`.
+- `playwright.config.ts` — added the `chromium` project so the `npm run test:e2e` script's `--project chromium` resolves.
+
+### Known gaps and not performed
+
+- No separate requirement #14 checklist with exact sub-requirements was found in this repository (`grep` found none). The changes above implement standard mobile-first/responsive requirements and the desktop control test; they were not audited against any external requirement specification.
+- Pages rendered *inside* tables still scroll horizontally within `.mv-table-wrap` on narrow screens; a per-page card-based mobile table refactor was not done.
+- No physical device testing; no automated screenshot comparison; no low-bandwidth/high-zoom testing beyond `320px` viewport coverage.
+- Charts, DICOM/imaging viewers, print styles, and full acceptance-test coverage of every role are not covered by the responsive suite; `@media print` paths remain unverified on this branch.
+- The repository still contains large pre-existing uncommitted work across `apps/api`, migrations and reports; `npm run typecheck` and a full `npm run test:e2e` gate were not re-verified against that work.
+- Nothing was deployed. No changes to Cloudflare, VPS, databases or secrets were made.

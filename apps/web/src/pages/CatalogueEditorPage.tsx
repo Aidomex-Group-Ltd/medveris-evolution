@@ -1283,7 +1283,8 @@ function Modal({ isOpen, onClose, title, size = "md", children }: {
         aria-label={title}
         onClick={(event) => event.stopPropagation()}
         style={{
-          width: "100%", maxWidth: size === "lg" ? 760 : 560, maxHeight: "90vh", overflowY: "auto", padding: 24,
+          width: "100%", maxWidth: size === "lg" ? 760 : 560, maxHeight: "90dvh", overflowY: "auto",
+          padding: "clamp(16px, 4vw, 24px)",
           background: "var(--mv-surface)", border: "1px solid var(--mv-border)", borderRadius: 8,
         }}
       >
