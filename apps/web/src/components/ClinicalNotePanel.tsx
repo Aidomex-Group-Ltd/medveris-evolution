@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, Textarea } from "@medveris/ui";
+import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, Select, Textarea } from "@medveris/ui";
 import { api, errorMessage } from "../lib/api";
 import type { EncounterDetail } from "../lib/types";
 
@@ -9,6 +9,7 @@ interface VersionRow {
   id: string;
   version: number;
   status: string;
+  noteType: string | null;
   changeNote: string;
   authorName: string;
   occurredAt: string;
@@ -17,7 +18,20 @@ interface VersionRow {
   content: Entry["content"];
 }
 
-const empty = { title: "Outpatient consultation note", subjective: "", objective: "", assessment: "", plan: "", changeNote: "" };
+const NOTE_TYPES = [
+  { value: "consultation", label: "Consultation" },
+  { value: "progress", label: "Progress" },
+  { value: "admission", label: "Admission" },
+  { value: "nursing", label: "Nursing" },
+  { value: "discharge", label: "Discharge" },
+  { value: "referral", label: "Referral" },
+  { value: "procedure", label: "Procedure" },
+  { value: "followup", label: "Follow-up" },
+  { value: "maternity", label: "Maternity" },
+  { value: "pediatric", label: "Pediatric" },
+];
+
+const empty = { title: "Outpatient consultation note", subjective: "", objective: "", assessment: "", plan: "", changeNote: "", noteType: "consultation" };
 
 const SECTION_LABELS: Record<"subjective" | "objective" | "assessment" | "plan", string> = {
   subjective: "Subjective — what the patient reports",
@@ -31,6 +45,7 @@ const STATUS_ACTION_LABELS: Record<string, string> = {
   signed: "Signed",
   amended: "Amendment",
   "entered-in-error": "Entered in error",
+  voided: "Voided",
 };
 
 export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { encounterId: string; entry: Entry | null; canSign: boolean; onChanged: () => void }) {
@@ -41,12 +56,15 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
   const [message, setMessage] = useState<string | null>(null);
   const [history, setHistory] = useState<VersionRow[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [attachUploadId, setAttachUploadId] = useState("");
+  const [attachLoading, setAttachLoading] = useState(false);
 
   useEffect(() => {
     setAmending(false);
     setError(null);
     setMessage(null);
     setHistory(null);
+    setAttachUploadId("");
     if (entry) {
       setForm({
         title: entry.content.title ?? entry.title,
@@ -55,11 +73,12 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
         assessment: entry.content.assessment ?? "",
         plan: entry.content.plan ?? "",
         changeNote: "",
+        noteType: entry.noteType ?? "consultation",
       });
     } else {
       setForm(empty);
     }
-  }, [entry?.id, entry?.currentVersion]);
+  }, [entry?.id, entry?.currentVersion, entry?.noteType]);
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -97,6 +116,59 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
       setError(errorMessage(cause));
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function voidNote() {
+    if (!entry) return;
+    const reason = window.prompt("Why is this note being voided? (at least 10 characters; the record is preserved in history)");
+    if (reason === null) return;
+    if (reason.trim().length < 10) {
+      setError("Give a reason of at least 10 characters.");
+      return;
+    }
+    setBusy("void");
+    setError(null);
+    try {
+      await api(`/entries/${entry.id}/void`, { method: "POST", body: { expectedVersion: entry.currentVersion, reason: reason.trim() } });
+      setMessage("Note voided. The full version history is preserved.");
+      onChanged();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function archiveNote() {
+    if (!entry) return;
+    if (entry.archivedAt) return;
+    setBusy("archive");
+    setError(null);
+    try {
+      await api(`/entries/${entry.id}/archive`, { method: "POST", body: { reason: "Archived by clinical team" } });
+      setMessage("Note archived. It remains readable but is removed from the active note list.");
+      onChanged();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addAttachment() {
+    if (!entry || !attachUploadId) return;
+    setAttachLoading(true);
+    setError(null);
+    try {
+      await api(`/entries/${entry.id}/attachments`, { method: "POST", body: { uploadId: attachUploadId } });
+      setMessage("Attachment linked to this note.");
+      setAttachUploadId("");
+      onChanged();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setAttachLoading(false);
     }
   }
 
@@ -191,6 +263,12 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
       {message ? <Notice tone="success">{message}</Notice> : null}
       {entry ? (
         <div className={`mv-note mv-note--${entry.status}`} style={{ marginBottom: 14 }}>
+          <div className="mv-row" style={{ marginBottom: 8 }}>
+            <Badge tone={entry.status === "voided" ? "danger" : entry.status === "signed" || entry.status === "amended" ? "success" : entry.status === "draft" ? "warning" : "neutral"}>{entry.status}</Badge>
+            <Badge tone="neutral">{NOTE_TYPES.find((n) => n.value === entry.noteType)?.label ?? entry.noteType}</Badge>
+            {entry.voidReason ? <span className="mv-small mv-muted">Voided: {entry.voidReason}</span> : null}
+            {entry.archivedAt ? <span className="mv-small mv-muted">Archived {new Date(entry.archivedAt).toLocaleString()}</span> : null}
+          </div>
           <div className="mv-client-fields">
             {(["subjective", "objective", "assessment", "plan"] as const).map((key) => (
               <div key={key} style={{ marginBottom: 8 }}>
@@ -199,14 +277,25 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
               </div>
             ))}
           </div>
-          <div className="mv-small mv-muted">Clinical time {new Date(entry.occurredAt).toLocaleString()} · {entry.signedAt ? `Signed ${new Date(entry.signedAt).toLocaleString()}` : "Not signed"} · Creation note: {entry.changeNote}</div>
+          <div className="mv-small mv-muted">Clinical time {new Date(entry.occurredAt).toLocaleString()} · {entry.signedAt ? `Signed ${new Date(entry.signedAt).toLocaleString()}` : "Not signed"} · Creation note: {entry.changeNote}{entry.attachmentCount ? ` · ${entry.attachmentCount} attachment${entry.attachmentCount === 1 ? "" : "s"}` : ""}</div>
         </div>
       ) : null}
 
       {signed && !amending ? (
         <div className="mv-row">
-          {entry.status !== "entered-in-error" ? (canSign ? <Button onClick={() => setAmending(true)}>Amend signed note</Button> : <span className="mv-small mv-muted">Only a clinician may amend a signed note.</span>) : <span className="mv-small mv-muted">Entered-in-error versions cannot be amended.</span>}
-          {entry.status !== "entered-in-error" && canSign ? <Button variant="ghost" disabled={busy !== null} onClick={() => void markEnteredInError()}>{busy === "error" ? "Saving…" : "Mark entered in error"}</Button> : null}
+          {entry.status !== "entered-in-error" && entry.status !== "voided" ? (canSign ? <Button onClick={() => setAmending(true)}>Amend signed note</Button> : <span className="mv-small mv-muted">Only a clinician may amend a signed note.</span>) : <span className="mv-small mv-muted">This version cannot be amended.</span>}
+          {entry.status !== "entered-in-error" && entry.status !== "voided" && canSign ? <Button variant="ghost" disabled={busy !== null} onClick={() => void markEnteredInError()}>{busy === "error" ? "Saving…" : "Mark entered in error"}</Button> : null}
+          {entry.status !== "voided" && entry.status !== "archived" && entry.archivedAt === null && canSign ? <Button variant="ghost" disabled={busy !== null} onClick={() => void archiveNote()}>{busy === "archive" ? "Archiving…" : "Archive note"}</Button> : null}
+          {entry.status !== "voided" && canSign ? <Button variant="ghost" disabled={busy !== null} onClick={() => void voidNote()}>{busy === "void" ? "Voiding…" : "Void note"}</Button> : null}
+        </div>
+      ) : null}
+      {entry && entry.status !== "voided" && entry.status !== "entered-in-error" ? (
+        <div className="mv-stack" style={{ marginTop: 12 }}>
+          <div className="mv-row">
+            <Field label="Link uploaded file"><Input id="note-attach" type="text" value={attachUploadId} onChange={(e) => setAttachUploadId(e.target.value)} placeholder="Upload id (uuid)" /></Field>
+            <Button variant="secondary" size="sm" disabled={!attachUploadId || attachLoading} onClick={() => void addAttachment()}>{attachLoading ? "Linking…" : "Link attachment"}</Button>
+          </div>
+          <p className="mv-small mv-muted">Attach an existing upload by its id. The file is not stored in the note body; only the link is recorded against this encounter and patient.</p>
         </div>
       ) : null}
       {entry && signed ? <NoteIntegrity entryId={entry.id} version={entry.currentVersion} /> : null}
@@ -214,7 +303,10 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
       {showForm && canSign ? (
         <form className="mv-stack" onSubmit={submitHandler}>
           {amending ? <Notice tone="warning" title="Reasoned amendment">The original signed version is never overwritten. Provide a clear reason for this correction.</Notice> : null}
-          <Field label="Title" htmlFor="note-title"><Input id="note-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required maxLength={300} /></Field>
+          <div className="mv-grid mv-grid--2">
+            <Field label="Note type" htmlFor="note-type"><Select id="note-type" value={form.noteType} onChange={(e) => setForm({ ...form, noteType: e.target.value })}>{NOTE_TYPES.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}</Select></Field>
+            <Field label="Title" htmlFor="note-title"><Input id="note-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required maxLength={300} /></Field>
+          </div>
           <div className="mv-grid mv-grid--2">
             <Field label="Subjective" htmlFor="note-s"><Textarea id="note-s" value={form.subjective} onChange={(e) => setForm({ ...form, subjective: e.target.value })} /></Field>
             <Field label="Objective" htmlFor="note-o"><Textarea id="note-o" value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} /></Field>
@@ -238,7 +330,7 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
           <h3>Version history</h3>
           {history.map((version) => (
             <div key={version.id} className={`mv-note mv-note--${version.status}`}>
-              <div className="mv-spread"><strong>{STATUS_ACTION_LABELS[version.status] ?? `Version ${version.version}`}</strong><Badge tone={version.status === "signed" || version.status === "amended" ? "success" : version.status === "draft" ? "warning" : "danger"}>{version.status}</Badge></div>
+              <div className="mv-spread"><strong>{STATUS_ACTION_LABELS[version.status] ?? `Version ${version.version}`}</strong><Badge tone={version.status === "signed" || version.status === "amended" ? "success" : version.status === "draft" ? "warning" : "danger"}>{version.status}</Badge>{version.noteType ? <Badge tone="neutral">{NOTE_TYPES.find((n) => n.value === version.noteType)?.label ?? version.noteType}</Badge> : null}</div>
               <div className="mv-small mv-muted">Version {version.version} · {version.authorName} · clinical time {new Date(version.occurredAt).toLocaleString()} · {version.changeNote}</div>
               <div className="mv-small mv-mono" style={{ marginTop: 4 }}>{version.contentDigest}</div>
             </div>

@@ -4,13 +4,17 @@
  * Used in two distinct roles in this codebase:
  *  - Sandbox role: local/dev Ollama adapter behind OLLAMA_URL (not available in production).
  *  - Live role: production AI provider at AI_BASE_URL (HTTPS only in production), authenticated
- *    with AI_TOKEN, with model inventory discovered from the live /api/tags endpoint.
+ *    with Ollama HTTP Basic Auth (OLLAMA_USERNAME / OLLAMA_PASSWORD), with model inventory
+ *    discovered from the live /api/tags endpoint. The legacy AI_TOKEN Bearer path is preserved
+ *    only for other provider backends.
  *
  * Ollama exposes a REST API: POST /api/chat provides a streaming or non-streaming chat completion.
  * This client uses non-streaming mode and maps the medveris AI inputs to Ollama's format.
  */
 
-import type { AiModelConfig, AiRunInput } from "@medveris/ai";
+import type { AiRunInput } from "@medveris/ai";
+import type { Sql } from "@medveris/db";
+import type { AppConfig, OllamaConfig } from "../config.js";
 import { loadVerifications } from "./verification.js";
 
 export class OllamaError extends Error {
@@ -66,13 +70,50 @@ function ollamaUrl(base: string): string {
   return base.replace(/\/+$/, "");
 }
 
-async function ollamaFetch(base: string, path: string, init?: RequestInit, timeoutMs: number): Promise<unknown> {
+/**
+ * HTTP Basic Auth value for Ollama requests, constructed from Worker secrets.
+ * The encoded value is treated as secret material: it is never logged, never included in
+ * error messages, and never returned to callers.
+ */
+function ollamaBasicAuth(username: string | null, password: string | null): string | null {
+  if (!username || !password) return null;
+  const encoded = btoa(`${username}:${password}`);
+  if (!encoded) return null;
+  return `Basic ${encoded}`;
+}
+
+/**
+ * Authorization header value for Ollama requests. Only Basic Auth is emitted for the live
+ * Ollama path; the result is intentionally free of tokens, passwords and encoded credentials
+ * when they are absent or when Bearer auth is the requested transport.
+ */
+function basicAuthHeaders(
+  username: string | null,
+  password: string | null,
+): Record<string, string> {
+  const value = ollamaBasicAuth(username, password);
+  return value ? { authorization: value } : {};
+}
+
+async function ollamaFetch(
+  base: string,
+  path: string,
+  timeoutMs: number,
+  init?: RequestInit,
+  username: string | null = null,
+  password: string | null = null,
+): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const auth = path === "/api/chat" ? ollamaBasicAuth(username, password) : ollamaBasicAuth(username, password);
+  const requestHeaders: HeadersInit | undefined = auth
+    ? { ...(init?.headers as unknown as Record<string, string> | undefined), authorization: auth }
+    : init?.headers;
   try {
     const response = await fetch(`${ollamaUrl(base)}${path}`, {
       ...init,
       signal: controller.signal,
+      headers: requestHeaders,
     });
     if (!response.ok) {
       const error = await response.text().catch(() => "Unknown error");
@@ -88,6 +129,8 @@ export function createOllamaClient(settings: OllamaConfig): OllamaClient {
   return createLiveOllamaClient({
     baseUrl: settings.url ?? "",
     token: null,
+    ollamaUsername: null,
+    ollamaPassword: null,
     model: settings.model,
     timeoutMs: settings.timeoutMs,
     provider: "ollama",
@@ -102,6 +145,8 @@ export function createOllamaClient(settings: OllamaConfig): OllamaClient {
 export function createLiveOllamaClient(settings: {
   baseUrl: string;
   token: string | null;
+  ollamaUsername: string | null;
+  ollamaPassword: string | null;
   model: string;
   timeoutMs: number;
   provider: "ollama";
@@ -146,6 +191,7 @@ export function createLiveOllamaClient(settings: {
           headers: {
             "content-type": "application/json",
             ...(settings.token ? { authorization: `Bearer ${settings.token}` } : {}),
+            ...basicAuthHeaders(settings.ollamaUsername, settings.ollamaPassword),
           },
           body: JSON.stringify({
             model: settings.model,
@@ -188,16 +234,16 @@ export function createLiveOllamaClient(settings: {
     },
 
     async discoverModels() {
-      const payload = (await ollamaFetch(settings.baseUrl, "/api/tags", { method: "GET" }, settings.timeoutMs)) as OllamaTagsResponse;
+      const payload = (await ollamaFetch(settings.baseUrl, "/api/tags", settings.timeoutMs, { method: "GET" }, settings.ollamaUsername, settings.ollamaPassword)) as OllamaTagsResponse;
       return payload;
     },
 
     async verifyConnection() {
       let version: string | null = null;
       try {
-        const payload = (await ollamaFetch(settings.baseUrl, "/api/version", { method: "GET" }, settings.timeoutMs)) as OllamaVersionResponse;
-        if (payload && typeof (payload as Record<string, unknown>).version === "string") {
-          version = (payload as { version: string }).version;
+        const payload = (await ollamaFetch(settings.baseUrl, "/api/version", settings.timeoutMs, { method: "GET" }, null, null)) as OllamaVersionResponse;
+        if (payload && typeof payload.version === "string") {
+          version = payload.version;
         }
       } catch {
         // Fall through: status stays unverified.
@@ -227,10 +273,12 @@ export function createLiveOllamaClient(settings: {
 export async function loadAiStatus(sql: Sql, config: AppConfig): Promise<OllamaConnectionStatus | null> {
   const verifications = await loadVerifications(sql, config);
   const ai = verifications.ai;
-  if (!ai || ai.outcome !== "passed" || ai.mode === "sandbox") return null;
+  if (!ai || ai.outcome !== "passed" || ai.mode === "sandbox" || !config.ai.baseUrl) return null;
   return createLiveOllamaClient({
     baseUrl: config.ai.baseUrl,
     token: config.ai.token,
+    ollamaUsername: config.ai.ollamaUsername,
+    ollamaPassword: config.ai.ollamaPassword,
     model: config.aiModel.model,
     timeoutMs: config.aiModel.timeoutMs,
     provider: "ollama",

@@ -286,6 +286,10 @@ export const triageCompleteSchema = z.object({
   notes: z.string().trim().max(4000).optional().or(z.literal("")),
 });
 
+export const clinicalNoteTypeSchema = z.enum([
+  "consultation", "progress", "admission", "nursing", "discharge", "referral", "procedure", "followup", "maternity", "pediatric",
+]);
+
 export const createDraftEntrySchema = z.object({
   title: z.string().trim().min(1).max(300),
   subjective: z.string().trim().max(20000),
@@ -294,6 +298,20 @@ export const createDraftEntrySchema = z.object({
   plan: z.string().trim().max(20000),
   clinicalOccurredAt: z.string().datetime(),
   changeNote: z.string().trim().min(5).max(2000),
+  noteType: clinicalNoteTypeSchema.optional().default("consultation"),
+});
+
+export const noteVoidSchema = z.object({
+  expectedVersion: z.number().int().min(1),
+  reason: z.string().trim().min(10).max(2000),
+});
+
+export const noteArchiveSchema = z.object({
+  reason: z.string().trim().min(5).max(2000).optional(),
+});
+
+export const noteAttachmentSchema = z.object({
+  uploadId: uuidSchema,
 });
 
 export const updateDraftEntrySchema = createDraftEntrySchema.extend({
@@ -431,6 +449,7 @@ export const uploadSchema = z.object({
   filename: z.string().trim().min(1).max(255),
   declaredType: z.string().trim().min(3).max(120),
   dataBase64: z.string().min(1),
+  patientId: uuidSchema.optional(),
 });
 
 export const passwordForgotSchema = z.object({ email: emailSchema });
@@ -485,8 +504,16 @@ export const bedSchema = z.object({
   features: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 
+export const wardUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  status: z.enum(["open", "closed"]).optional(),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+}).refine((value) => value.name !== undefined || value.status !== undefined || value.description !== undefined, {
+  message: "Provide at least one field to update",
+});
+
 export const bedStatusSchema = z.object({
-  status: z.enum(["available", "occupied", "cleaning", "unavailable"]),
+  status: z.enum(["available", "occupied", "cleaning", "unavailable", "reserved"]),
   reason: z.string().trim().max(1000).optional(),
   expectedVersion: z.number().int().min(1).optional(),
 });
@@ -495,6 +522,7 @@ export const admissionSchema = z.object({
   patientId: uuidSchema,
   encounterId: uuidSchema,
   wardType: z.enum(["general", "adult-male", "adult-female", "pediatric", "surgical", "maternity", "nicu", "icu"]),
+  wardId: uuidSchema.optional().nullable(),
   attendingUserId: uuidSchema.optional().nullable(),
   reason: z.string().trim().min(5).max(4000),
 });

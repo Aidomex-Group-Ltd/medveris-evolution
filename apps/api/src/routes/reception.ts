@@ -704,7 +704,9 @@ receptionRoutes.get("/encounters/:id", async (c) => {
       tx`select id, display, loinc_code, value_num, value_text, unit_code, occurred_at, status, recorded_at from observations where encounter_id = ${id} and tenant_id = ${auth.activeTenant!.id} order by occurred_at desc`,
       tx`select id, state, substance_coding, reaction_coding, severity, note, recorded_at from allergies where encounter_id = ${id} and tenant_id = ${auth.activeTenant!.id} order by recorded_at desc`,
       tx`select id, display, snomed_code, clinical_status, onset_date, note, recorded_at from conditions where encounter_id = ${id} and tenant_id = ${auth.activeTenant!.id} order by recorded_at desc`,
-      tx`select ce.id, ce.status, ce.current_version, v.title, v.author_id, u.display_name as author_name, v.occurred_at, v.recorded_at, v.signed_at, v.change_note, v.content
+      tx`select ce.id, ce.status, ce.current_version, ce.note_type, ce.archived_at, ce.void_reason,
+             v.title, v.version as latest_version, v.author_id, u.display_name as author_name, v.occurred_at, v.recorded_at, v.signed_at, v.change_note, v.content,
+             (select count(*)::int from clinical_entry_attachments where entry_id = ce.id) as attachment_count
            from clinical_entries ce join clinical_entry_versions v on v.entry_id = ce.id and v.version = ce.current_version
            join users u on u.id = v.author_id
           where ce.encounter_id = ${id} and ce.tenant_id = ${auth.activeTenant!.id} order by ce.created_at`,

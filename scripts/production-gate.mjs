@@ -37,7 +37,9 @@ function dicomwebRequiredSecrets(vars) {
  * @returns {string[]}
  */
 export function requiredProductionSecrets(production) {
-  return [...PRODUCTION_SECRETS, ...dicomwebRequiredSecrets(production?.vars ?? {})];
+  const vars = production?.vars ?? {};
+  const aiSecrets = vars?.FEATURE_AI === "true" ? ["AI_TOKEN", "OLLAMA_USERNAME", "OLLAMA_PASSWORD"] : [];
+  return [...PRODUCTION_SECRETS, ...dicomwebRequiredSecrets(vars), ...aiSecrets];
 }
 
 const REQUIRED_VARS = Object.freeze({
@@ -54,7 +56,7 @@ const REQUIRED_VARS = Object.freeze({
 /** Flags that request an external integration with no implemented, verified adapter yet. */
 const INTEGRATION_FLAGS = Object.freeze([
   "FEATURE_LAB", "FEATURE_PHARMACY", "FEATURE_TELEMEDICINE", "FEATURE_DEVICES",
-  "FEATURE_AI", "FEATURE_PUBLIC_HEALTH", "FEATURE_LEDGER_ANCHORING",
+  "FEATURE_PUBLIC_HEALTH", "FEATURE_LEDGER_ANCHORING",
 ]);
 
 /** Secrets Yo! mobile money needs once FEATURE_PAYMENTS is on; YO_PUBLIC_KEY is public but kept as a secret so it is not edited inline. */
@@ -122,8 +124,8 @@ export function checkProductionConfig(config) {
   const vars = production.vars ?? {};
   for (const [name, value] of Object.entries(REQUIRED_VARS)) check(vars[name] === value, `${name} must be ${value}`);
   check(/^production-key-\d+$/.test(String(vars.AUDIT_SIGNING_KEY_ID ?? "")), "AUDIT_SIGNING_KEY_ID must be a production key id (production-key-<n>)");
-  const terminologyOk = vars.TERMINOLOGY_MODE === "unavailable" || (vars.TERMINOLOGY_MODE === "production" && /^https:\/\//.test(String(vars.TERMINOLOGY_PROVIDER_URL ?? "")));
-  check(terminologyOk, "TERMINOLOGY_MODE must be unavailable or production (with a provider URL)");
+  const terminologyOk = vars.TERMINOLOGY_MODE === "unavailable" || vars.TERMINOLOGY_MODE === "local-reference" || (vars.TERMINOLOGY_MODE === "production" && /^https:\/\//.test(String(vars.TERMINOLOGY_PROVIDER_URL ?? "")));
+  check(terminologyOk, "TERMINOLOGY_MODE must be unavailable, local-reference, or production (with a provider URL)");
   for (const flag of INTEGRATION_FLAGS) {
     check(vars[flag] === "false", `${flag} must be false until its adapter is implemented and verified`);
   }
@@ -152,6 +154,20 @@ export function checkProductionConfig(config) {
     for (const name of dicomwebRequiredSecrets(vars)) {
       check(required.includes(name), `FEATURE_DICOMWEB=true requires the ${name} secret to be declared`);
     }
+  }
+
+  check(["false", "true"].includes(String(vars.FEATURE_AI ?? "false")), "FEATURE_AI must be true or false");
+  if (vars.FEATURE_AI === "true") {
+    const aiBaseUrl = String(vars.AI_BASE_URL ?? "").trim();
+    check(/^https:\/\//.test(aiBaseUrl), "FEATURE_AI=true requires AI_BASE_URL with an HTTPS Ollama endpoint");
+    check(!/^https?:\/\/[^/]*@/.test(aiBaseUrl), "AI_BASE_URL must not embed credentials; use OLLAMA_USERNAME and OLLAMA_PASSWORD");
+    check(String(vars.AI_MODEL ?? "").trim().length > 0, "FEATURE_AI=true requires a non-empty AI_MODEL model identifier");
+    check(required.includes("AI_TOKEN"), "FEATURE_AI=true requires the AI_TOKEN secret to be declared");
+    if (required.includes("AI_TOKEN")) {
+      check(required.includes("OLLAMA_USERNAME"), "FEATURE_AI=true requires the OLLAMA_USERNAME secret to be declared");
+      check(required.includes("OLLAMA_PASSWORD"), "FEATURE_AI=true requires the OLLAMA_PASSWORD secret to be declared");
+    }
+    check(!String(vars.AI_MODE ?? "").trim() || vars.AI_MODE !== "sandbox", "FEATURE_AI=true must not use AI_MODE=sandbox in production");
   }
 
   check((production.triggers?.crons ?? []).length > 0, "production cron trigger is missing");
@@ -333,6 +349,7 @@ export function checkSmokeResponses({ config, me, missing }) {
   if (config.status !== 200 || !publicConfig) return `public config answered ${config.status}`;
   if (publicConfig.appEnv !== "production") return `public config reports appEnv=${publicConfig.appEnv}`;
   if (publicConfig.terminology?.synthetic !== false) return "synthetic terminology is active";
+  if (publicConfig.terminology?.available === false) return "the terminology service is not available in production";
   const available = Object.entries(publicConfig.features ?? {}).find(([, on]) => on === true);
   if (available) return `integration ${available[0]} reports available`;
   if (me.status !== 401 || json(me.body)?.error?.code !== "unauthenticated") return `protected route /api/v1/me answered ${me.status} without a session`;

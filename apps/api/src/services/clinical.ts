@@ -4,14 +4,20 @@ import type { Tx } from "@medveris/db";
 import type { AppEnv } from "../types.js";
 import { ValidationError } from "../lib/errors.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
-import { createTerminology, FIELD_VALUE_SETS, LOINC_SYSTEM, UCUM_SYSTEM, type TerminologyAdapter } from "../terminology/index.js";
+import { createTerminology, LOINC_SYSTEM, UCUM_SYSTEM, type TerminologyAdapter } from "../terminology/index.js";
+import { FIELD_VALUE_SETS as LOCAL_REFERENCE_FIELD_VALUE_SETS } from "../terminology/local-reference.js";
+import { FIELD_VALUE_SETS as SYNTHETIC_FIELD_VALUE_SETS } from "../terminology/synthetic.js";
 
 export function terminology(c: Context<AppEnv>): TerminologyAdapter {
   return createTerminology(c.get("deps").config);
 }
 
-export async function validateClinicalCoding(c: Context<AppEnv>, coding: Coding, field: keyof typeof FIELD_VALUE_SETS): Promise<Coding & { version: string; validationStatus: string; valueSet: string; valueSetVersion: string; validatedAt: string }> {
-  const valueSet = FIELD_VALUE_SETS[field];
+type ContextualField = "clinical-finding" | "diagnosis" | "procedure" | "allergy-substance" | "allergy-reaction" | "observation" | "unit" | "imaging" | "obstetrics" | "pediatrics" | "nursing" | "specialty";
+
+export async function validateClinicalCoding(c: Context<AppEnv>, coding: Coding, field: ContextualField): Promise<Coding & { version: string; validationStatus: string; valueSet: string; valueSetVersion: string; validatedAt: string }> {
+  const { config } = c.get("deps");
+  const fieldValueSets = config.terminologyMode === "synthetic" ? SYNTHETIC_FIELD_VALUE_SETS : LOCAL_REFERENCE_FIELD_VALUE_SETS;
+  const valueSet = fieldValueSets[field];
   if (!valueSet) throw new ValidationError(`Unknown clinical coding field: ${field}`);
   const adapter = terminology(c);
   const result = await adapter.validateCode({
@@ -42,11 +48,13 @@ export async function validateClinicalCoding(c: Context<AppEnv>, coding: Coding,
 
 export async function validateUnit(c: Context<AppEnv>, unit: { code: string; system: string }): Promise<{ code: string; system: string; version: string }> {
   if (unit.system !== UCUM_SYSTEM) throw new ValidationError("Quantitative units must use UCUM");
+  const { config } = c.get("deps");
+  const fieldValueSets = config.terminologyMode === "synthetic" ? SYNTHETIC_FIELD_VALUE_SETS : LOCAL_REFERENCE_FIELD_VALUE_SETS;
   const adapter = terminology(c);
   const result = await adapter.validateCode({
     system: UCUM_SYSTEM,
     code: unit.code,
-    valueSet: FIELD_VALUE_SETS.unit,
+    valueSet: fieldValueSets.unit,
   });
   if (!result.result) throw new ValidationError(result.message ?? "The unit is not valid for this field", { unit: unit.code });
   return { code: unit.code, system: UCUM_SYSTEM, version: result.version };
@@ -213,5 +221,6 @@ export async function recordProfessionalDesignation(
     values (${id}, ${input.tenantId}, ${input.practitionerStaffPersonId}, ${input.practitionerUserId},
       ${input.encounterId}, ${input.version}, ${input.designationCode}, ${input.designationName},
       ${input.category}, ${tx.array(input.specialtyCodes) ?? '[]'})
+    on conflict (tenant_id, encounter_id, version) do nothing
   `;
 }

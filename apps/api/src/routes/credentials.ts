@@ -77,8 +77,8 @@ credentialRoutes.post("/uploads", async (c) => {
     const usedBytes = await storedBytes(tx, auth.activeTenant!.id);
     assertStorageCapacity(usedBytes, bytes.length, limits.storageLimitBytes);
     await tx`
-      insert into uploads (id, tenant_id, owner_user_id, filename, declared_type, detected_type, size_bytes, sha256, object_key, scan_status, status)
-      values (${id}, ${auth.activeTenant!.id}, ${auth.user.id}, ${body.filename}, ${body.declaredType}, ${detected}, ${bytes.length}, ${digest}, ${objectKey}, 'quarantined', 'pending')
+      insert into uploads (id, tenant_id, owner_user_id, patient_id, filename, declared_type, detected_type, size_bytes, sha256, object_key, scan_status, status)
+      values (${id}, ${auth.activeTenant!.id}, ${auth.user.id}, ${body.patientId ?? null}, ${body.filename}, ${body.declaredType}, ${detected}, ${bytes.length}, ${digest}, ${objectKey}, 'quarantined', 'pending')
     `;
     await writeAudit(tx, deps.config, {
       tenantId: auth.activeTenant!.id,

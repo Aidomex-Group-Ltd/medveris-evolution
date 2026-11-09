@@ -12,6 +12,9 @@ import {
   updateDraftEntrySchema,
   uuidSchema,
   aiAssistSchema,
+  noteVoidSchema,
+  noteArchiveSchema,
+  noteAttachmentSchema,
 } from "@medveris/contracts";import { assertClinicalRead, assertClinicalWrite, assertSign as _assertSign, assertAuthorized, type ActorContext } from "@medveris/authz";
 import { recordProfessionalDesignation } from "../services/clinical.js";
 import { canonicalJson, contentDigest, type ClinicalEntryStatus, computePartographState as _computePartographState, buildAiNoteSuggestion, assessBmiRisk } from "@medveris/domain";
@@ -53,7 +56,7 @@ async function encounterFor(tx: Tx, tenantId: string, encounterId: string) {
 
 async function currentEntry(tx: Tx, tenantId: string, entryId: string) {
   const rows = await tx`
-    select ce.id, ce.patient_id, ce.encounter_id, ce.current_version, ce.status, ce.created_by, e.state as encounter_state
+    select ce.id, ce.patient_id, ce.encounter_id, ce.current_version, ce.status, ce.archived_at, ce.created_by, e.state as encounter_state
       from clinical_entries ce join encounters e on e.id = ce.encounter_id
      where ce.id = ${entryId} and ce.tenant_id = ${tenantId} for update
   `;
@@ -86,6 +89,7 @@ async function attachEntryVersion(
     objective: string;
     assessment: string;
     plan: string;
+    noteType: string;
     occurredAt: Date;
     signedAt: Date | null;
     aiDeps?: { available: boolean; baseUrl: string | null; token: string | null };
@@ -133,13 +137,13 @@ async function attachEntryVersion(
   await tx`
     insert into clinical_entry_versions (id, entry_id, tenant_id, patient_id, encounter_id, version, previous_version_id,
       author_id, occurred_at, recorded_at, signed_at, status, change_note, title, content_schema, content, content_digest,
-      signature, signature_key_id)
+      signature, signature_key_id, note_type)
     values (${versionId}, ${input.entryId}, ${input.tenantId}, ${input.patientId}, ${input.encounterId}, ${input.version},
       ${input.previousVersionId}, ${input.authorId}, ${input.occurredAt}, ${new Date()}, ${input.signedAt}, ${input.status},
       ${input.changeNote}, ${input.title}, 'urn:medveris:schema:outpatient-note:1', ${tx.json(content as never)}, ${digest},
-      ${signature}, ${signature ? c.get("deps").config.auditSigningKeyId : null})
+      ${signature}, ${signature ? c.get("deps").config.auditSigningKeyId : null}, ${input.noteType})
   `;
-  await tx`update clinical_entries set current_version = ${input.version}, status = ${input.status}, updated_at = now() where id = ${input.entryId}`;
+  await tx`update clinical_entries set current_version = ${input.version}, status = ${input.status}, note_type = ${input.noteType}, updated_at = now() where id = ${input.entryId}`;
   return { versionId, digest };
 }
 
@@ -206,6 +210,7 @@ clinicalRoutes.post("/encounters/:id/entries", async (c) => {
       objective: body.objective,
       assessment: body.assessment,
       plan: body.plan,
+      noteType: body.noteType,
       occurredAt: new Date(body.clinicalOccurredAt),
       signedAt: null,
       aiDeps: {
@@ -265,6 +270,7 @@ clinicalRoutes.put("/entries/:id/draft", async (c) => {
       objective: body.objective,
       assessment: body.assessment,
       plan: body.plan,
+      noteType: body.noteType,
       occurredAt: new Date(body.clinicalOccurredAt),
       signedAt: null,
     });
@@ -392,6 +398,7 @@ clinicalRoutes.post("/entries/:id/amendments", async (c) => {
       objective: body.objective,
       assessment: body.assessment,
       plan: body.plan,
+      noteType: entry.note_type,
       occurredAt: new Date(body.clinicalOccurredAt),
       signedAt: new Date(),
     });
@@ -473,8 +480,11 @@ clinicalRoutes.get("/entries/:id/versions", async (c) => {
   const data = await withStaffActor(c, async (tx) => {
     const versions = await tx`
       select v.id, v.patient_id, v.version, v.previous_version_id, v.author_id, u.display_name as author_name, v.occurred_at, v.recorded_at,
-             v.signed_at, v.status, v.change_note, v.title, v.content, v.content_digest, v.signature_key_id
-        from clinical_entry_versions v join users u on u.id = v.author_id
+             v.signed_at, v.status, v.change_note, v.title, v.content, v.content_digest, v.signature_key_id, v.note_type,
+             e.archived_at, e.void_reason
+        from clinical_entry_versions v
+        join clinical_entries e on e.id = v.entry_id
+        join users u on u.id = v.author_id
        where v.entry_id = ${entryId} and v.tenant_id = ${auth.activeTenant!.id}
        order by v.version
     `;
@@ -493,6 +503,225 @@ clinicalRoutes.get("/entries/:id/versions", async (c) => {
     return versions;
   });
   return c.json({ versions: data });
+});
+
+// Stage 2: void a note. Voiding keeps the full version history intact and marks the current
+// entry status as voided with a reason. Voiding is allowed for signed, amended or entered-in-error
+// notes so a mistaken record can be formally withdrawn without deletion.
+clinicalRoutes.post("/entries/:id/void", async (c) => {
+  requireStaff(c);
+  const access = await loadStaffAccessActor(c);
+  assertAuthorized(access.actor, "clinical.note.void", {
+    kind: "clinical-record",
+    tenantId: access.actor.tenantId,
+    patientId: access.actor.patientId,
+    requiresCredential: true,
+  });
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const entryId = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, noteVoidSchema);
+  const result = await withStaffActor(c, async (tx) => {
+    const entry = await currentEntry(tx, auth.activeTenant!.id, entryId);
+    ensureMatch(body.expectedVersion, Number(entry.currentVersion));
+    if (entry.status === "voided") throw new ConflictError("This note is already voided");
+    if (entry.archivedAt) throw new ConflictError("An archived note cannot be voided");
+    if (entry.status === "draft") throw new ConflictError("A draft note should be discarded by editing or deleting the draft; voiding is for finalized records");
+    const version = await tx`
+      select id, title, content, occurred_at, signed_at, note_type from clinical_entry_versions
+       where entry_id = ${entryId} and version = ${entry.currentVersion}
+    `;
+    const current = version[0]!;
+    const versionId = crypto.randomUUID();
+    const voidedContent = { ...(current.content as Record<string, unknown>), voided: true, voidReason: body.reason };
+    const digest = await contentDigest(voidedContent);
+    await tx`
+      insert into clinical_entry_versions (id, entry_id, tenant_id, patient_id, encounter_id, version, previous_version_id, author_id,
+        occurred_at, recorded_at, signed_at, status, change_note, title, content_schema, content, content_digest, signature, signature_key_id, note_type)
+      values (${versionId}, ${entryId}, ${auth.activeTenant!.id}, ${entry.patientId}, ${entry.encounterId}, ${Number(entry.currentVersion) + 1},
+        ${current.id}, ${auth.user.id}, ${current.occurredAt}, ${new Date()}, ${current.signedAt}, 'voided', ${body.reason},
+        ${current.title}, 'urn:medveris:schema:outpatient-note:1', ${tx.json(voidedContent as never)}, ${digest}, null, null, ${current.noteType})
+    `;
+    await tx`update clinical_entries set current_version = ${Number(entry.currentVersion) + 1}, status = 'voided', void_reason = ${body.reason}, updated_at = now() where id = ${entryId}`;
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "clinical.entry.void",
+      subjectPatientId: String(entry.patientId),
+      resourceType: "ClinicalEntryVersion",
+      resourceId: versionId,
+      ...auditMeta(c),
+      metadata: { entryId, reason: body.reason, previousVersion: entry.currentVersion },
+    });
+    await writeOutbox(tx, {
+      tenantId: auth.activeTenant!.id,
+      eventType: "clinical.entry.voided",
+      aggregateId: entryId,
+      aggregateVersion: Number(entry.currentVersion) + 1,
+      payload: { entryId, versionId, patientId: entry.patientId, reason: body.reason },
+    });
+    return { version: Number(entry.currentVersion) + 1, versionId };
+  });
+  return c.json({ ok: true, voided: result });
+});
+
+// Stage 2: archive a note. Archived notes remain readable but are removed from the active
+// encounter note list and timeline. Archival is a soft disposition for notes that are no longer
+// part of the active problem list, e.g. superseded consultations kept for continuity.
+clinicalRoutes.post("/entries/:id/archive", async (c) => {
+  requireStaff(c);
+  const access = await loadStaffAccessActor(c);
+  assertAuthorized(access.actor, "clinical.note.archive", {
+    kind: "clinical-record",
+    tenantId: access.actor.tenantId,
+    patientId: access.actor.patientId,
+    requiresCredential: true,
+  });
+  const auth = c.get("auth")!;
+  const entryId = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, noteArchiveSchema);
+  await withStaffActor(c, async (tx) => {
+    const entry = await currentEntry(tx, auth.activeTenant!.id, entryId);
+    if (entry.status === "voided") throw new ConflictError("A voided note cannot be archived");
+    if (entry.archivedAt) throw new ConflictError("This note is already archived");
+    await tx`update clinical_entries set archived_at = now(), updated_at = now() where id = ${entryId}`;
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "clinical.entry.archive",
+      subjectPatientId: String(entry.patientId),
+      resourceType: "ClinicalEntry",
+      resourceId: entryId,
+      ...auditMeta(c),
+      metadata: { entryId, reason: body.reason ?? null },
+    });
+  });
+  return c.json({ ok: true, archived: true });
+});
+
+// Stage 2: add an attachment to a note. The upload must already exist and belong to the same
+// tenant; the attachment row links the upload to the clinical entry and patient.
+clinicalRoutes.post("/entries/:id/attachments", async (c) => {
+  requireStaff(c);
+  assertClinicalWrite(actor(c));
+  const auth = c.get("auth")!;
+  const deps = c.get("deps");
+  const entryId = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, noteAttachmentSchema);
+  const attachmentId = await withStaffActor(c, async (tx) => {
+    const entry = await currentEntry(tx, auth.activeTenant!.id, entryId);
+    if (entry.status === "voided") throw new ConflictError("Attachments cannot be added to a voided note");
+    const upload = await tx`
+      select id, tenant_id, patient_id, filename, declared_type from uploads
+       where id = ${body.uploadId} and tenant_id = ${auth.activeTenant!.id}
+       for update
+    `;
+    if (!upload.length) throw new NotFoundError("Upload not found");
+    if (String(upload[0]!.patientId) !== String(entry.patientId)) {
+      throw new ForbiddenError("The upload must belong to the same patient as the note");
+    }
+    const attachmentId = crypto.randomUUID();
+    await tx`
+      insert into clinical_entry_attachments (id, tenant_id, entry_id, patient_id, upload_id, created_by)
+      values (${attachmentId}, ${auth.activeTenant!.id}, ${entryId}, ${entry.patientId}, ${body.uploadId}, ${auth.user.id})
+      on conflict (entry_id, upload_id) do nothing
+    `;
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "clinical.entry.attachment.add",
+      subjectPatientId: String(entry.patientId),
+      resourceType: "ClinicalEntryAttachment",
+      resourceId: attachmentId,
+      ...auditMeta(c),
+      metadata: { entryId, uploadId: body.uploadId },
+    });
+    return attachmentId;
+  });
+  return c.json({ ok: true, attachmentId }, 201);
+});
+
+// Stage 2: remove an attachment from a note. This removes the link only; the underlying upload
+// remains available for other notes or retention policies.
+clinicalRoutes.delete("/entries/:entryId/attachments/:uploadId", async (c) => {
+  requireStaff(c);
+  assertClinicalWrite(actor(c));
+  const auth = c.get("auth")!;
+  const entryId = uuidSchema.parse(c.req.param("entryId"));
+  const uploadId = uuidSchema.parse(c.req.param("uploadId"));
+  await withStaffActor(c, async (tx) => {
+    const entry = await currentEntry(tx, auth.activeTenant!.id, entryId);
+    if (entry.status === "voided") throw new ConflictError("Attachments cannot be removed from a voided note");
+    const deleted = await tx`
+      delete from clinical_entry_attachments
+       where entry_id = ${entryId} and upload_id = ${uploadId} and tenant_id = ${auth.activeTenant!.id}
+       returning id
+    `;
+    if (!deleted.length) throw new NotFoundError("Attachment not found on this note");
+    await writeAudit(tx, c.get("deps").config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "clinical.entry.attachment.remove",
+      subjectPatientId: String(entry.patientId),
+      resourceType: "ClinicalEntryAttachment",
+      resourceId: String(deleted[0]!.id),
+      ...auditMeta(c),
+      metadata: { entryId, uploadId },
+    });
+  });
+  return c.json({ ok: true });
+});
+
+// Stage 2: timeline of clinical notes for an encounter, newest first. This is the read path used
+// by the encounter chart and the patient records view. Voided entries are excluded from the active
+// timeline; archived entries are included but flagged.
+clinicalRoutes.get("/encounters/:id/timeline", async (c) => {
+  requireStaff(c);
+  assertClinicalRead(actor(c));
+  const auth = c.get("auth")!;
+  const encounterId = uuidSchema.parse(c.req.param("id"));
+  const timeline = await withStaffActor(c, async (tx) => {
+    await encounterFor(tx, auth.activeTenant!.id, encounterId);
+    const rows = await tx`
+      select ce.id, ce.status, ce.current_version, v.title, ce.note_type, ce.archived_at, ce.void_reason,
+             ce.created_at, ce.updated_at,
+             v.version as latest_version, v.author_id, u.display_name as author_name, v.occurred_at, v.recorded_at,
+             v.signed_at, v.change_note,
+             (select count(*) from clinical_entry_attachments where entry_id = ce.id) as attachment_count
+        from clinical_entries ce
+        join clinical_entry_versions v on v.entry_id = ce.id and v.version = ce.current_version
+        join users u on u.id = v.author_id
+       where ce.tenant_id = ${auth.activeTenant!.id} and ce.encounter_id = ${encounterId}
+         and ce.status != 'voided'
+       order by ce.created_at desc
+    `;
+    return rows.map((row) => ({
+      id: String(row.id),
+      status: String(row.status),
+      currentVersion: Number(row.currentVersion),
+      latestVersion: Number(row.latestVersion),
+      title: String(row.title),
+      noteType: String(row.noteType),
+      archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+      voidReason: row.voidReason ?? null,
+      occurredAt: String(row.occurredAt),
+      recordedAt: String(row.recordedAt),
+      signedAt: row.signedAt ? String(row.signedAt) : null,
+      changeNote: String(row.changeNote),
+      authorId: String(row.authorId),
+      authorName: String(row.authorName),
+      attachmentCount: Number(row.attachmentCount),
+    }));
+  });
+  return c.json({ encounterId, entries: timeline });
 });
 
 clinicalRoutes.post("/encounters/:id/observations", async (c) => {

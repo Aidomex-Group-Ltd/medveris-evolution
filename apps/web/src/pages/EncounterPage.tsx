@@ -203,7 +203,7 @@ export function EncounterPage() {
         <div className="mv-stack">
           {canSign ? (
             <div className="mv-row">
-              <Button variant="secondary" size="sm" onClick={() => setShowTimeline((v) => !v)} aria-pressed={showTimeline}>{showTimeline ? "Back to entries list" : "Show encounter timeline"}</Button>
+              <Button variant="secondary" size="sm" onClick={() => { if (!showTimeline) void loadTimeline(); setShowTimeline((v) => !v); }} aria-pressed={showTimeline}>{showTimeline ? "Back to entries list" : "Show encounter timeline"}</Button>
               <Badge tone={showTimeline ? "info" : "neutral"}>{showTimeline ? "Timeline view" : `Notes (${data.entries.length})`}</Badge>
             </div>
           ) : null}

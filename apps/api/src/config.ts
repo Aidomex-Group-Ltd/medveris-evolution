@@ -69,7 +69,7 @@ export interface AppConfig {
   storageAdapter: "local" | "r2";
   localUploadDir: string;
   maxUploadBytes: number;
-  terminologyMode: "synthetic" | "sandbox" | "production" | "unavailable";
+  terminologyMode: "synthetic" | "sandbox" | "production" | "local-reference" | "unavailable";
   terminologyProviderUrl: string | null;
   terminologyProviderToken: string | null;
   terminologyTimeoutMs: number;
@@ -229,6 +229,10 @@ export interface AiConfig {
   baseUrl: string | null;
   /** Provider token used as a Bearer credential. Worker secret in staging/production. */
   token: string | null;
+  /** Ollama HTTP Basic Auth username for the live Ollama provider. Worker secret in staging/production. */
+  ollamaUsername: string | null;
+  /** Ollama HTTP Basic Auth password for the live Ollama provider. Worker secret in staging/production. */
+  ollamaPassword: string | null;
 }
 
 export function aiConfig(env: EnvLike, appEnv: string): AiConfig {
@@ -247,7 +251,9 @@ export function aiConfig(env: EnvLike, appEnv: string): AiConfig {
     baseUrl = url.origin.replace(/\/+$/, "");
   }
   const token = (env.AI_TOKEN ?? "").trim() || null;
-  return { baseUrl, token };
+  const ollamaUsername = (env.OLLAMA_USERNAME ?? "").trim() || null;
+  const ollamaPassword = (env.OLLAMA_PASSWORD ?? "").trim() || null;
+  return { baseUrl, token, ollamaUsername, ollamaPassword };
 }
 
 export interface UploadScanConfig {
@@ -540,7 +546,7 @@ const TEST_AUDIT_SIGNING_KEY = "test-audit-signing-key-test-audit-signing-key";
 const TEST_MFA_ENCRYPTION_KEY = "test-mfa-encryption-key-test-mfa-encryption-key";
 const LOCAL_ONLY_ENVIRONMENTS = new Set(["development", "test"]);
 
-const TERMINOLOGY_MODES = ["synthetic", "sandbox", "production", "unavailable"] as const;
+const TERMINOLOGY_MODES = ["synthetic", "sandbox", "production", "local-reference", "unavailable"] as const;
 
 function isTerminologyMode(value: string): value is AppConfig["terminologyMode"] {
   return (TERMINOLOGY_MODES as readonly string[]).includes(value);
@@ -594,7 +600,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
   if (!rawOrigin) throw new Error("APP_ORIGIN is required outside local development");
   const origin = validatedOrigin(rawOrigin, appEnv);
   const terminologyMode = env.TERMINOLOGY_MODE || "synthetic";
-  if (!isTerminologyMode(terminologyMode)) throw new Error("TERMINOLOGY_MODE must be synthetic, production or unavailable (sandbox is allowed outside production)");
+  if (!isTerminologyMode(terminologyMode)) throw new Error("TERMINOLOGY_MODE must be synthetic, production, local-reference or unavailable (sandbox is allowed outside production)");
   if (terminologyMode === "synthetic" && appEnv === "production") {
     throw new Error("TERMINOLOGY_MODE=synthetic is not allowed in production; use production or unavailable");
   }

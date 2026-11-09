@@ -91,7 +91,7 @@ describe("production configuration rules", () => {
     });
     const problems = checkProductionConfig(config);
     expect(problems).toEqual(expect.arrayContaining([
-      "TERMINOLOGY_MODE must be unavailable or production (with a provider URL)",
+      "TERMINOLOGY_MODE must be unavailable, local-reference, or production (with a provider URL)",
       "FHIR_EXTERNAL_WRITES_ENABLED must be false",
       "FEATURE_PAYMENTS=true requires YO_MODE=production",
       "FEATURE_PAYMENTS=true requires the YO_API_PASSWORD secret to be declared",
@@ -99,6 +99,16 @@ describe("production configuration rules", () => {
       "SESSION_SECRET looks like a secret and must not be a plaintext var",
     ]));
     expect(problems.join("\n")).not.toContain("inline-value");
+  });
+
+  it("accepts local-reference terminology in production (in-app local reference catalogue)", () => {
+    const config = readyConfig();
+    config.env.production.vars.TERMINOLOGY_MODE = "local-reference";
+    expect(checkProductionConfig(config)).toEqual([]);
+    // local-reference must not be treated as a licensed external provider: it must not require
+    // TERMINOLOGY_PROVIDER_URL, and the config must not reference a staging/synthetic resource.
+    config.env.production.vars.TERMINOLOGY_PROVIDER_URL = "https://example.invalid/terminology";
+    expect(checkProductionConfig(config)).toEqual([]);
   });
 
   it("accepts Yo! mobile money only in production mode with its secrets declared", () => {
@@ -137,6 +147,81 @@ describe("production configuration rules", () => {
     config.env.production.secrets.required = config.env.production.secrets.required.filter((name: string) => !name.startsWith("DICOMWEB_"));
     config.env.production.secrets.required.push("DICOMWEB_BEARER_TOKEN");
     expect(checkProductionConfig(config).filter((problem: string) => /DICOMWEB|DICOMweb/.test(problem))).toEqual([]);
+  });
+
+  it("enables AI only with an HTTPS Ollama endpoint, a declared AI_TOKEN secret, a non-empty AI_MODEL and no sandbox mode", () => {
+    const base = readyConfig();
+
+    // Case 1: bad URL, empty model and sandbox.
+    const case1 = {
+      ...base,
+      env: {
+        ...base.env,
+        production: {
+          ...base.env.production,
+          vars: { ...base.env.production.vars, FEATURE_AI: "true", AI_BASE_URL: "http://localhost:11434", AI_MODEL: "", AI_MODE: "sandbox" },
+          secrets: { required: ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"] },
+        },
+      },
+    };
+    expect(checkProductionConfig(case1)).toEqual(expect.arrayContaining([
+      "FEATURE_AI=true requires AI_BASE_URL with an HTTPS Ollama endpoint",
+      "FEATURE_AI=true requires a non-empty AI_MODEL model identifier",
+      "FEATURE_AI=true must not use AI_MODE=sandbox in production",
+    ]));
+
+    // Case 2: correct URL and model, but no AI_TOKEN and still sandbox.
+    const case2 = {
+      ...base,
+      env: {
+        ...base.env,
+        production: {
+          ...base.env.production,
+          vars: { ...base.env.production.vars, FEATURE_AI: "true", AI_BASE_URL: "https://ollama.medveris.online", AI_MODEL: "medveris-clinical", AI_MODE: "sandbox" },
+          secrets: { required: ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"] },
+        },
+      },
+    };
+    expect(checkProductionConfig(case2)).toEqual([
+      "FEATURE_AI=true requires the AI_TOKEN secret to be declared",
+      "FEATURE_AI=true must not use AI_MODE=sandbox in production",
+    ]);
+    expect(requiredProductionSecrets(case2.env.production)).toContain("AI_TOKEN");
+
+    // Case 3: token declared, still sandbox.
+    const case3 = {
+      ...base,
+      env: {
+        ...base.env,
+        production: {
+          ...base.env.production,
+          vars: { ...base.env.production.vars, FEATURE_AI: "true", AI_BASE_URL: "https://ollama.medveris.online", AI_MODEL: "medveris-clinical", AI_MODE: "sandbox" },
+          secrets: { required: ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY", "AI_TOKEN"] },
+        },
+      },
+    };
+    expect(checkProductionConfig(case3).filter((problem) => /AI/.test(problem))).toEqual([
+      "FEATURE_AI=true requires the OLLAMA_USERNAME secret to be declared",
+      "FEATURE_AI=true requires the OLLAMA_PASSWORD secret to be declared",
+      "FEATURE_AI=true must not use AI_MODE=sandbox in production",
+    ]);
+    expect(requiredProductionSecrets(case3.env.production)).toContain("AI_TOKEN");
+    expect(requiredProductionSecrets(case3.env.production)).toContain("OLLAMA_USERNAME");
+    expect(requiredProductionSecrets(case3.env.production)).toContain("OLLAMA_PASSWORD");
+
+    // Case 4: credentials must not be embedded in AI_BASE_URL.
+    const case4 = {
+      ...base,
+      env: {
+        ...base.env,
+        production: {
+          ...base.env.production,
+          vars: { ...base.env.production.vars, FEATURE_AI: "true", AI_BASE_URL: "https://user:pass@ollama.medveris.online", AI_MODEL: "medveris-clinical", AI_MODE: "live" },
+          secrets: { required: ["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY", "AI_TOKEN"] },
+        },
+      },
+    };
+    expect(checkProductionConfig(case4)).toContain("AI_BASE_URL must not embed credentials; use OLLAMA_USERNAME and OLLAMA_PASSWORD");
   });
 
   it("requires every secret, the cron and version metadata to be declared", () => {
@@ -251,7 +336,7 @@ describe("production migration and recovery rules", () => {
 
 describe("production smoke rules", () => {
   const ok = {
-    config: { status: 200, body: JSON.stringify({ appEnv: "production", terminology: { mode: "unavailable", synthetic: false }, features: { lab: false } }) },
+    config: { status: 200, body: JSON.stringify({ appEnv: "production", terminology: { mode: "local-reference", synthetic: false, available: true }, features: { lab: false } }) },
     me: { status: 401, body: JSON.stringify({ error: { code: "unauthenticated", correlationId: "x" } }) },
     missing: { status: 404, body: JSON.stringify({ error: { code: "not_found", correlationId: "y" } }) },
   };
@@ -270,5 +355,7 @@ describe("production smoke rules", () => {
     expect(checkSmokeResponses({ ...ok, me: { status: 200, body: "{}" } })).toBe("protected route /api/v1/me answered 200 without a session");
     expect(checkSmokeResponses({ ...ok, missing: { status: 500, body: "Error: at handler (worker.js:1)" } }))
       .toBe("unknown API route answered 500 instead of a JSON 404");
+    expect(checkSmokeResponses({ ...ok, config: { status: 200, body: JSON.stringify({ appEnv: "production", terminology: { mode: "unavailable", synthetic: false, available: false }, features: {} }) } }))
+      .toBe("the terminology service is not available in production");
   });
 });

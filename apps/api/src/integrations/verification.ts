@@ -1,7 +1,6 @@
 import type { Sql, Tx } from "@medveris/db";
 import type { AppConfig } from "../config.js";
 import { DicomwebClient, dicomwebConfigProblems, dicomwebFingerprint, isDicomUid, PacsError } from "./dicomweb.js";
-import { createLiveOllamaClient } from "./ollama.js";
 import { VERIFICATION_REQUIRED, type IntegrationId, type IntegrationMode, type VerificationLookup, type VerificationRecord } from "./registry.js";
 
 export interface VerificationCheck {
@@ -26,8 +25,8 @@ export function clearVerificationCache(): void {
 
 async function cacheKey(config: AppConfig, id: IntegrationId): Promise<{ key: string; fingerprint: string }> {
   if (id === "ai") {
-    const fingerprint = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([config.appEnv, config.ai.baseUrl ?? "", config.aiModel.model ?? "", config.ai.token ? "set" : "unset"])));
-    const hex = [...new Uint8Array(fingerprint)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([config.appEnv, config.ai.baseUrl ?? "", config.aiModel.model ?? "", config.ai.token ? "set" : "unset"])));
+    const fingerprint = [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
     return { key: `${id}|${config.appEnv}|${config.ai.baseUrl ?? ""}|${config.aiModel.model ?? ""}`, fingerprint };
   }
   const fingerprint = await dicomwebFingerprint(config.dicomweb);
@@ -87,7 +86,7 @@ export async function loadVerifications(sql: Sql | Tx, config: AppConfig): Promi
   return out;
 }
 
-export async function recordVerification(tx: Tx, config: AppConfig, id: IntegrationId, run: VerificationRun, runBy: string, startedAt: Date): Promise<string> {
+export async function recordVerification(tx: Sql | Tx, config: AppConfig, id: IntegrationId, run: VerificationRun, runBy: string, startedAt: Date): Promise<string> {
   const { key, fingerprint } = await cacheKey(config, id);
   const recordId = crypto.randomUUID();
   await tx`

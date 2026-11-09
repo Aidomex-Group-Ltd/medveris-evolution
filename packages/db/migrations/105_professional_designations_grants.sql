@@ -6,6 +6,6 @@
 
 BEGIN;
 
-GRANT INSERT ON professional_designations TO medveris_runtime;
+GRANT SELECT, INSERT ON professional_designations TO medveris_runtime;
 
 COMMIT;
