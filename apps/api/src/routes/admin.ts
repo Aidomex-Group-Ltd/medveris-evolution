@@ -377,7 +377,11 @@ adminRoutes.get("/integrations", async (c) => {
       mode: config.terminologyMode,
       label: config.terminologyMode === "synthetic"
         ? "Synthetic development terminology (not for production coding)"
-        : config.terminologyMode === "unavailable" ? UNAVAILABLE_LABEL : "Production terminology adapter",
+        : config.terminologyMode === "local-reference"
+          ? "Local reference terminology catalogue configured (not a licensed SNOMED CT/LOINC distribution)"
+          : config.terminologyMode === "unavailable"
+            ? UNAVAILABLE_LABEL
+            : "Production terminology provider",
     },
   });
 });
@@ -455,6 +459,8 @@ adminRoutes.post("/integrations/ai/verify", async (c) => {
   const client = createLiveOllamaClient({
     baseUrl: deps.config.ai.baseUrl,
     token: deps.config.ai.token,
+    ollamaUsername: deps.config.ai.ollamaUsername,
+    ollamaPassword: deps.config.ai.ollamaPassword,
     model: requestedModel,
     timeoutMs: deps.config.aiModel.timeoutMs,
     provider: "ollama",

@@ -133,11 +133,11 @@ function Listings({ facilities }: { facilities: ReturnType<typeof useQuery<{ fac
         <Table head={["Facility", "Publication", "Verification", "Confirmed", "Actions"]}>
           {facilities.data.facilities.map((facility) => (
             <tr key={facility.id}>
-              <td><strong>{facility.name}</strong><div className="mv-small mv-muted">{facility.publicId} · {facility.facilityType.replaceAll("-", " ")}</div></td>
-              <td><Badge tone={facility.publicationStatus === "published" ? "success" : "warning"}>{facility.publicationStatus}</Badge></td>
-              <td><div className="mv-small">Credentials: {facility.credentialStatus}</div><div className="mv-small">Capabilities: {facility.capabilityStatus}</div></td>
-              <td className="mv-small">{formatDate(facility.lastConfirmedOn)}<div className="mv-muted">next {formatDate(facility.nextConfirmationOn)}</div></td>
-              <td><div className="mv-row mv-wrap"><Button size="sm" variant="secondary" onClick={() => void edit(facility)}>Edit</Button><Button size="sm" variant="secondary" onClick={() => void confirm(facility)}>Confirm current</Button><Button size="sm" variant="ghost" onClick={() => setManaging(managing?.id === facility.id ? null : facility)}>Services and branches</Button></div></td>
+              <td data-label="Facility"><strong>{facility.name}</strong><div className="mv-small mv-muted">{facility.publicId} · {facility.facilityType.replaceAll("-", " ")}</div></td>
+              <td data-label="Publication"><Badge tone={facility.publicationStatus === "published" ? "success" : "warning"}>{facility.publicationStatus}</Badge></td>
+              <td data-label="Verification"><div className="mv-small">Credentials: {facility.credentialStatus}</div><div className="mv-small">Capabilities: {facility.capabilityStatus}</div></td>
+              <td data-label="Confirmed" className="mv-small">{formatDate(facility.lastConfirmedOn)}<div className="mv-muted">next {formatDate(facility.nextConfirmationOn)}</div></td>
+              <td data-label="Actions"><div className="mv-row mv-wrap"><Button size="sm" variant="secondary" onClick={() => void edit(facility)}>Edit</Button><Button size="sm" variant="secondary" onClick={() => void confirm(facility)}>Confirm current</Button><Button size="sm" variant="ghost" onClick={() => setManaging(managing?.id === facility.id ? null : facility)}>Services and branches</Button></div></td>
             </tr>
           ))}
         </Table>
@@ -261,7 +261,7 @@ function ClaimListing({ claims, onClaimed }: { claims: ReturnType<typeof useQuer
       <Card title="My claims">
         {claims.loading ? <LoadingState /> : claims.error ? <ErrorState message={claims.error} onRetry={claims.reload} /> : !rows.length ? <EmptyState title="No claims" description="Submitted claims appear here with their review status." /> : (
           <Table head={["Representative", "Status", "Submitted", "Reason"]}>
-            {rows.map((claim) => <tr key={claim.id}><td>{claim.representativeName}<div className="mv-small mv-muted">{claim.roleTitle}</div></td><td><Badge tone={claim.status === "verified" ? "success" : claim.status === "rejected" ? "danger" : "warning"}>{claim.status}</Badge></td><td className="mv-small">{formatDate(claim.createdAt)}</td><td className="mv-small">{claim.decisionReason ?? "—"}</td></tr>)}
+            {rows.map((claim) => <tr key={claim.id}><td data-label="Representative">{claim.representativeName}<div className="mv-small mv-muted">{claim.roleTitle}</div></td><td data-label="Status"><Badge tone={claim.status === "verified" ? "success" : claim.status === "rejected" ? "danger" : "warning"}>{claim.status}</Badge></td><td data-label="Submitted" className="mv-small">{formatDate(claim.createdAt)}</td><td data-label="Reason" className="mv-small">{claim.decisionReason ?? "—"}</td></tr>)}
           </Table>
         )}
       </Card>

@@ -1,6 +1,6 @@
 import { breakerFor, CircuitOpenError, retry, withTimeout } from "@medveris/platform";
 import { DependencyError } from "../lib/errors.js";
-import type { TerminologyAdapter, TerminologyConcept, TranslateInput, ValidateCodeResult } from "./types.js";
+import type { TerminologyAdapter, TerminologyConcept, TerminologyStatus, TranslateInput, ValidateCodeResult } from "./types.js";
 
 class ProviderStatus extends Error {
   constructor(readonly status: number) {
@@ -11,12 +11,27 @@ class ProviderStatus extends Error {
 export class ProductionTerminologyAdapter implements TerminologyAdapter {
   readonly mode = "production" as const;
   readonly label = "Production terminology adapter";
+  #status: TerminologyStatus;
+
+  get status(): TerminologyStatus {
+    return this.#status;
+  }
 
   constructor(
     private readonly baseUrl: string,
     private readonly token: string | null,
     private readonly timeoutMs: number,
-  ) {}
+  ) {
+    this.#status = {
+      mode: "production",
+      label: this.label,
+      connected: false,
+      providerHost: new URL(this.baseUrl).host,
+      providerVersion: null,
+      lastVerifiedAt: null,
+      releases: [],
+    };
+  }
 
   /** Lookup and $validate-code are read-only FHIR operations, so a bounded retry cannot duplicate an effect. */
   private async request(path: string, init?: RequestInit): Promise<unknown> {
@@ -49,6 +64,46 @@ export class ProductionTerminologyAdapter implements TerminologyAdapter {
     } catch (error) {
       if (error instanceof ProviderStatus) throw new DependencyError(`Terminology provider returned HTTP ${error.status}`);
       throw new DependencyError("Terminology provider is unavailable");
+    }
+  }
+
+  /**
+   * A separate, read-only reachability check for the production provider. It is intentionally not
+   * called on every operation so a provider outage cannot make every validateCode call pay a probe
+   * latency; the probe is used only for status/health reporting and initial verification.
+   */
+  async verifyConnection(): Promise<void> {
+    let version: string | null = null;
+    try {
+      const payload = (await this.request("/_version", { method: "GET" })) as { version?: string; error?: unknown } | null;
+      if (payload && typeof payload === "object" && "version" in payload && typeof (payload as Record<string, unknown>).version === "string") {
+        version = (payload as { version: string }).version;
+      }
+    } catch {
+      // Provider may expose version under a different path; a failed probe does not by itself change status.
+    }
+
+    if (!version) {
+      try {
+        const payload = (await this.request("/api/version", { method: "GET" })) as { version?: string } | null;
+        if (payload && typeof payload === "object" && "version" in payload && typeof (payload as Record<string, unknown>).version === "string") {
+          version = (payload as { version: string }).version;
+        }
+      } catch {
+        // Fall through: status stays connected=false until a successful probe.
+      }
+    }
+
+    if (version) {
+      this.#status = {
+        ...this.#status,
+        connected: true,
+        providerVersion: version,
+        lastVerifiedAt: new Date().toISOString(),
+        releases: [
+          { system: "https://medveris.example/fhir/TerminologyCapabilities/medveris-m1-terminology", version, source: "configured-provider" },
+        ],
+      };
     }
   }
 

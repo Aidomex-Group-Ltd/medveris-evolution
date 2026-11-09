@@ -8,6 +8,7 @@ import { parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { NotFoundError } from "../lib/errors.js";
 import { assertIntegrationAvailable, isIntegrationOperational } from "../integrations/registry.js";
+import type { AppConfig } from "../config.js";
 import type { AppEnv } from "../types.js";
 
 export const aiRoutes = new Hono<AppEnv>();

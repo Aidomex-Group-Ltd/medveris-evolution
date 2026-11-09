@@ -33,7 +33,7 @@ export function canTransitionEncounter(from: EncounterState, to: EncounterState)
   return encounterTransitions[from]?.includes(to) ?? false;
 }
 
-export type ClinicalEntryStatus = "draft" | "signed" | "amended" | "entered-in-error";
+export type ClinicalEntryStatus = "draft" | "signed" | "amended" | "entered-in-error" | "voided";
 
 export function nextEntryStatus(current: ClinicalEntryStatus, action: "sign" | "amend" | "error"): ClinicalEntryStatus {
   if (action === "sign") {

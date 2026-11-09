@@ -9,7 +9,7 @@ let behaviour: "ok" | "fail" = "ok";
 const prompts: string[] = [];
 
 const h = createHarness("ai-jobs", {
-  env: { FEATURE_AI: "true", AI_MODEL: "@cf/test/model" },
+  env: { FEATURE_AI: "true", AI_MODE: "sandbox", OLLAMA_URL: "http://localhost:11434", AI_MODEL: "@cf/test/model" },
 });
 const jobsDatabaseUrl = process.env.JOBS_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!jobsDatabaseUrl) throw new Error("JOBS_DATABASE_URL or DATABASE_URL is required");
@@ -26,6 +26,7 @@ const runtime: AiJobRuntime = {
   providerName: "workers-ai",
   modelConfig: { provider: "workers-ai", model: "@cf/test/model", inputTokensMax: 4096, timeoutMs: 1000 },
   logAiRun: () => undefined,
+  source: "workers-ai",
 };
 
 const pump = async (jobId: string): Promise<number> => {

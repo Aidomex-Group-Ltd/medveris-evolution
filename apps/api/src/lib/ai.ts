@@ -8,7 +8,11 @@ export function aiDependencies(deps: AppDeps): AiDependencies {
   if (mode === "sandbox") {
     // Sandbox is explicitly refused in production and is never reported as available.
     return {
-      ai: createOllamaClient(deps.config.ollama),
+      ai: createOllamaClient({
+        url: deps.config.ollama.url,
+        model: deps.config.ollama.model,
+        timeoutMs: deps.config.ollama.timeoutMs,
+      }),
       providerName: "ollama",
       logAiRun(result, meta) {
         deps.logAiRun?.(result, { ...meta, simulated: "true", source: "sandbox:ollama" });
@@ -23,6 +27,8 @@ export function aiDependencies(deps: AppDeps): AiDependencies {
     const client = createLiveOllamaClient({
       baseUrl: deps.config.ai.baseUrl,
       token: deps.config.ai.token,
+      ollamaUsername: deps.config.ai.ollamaUsername,
+      ollamaPassword: deps.config.ai.ollamaPassword,
       model: deps.config.aiModel.model,
       timeoutMs: deps.config.aiModel.timeoutMs,
       provider: "ollama",
@@ -31,7 +37,7 @@ export function aiDependencies(deps: AppDeps): AiDependencies {
       ai: client,
       providerName: "ollama",
       logAiRun(result: AiRunResult, meta: Record<string, string | number | null>) {
-        deps.logAiRun?.(result, { ...meta, simulated: undefined, source: "live:ollama" });
+        deps.logAiRun?.(result, { ...meta, simulated: null, source: "live:ollama" });
       },
     };
   }

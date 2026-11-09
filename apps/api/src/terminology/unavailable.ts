@@ -1,5 +1,5 @@
 import { DependencyError } from "../lib/errors.js";
-import type { TerminologyAdapter } from "./types.js";
+import type { TerminologyAdapter, TerminologyStatus } from "./types.js";
 
 export const UNAVAILABLE_LABEL = "Terminology service not configured — coded entries cannot be validated";
 
@@ -7,6 +7,15 @@ export const UNAVAILABLE_LABEL = "Terminology service not configured — coded e
 export class UnavailableTerminologyAdapter implements TerminologyAdapter {
   readonly mode = "unavailable" as const;
   readonly label = UNAVAILABLE_LABEL;
+  readonly status: TerminologyStatus = {
+    mode: "unavailable",
+    label: UNAVAILABLE_LABEL,
+    connected: false,
+    providerHost: null,
+    providerVersion: null,
+    lastVerifiedAt: null,
+    releases: [],
+  };
 
   private fail(): never {
     throw new DependencyError("Terminology service is not configured for this environment");
@@ -30,5 +39,9 @@ export class UnavailableTerminologyAdapter implements TerminologyAdapter {
 
   async search(): Promise<import("./types.js").TerminologyConcept[]> {
     return this.fail();
+  }
+
+  async verifyConnection(): Promise<void> {
+    // There is no provider to probe; status already reports disconnected.
   }
 }

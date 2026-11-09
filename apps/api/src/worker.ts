@@ -4,7 +4,7 @@ import { runJobsCycle } from "../../jobs/src/cycle.js";
 import { syncContentFeeds } from "../../jobs/src/feeds/sync.js";
 import { consumeDeadLetters, consumeJobBatch, deadLetterJobIds, type QueueBatch } from "../../jobs/src/queue.js";
 import { aiAwareDispatch, type AiJobRuntime } from "../../jobs/src/ai.js";
-import { createOllamaClient } from "./integrations/ollama.js";
+import { createOllamaClient, createLiveOllamaClient } from "./integrations/ollama.js";
 import { loadConfig, type AppConfig } from "./config.js";
 import { createApp } from "./app.js";
 import { ResendEmailAdapter, UnconfiguredEmailAdapter } from "./lib/email.js";
@@ -227,7 +227,11 @@ async function handleFetch(request: Request, env: WorkerEnv, ctx: WorkerContext)
 function aiJobRuntime(config: AppConfig): AiJobRuntime | undefined {
   if (config.modes.ai === "sandbox") {
     return {
-      ai: createOllamaClient(config.ollama),
+      ai: createOllamaClient({
+        url: config.ollama.url,
+        model: config.ollama.model,
+        timeoutMs: config.ollama.timeoutMs,
+      }),
       providerName: "ollama",
       modelConfig: config.aiModel,
       logAiRun: () => undefined,
@@ -238,6 +242,8 @@ function aiJobRuntime(config: AppConfig): AiJobRuntime | undefined {
     const client = createLiveOllamaClient({
       baseUrl: config.ai.baseUrl,
       token: config.ai.token,
+      ollamaUsername: config.ai.ollamaUsername,
+      ollamaPassword: config.ai.ollamaPassword,
       model: config.aiModel.model,
       timeoutMs: config.aiModel.timeoutMs,
       provider: "ollama",

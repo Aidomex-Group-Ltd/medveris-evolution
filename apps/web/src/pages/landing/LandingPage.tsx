@@ -8,6 +8,7 @@ const ROUTES = {
   facilitySignUp: "/register?type=facility",
   patientPortal: "/portal",
   about: "/about",
+  pricing: "/pricing",
   directory: "/directory",
   help: "/help",
   contacts: "/contacts",
@@ -18,7 +19,7 @@ const PROVIDER_WHATSAPP = whatsappLink("Hello Medveris, I would like to bring my
 const NAV = [
   { label: "Platform", href: "#platform" },
   { label: "Solutions", to: ROUTES.directory },
-  { label: "Pricing", href: "#pricing" },
+  { label: "Pricing", to: ROUTES.pricing },
   { label: "About", to: ROUTES.about },
 ] as const;
 

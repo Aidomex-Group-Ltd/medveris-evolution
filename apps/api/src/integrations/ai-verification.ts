@@ -2,7 +2,6 @@ import type { AppConfig } from "../config.js";
 import { createLiveOllamaClient, type OllamaConnectionStatus } from "./ollama.js";
 import { loadVerifications, recordVerification, type VerificationRun } from "./verification.js";
 import { type VerificationCheck } from "./verification.js";
-import { type IntegrationId } from "./registry.js";
 import type { Sql, Tx } from "@medveris/db";
 
 const CACHE_TTL_MS = 30_000;
@@ -28,6 +27,8 @@ export async function loadAiStatus(sql: Sql | Tx, config: AppConfig): Promise<Ol
       const client = createLiveOllamaClient({
         baseUrl: config.ai.baseUrl,
         token: config.ai.token,
+        ollamaUsername: config.ai.ollamaUsername,
+        ollamaPassword: config.ai.ollamaPassword,
         model: config.aiModel.model,
         timeoutMs: config.aiModel.timeoutMs,
         provider: "ollama",
@@ -55,6 +56,8 @@ export async function runAiVerification(
   const client = createLiveOllamaClient({
     baseUrl: config.ai.baseUrl,
     token: config.ai.token,
+    ollamaUsername: config.ai.ollamaUsername,
+    ollamaPassword: config.ai.ollamaPassword,
     model: config.aiModel.model,
     timeoutMs: Math.max(5_000, Math.min(config.aiModel.timeoutMs, 60_000)),
     provider: "ollama",

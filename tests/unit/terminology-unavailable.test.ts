@@ -18,7 +18,7 @@ describe("unavailable terminology mode", () => {
 
   it("rejects an unknown mode instead of silently falling back to synthetic codes", () => {
     expect(() => loadConfig({ ...strong, APP_ENV: "production", APP_ORIGIN: "https://medveris.example", TERMINOLOGY_MODE: "licensed" }))
-      .toThrow("TERMINOLOGY_MODE must be synthetic, production or unavailable");
+      .toThrow(/TERMINOLOGY_MODE must be synthetic, production, local-reference or unavailable/);
   });
 
   it("refuses synthetic terminology in production", () => {

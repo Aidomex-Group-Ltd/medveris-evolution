@@ -8,9 +8,9 @@ import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
 import { EncounterPicker, PatientPicker } from "../components/Pickers";
 
-interface Ward { id: string; name: string; wardType: string; description: string | null; status: string; bedCount: number; availableBeds: number }
+interface Ward { id: string; name: string; wardType: string; description: string | null; status: string; bedCount: number; availableBeds: number; occupiedBeds?: number; reservedBeds?: number; unavailableBeds?: number }
 interface Bed { id: string; wardId: string; label: string; status: string; statusReason: string | null; version: number; wardName: string; wardType: string }
-interface Admission { id: string; patientId: string; encounterId: string; wardType: string; status: string; version: number; reason: string; admittedAt: string; dischargedAt: string | null; publicId: string; givenName: string; familyName: string; attendingName: string | null; bedLabel: string | null; wardName: string | null }
+interface Admission { id: string; patientId: string; encounterId: string; wardType: string; wardId?: string | null; status: string; version: number; reason: string; admittedAt: string; dischargedAt: string | null; publicId: string; givenName: string; familyName: string; attendingName: string | null; bedLabel: string | null; wardName: string | null }
 
 const WARD_TYPES = ["general", "adult-male", "adult-female", "pediatric", "surgical", "maternity", "nicu", "icu"];
 
@@ -81,7 +81,7 @@ function BedBoard({ clinical, admin }: { clinical: boolean; admin: boolean }) {
         {wards.data.wards.map((ward) => {
           const wardBeds = beds.data?.beds.filter((bed) => bed.wardId === ward.id) ?? [];
           return (
-            <Card key={ward.id} title={ward.name} description={`${ward.wardType} · ${ward.availableBeds} of ${ward.bedCount} available`}>
+            <Card key={ward.id} title={ward.name} description={`${ward.wardType} · ${ward.availableBeds} of ${ward.bedCount} available · ${ward.occupiedBeds ?? 0} occupied · ${ward.reservedBeds ?? 0} reserved`}>
               {!wardBeds.length ? <p className="mv-small mv-muted">No beds configured.</p> : (
                 <div className="mv-stack" style={{ gap: 8 }}>
                   {wardBeds.map((bed) => (
@@ -94,6 +94,7 @@ function BedBoard({ clinical, admin }: { clinical: boolean; admin: boolean }) {
                       {bed.status !== "occupied" ? (
                         <div className="mv-row" style={{ marginTop: 8 }}>
                           {bed.status !== "available" ? <Button size="sm" variant="secondary" onClick={() => void setStatus(bed, "available")} disabled={action.busy !== null}>Mark available</Button> : null}
+                          {bed.status !== "reserved" ? <Button size="sm" variant="ghost" onClick={() => void setStatus(bed, "reserved")} disabled={action.busy !== null}>Reserve</Button> : null}
                           {bed.status !== "cleaning" ? <Button size="sm" variant="ghost" onClick={() => void setStatus(bed, "cleaning")} disabled={action.busy !== null}>Cleaning</Button> : null}
                           {bed.status !== "unavailable" ? <Button size="sm" variant="ghost" onClick={() => void setStatus(bed, "unavailable")} disabled={action.busy !== null}>Unavailable</Button> : null}
                         </div>
@@ -124,10 +125,12 @@ function BedBoard({ clinical, admin }: { clinical: boolean; admin: boolean }) {
 
 function Admissions() {
   const admissions = useQuery<{ admissions: Admission[] }>("/admissions");
+  const wards = useQuery<{ wards: Ward[] }>("/wards");
   const action = useAction();
   const [patientId, setPatientId] = useState("");
   const [encounterId, setEncounterId] = useState("");
   const [wardType, setWardType] = useState("general");
+  const [wardId, setWardId] = useState("");
   const [reason, setReason] = useState("");
 
   async function admit(event: FormEvent) {
@@ -135,7 +138,7 @@ function Admissions() {
     await action.run("admit", async () => {
       const result = await api<{ admission: { id: string } }>("/admissions", {
         method: "POST",
-        body: { patientId, encounterId, wardType, reason },
+        body: { patientId, encounterId, wardType, wardId: wardId || undefined, reason },
       });
       setReason("");
       admissions.reload();
@@ -153,6 +156,7 @@ function Admissions() {
             <PatientPicker value={patientId} onChange={(value) => { setPatientId(value); setEncounterId(""); }} />
             <EncounterPicker value={encounterId} onChange={setEncounterId} patientId={patientId || undefined} />
             <Field label="Ward type"><Select value={wardType} onChange={(event) => setWardType(event.target.value)}>{WARD_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</Select></Field>
+            <Field label="Ward (optional)"><Select value={wardId} onChange={(event) => setWardId(event.target.value)}><option value="">No specific ward</option>{wards.data?.wards.filter((w) => w.wardType === wardType && w.status === "open").map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></Field>
           </div>
           <Field label="Admission reason" htmlFor="admission-reason"><Textarea id="admission-reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={5} /></Field>
           <Button type="submit" disabled={action.busy !== null || !patientId || !encounterId || reason.trim().length < 5}>{action.busy === "admit" ? "Admitting…" : "Create admission"}</Button>
@@ -195,6 +199,14 @@ function WardConfiguration() {
     });
   }
 
+  async function setWardStatus(ward: Ward, status: string) {
+    await action.run(ward.id, async () => {
+      await api(`/wards/${ward.id}`, { method: "PATCH", body: { status } });
+      wards.reload();
+      return `Ward ${ward.name} ${status === "closed" ? "closed" : "reopened"}.`;
+    });
+  }
+
   const counts = useMemo(() => wards.data?.wards.reduce((sum, ward) => sum + ward.bedCount, 0) ?? 0, [wards.data]);
 
   return (
@@ -213,9 +225,9 @@ function WardConfiguration() {
       </Card>
       <Card title="Configured wards">
         {wards.loading ? <LoadingState /> : wards.error ? <ErrorState message={wards.error} onRetry={wards.reload} /> : !wards.data?.wards.length ? <EmptyState title="No wards" description="Create the first ward above." /> : (
-          <Table head={["Ward", "Type", "Beds", "Available", "Status"]} caption="Ward configuration">
+          <Table head={["Ward", "Type", "Beds", "Available", "Status", ""]} caption="Ward configuration">
             {wards.data.wards.map((ward) => (
-              <tr key={ward.id}><td><strong>{ward.name}</strong><div className="mv-small mv-muted">{ward.description}</div></td><td>{ward.wardType}</td><td>{ward.bedCount}</td><td>{ward.availableBeds}</td><td><Badge tone={ward.status === "open" ? "success" : "warning"}>{ward.status}</Badge></td></tr>
+              <tr key={ward.id}><td><strong>{ward.name}</strong><div className="mv-small mv-muted">{ward.description}</div></td><td>{ward.wardType}</td><td>{ward.bedCount}</td><td>{ward.availableBeds}</td><td><Badge tone={ward.status === "open" ? "success" : "warning"}>{ward.status}</Badge></td><td>{ward.status === "open" ? <Button size="sm" variant="ghost" onClick={() => void setWardStatus(ward, "closed")} disabled={action.busy !== null}>Close</Button> : <Button size="sm" variant="secondary" onClick={() => void setWardStatus(ward, "open")} disabled={action.busy !== null}>Reopen</Button>}</td></tr>
             ))}
           </Table>
         )}

@@ -15,13 +15,13 @@ export function WorklistPage() {
           <Table head={["Patient", "State", "Reason", "Draft notes", "Signed notes", "Opened", ""]} caption="Active clinical encounters">
             {worklist.data.encounters.map((encounter) => (
               <tr key={encounter.id}>
-                <td><strong>{encounter.givenName} {encounter.familyName}</strong><div className="mv-small mv-muted"><span className="mv-id">{encounter.publicId}</span> · DOB {encounter.dateOfBirth}</div></td>
-                <td><Badge tone={tone(encounter.state)}>{encounter.state}</Badge></td>
-                <td>{encounter.reason}</td>
-                <td>{encounter.draftNotes}</td>
-                <td>{encounter.signedNotes}</td>
-                <td>{new Date(encounter.openedAt).toLocaleString()}</td>
-                <td><Link className="mv-button mv-button--secondary mv-button--sm" to={`/encounters/${encounter.id}`}>Open</Link></td>
+                <td data-label="Patient"><strong>{encounter.givenName} {encounter.familyName}</strong><div className="mv-small mv-muted"><span className="mv-id">{encounter.publicId}</span> · DOB {encounter.dateOfBirth}</div></td>
+                <td data-label="State"><Badge tone={tone(encounter.state)}>{encounter.state}</Badge></td>
+                <td data-label="Reason">{encounter.reason}</td>
+                <td data-label="Draft notes">{encounter.draftNotes}</td>
+                <td data-label="Signed notes">{encounter.signedNotes}</td>
+                <td data-label="Opened">{new Date(encounter.openedAt).toLocaleString()}</td>
+                <td data-label=""><Link className="mv-button mv-button--secondary mv-button--sm" to={`/encounters/${encounter.id}`}>Open</Link></td>
               </tr>
             ))}
           </Table>

@@ -18,6 +18,7 @@ import {
   nursingTaskUpdateSchema,
   uuidSchema,
   wardSchema,
+  wardUpdateSchema,
 } from "@medveris/contracts";
 import { assertMembershipAdmin, assertWardAccess, assertWardView } from "@medveris/authz";
 import { requireStaff, withStaffActor } from "../auth/middleware.js";
@@ -43,6 +44,125 @@ inpatientRoutes.get("/directory/clinical-members", async (c) => {
   return c.json({ members: rows });
 });
 
+inpatientRoutes.get("/wards/dashboard", async (c) => {
+  requireStaff(c);
+  assertWardView(requestActor(c));
+  const auth = c.get("auth")!;
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const data = await withStaffActor(c, async (tx) => {
+    const wards = await tx`
+      select w.id, w.name, w.ward_type, w.status,
+        (select count(*)::int from beds b where b.ward_id = w.id) as bed_count,
+        (select count(*)::int from beds b where b.ward_id = w.id and b.status = 'available') as available_beds,
+        (select count(*)::int from beds b where b.ward_id = w.id and b.status = 'occupied') as occupied_beds,
+        (select count(*)::int from beds b where b.ward_id = w.id and b.status = 'reserved') as reserved_beds,
+        (select count(*)::int from beds b where b.ward_id = w.id and b.status in ('unavailable','out-of-service')) as unavailable_beds,
+        (select count(*)::int from beds b where b.ward_id = w.id and b.status = 'cleaning') as cleaning_beds,
+        (select count(*)::int from admissions a where a.tenant_id = ${auth.activeTenant!.id} and a.status = 'admitted'
+          and (a.ward_id = w.id or exists (select 1 from bed_assignments ba join beds b on b.id = ba.bed_id where ba.admission_id = a.id and ba.released_at is null and b.ward_id = w.id))) as census,
+        (select count(*)::int from admissions a where a.tenant_id = ${auth.activeTenant!.id} and a.admitted_at >= ${since}
+          and (a.ward_id = w.id or exists (select 1 from bed_assignments ba join beds b on b.id = ba.bed_id where ba.admission_id = a.id and ba.released_at is null and b.ward_id = w.id))) as admissions_last_24h,
+        (select count(*)::int from admissions a where a.tenant_id = ${auth.activeTenant!.id} and a.discharged_at >= ${since}
+          and (a.ward_id = w.id or exists (select 1 from bed_assignments ba join beds b on b.id = ba.bed_id where ba.admission_id = a.id and b.ward_id = w.id))) as discharges_last_24h
+      from wards w where w.tenant_id = ${auth.activeTenant!.id}
+      order by w.name
+    `;
+    const totals = wards[0] ? {
+      totalBeds: wards.reduce((sum: number, w: any) => sum + Number(w.bedCount ?? w.bed_count ?? 0), 0),
+      availableBeds: wards.reduce((sum: number, w: any) => sum + Number(w.availableBeds ?? w.available_beds ?? 0), 0),
+      occupiedBeds: wards.reduce((sum: number, w: any) => sum + Number(w.occupiedBeds ?? w.occupied_beds ?? 0), 0),
+      reservedBeds: wards.reduce((sum: number, w: any) => sum + Number(w.reservedBeds ?? w.reserved_beds ?? 0), 0),
+      unavailableBeds: wards.reduce((sum: number, w: any) => sum + Number(w.unavailableBeds ?? w.unavailable_beds ?? 0), 0),
+      census: wards.reduce((sum: number, w: any) => sum + Number(w.census ?? 0), 0),
+    } : { totalBeds: 0, availableBeds: 0, occupiedBeds: 0, reservedBeds: 0, unavailableBeds: 0, census: 0 };
+    const overdueTasks = await tx`
+      select count(*)::int as count from nursing_tasks nt
+        join admissions a on a.id = nt.admission_id
+       where a.tenant_id = ${auth.activeTenant!.id} and a.status = 'admitted'
+         and nt.status = 'pending' and nt.due_at is not null and nt.due_at < now()
+    `;
+    const staffOnDuty = await tx`
+      select count(distinct m.user_id)::int as count from memberships m
+       where m.tenant_id = ${auth.activeTenant!.id} and m.status = 'active'
+         and m.roles && ARRAY['clinician','nurse']::text[]
+    `;
+    return { wards, totals, overdueTasks: Number(overdueTasks[0]?.count ?? 0), staffOnDuty: Number(staffOnDuty[0]?.count ?? 0) };
+  });
+  await withStaffActor(c, async (tx) => writeAudit(tx, c.get("deps").config, requestAudit(c, "ward.dashboard.read", {
+    resourceType: "Ward", resourceId: auth.activeTenant!.id,
+  })));
+  return c.json(data);
+});
+
+inpatientRoutes.get("/wards/:id/capacity", async (c) => {
+  requireStaff(c);
+  assertWardView(requestActor(c));
+  const auth = c.get("auth")!;
+  const wardId = uuidSchema.parse(c.req.param("id"));
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const data = await withStaffActor(c, async (tx) => {
+    const ward = await requireRows(await tx`
+      select id, name, ward_type, status, description from wards where id = ${wardId} and tenant_id = ${auth.activeTenant!.id}
+    `, "Ward not found");
+    const beds = await tx`
+      select status, count(*)::int as count from beds where ward_id = ${wardId} and tenant_id = ${auth.activeTenant!.id} group by status
+    `;
+    const bedCounts = Object.fromEntries(beds.map((row: any) => [String(row.status), Number(row.count)]));
+    const totalBeds = beds.reduce((sum: number, row: any) => sum + Number(row.count), 0);
+    const census = await tx`
+      select count(*)::int as count from admissions a
+       where a.tenant_id = ${auth.activeTenant!.id} and a.status = 'admitted'
+         and (a.ward_id = ${wardId} or exists (select 1 from bed_assignments ba join beds b on b.id = ba.bed_id where ba.admission_id = a.id and ba.released_at is null and b.ward_id = ${wardId}))
+    `;
+    const admissionsLast24h = await tx`
+      select count(*)::int as count from admissions
+       where tenant_id = ${auth.activeTenant!.id} and admitted_at >= ${since} and ward_id = ${wardId}
+    `;
+    const dischargesLast24h = await tx`
+      select count(*)::int as count from admissions
+       where tenant_id = ${auth.activeTenant!.id} and discharged_at >= ${since} and ward_id = ${wardId}
+    `;
+    const transfersLast24h = await tx`
+      select count(*)::int as count from bed_transfers bt
+        join admissions a on a.id = bt.admission_id
+       where a.tenant_id = ${auth.activeTenant!.id} and bt.created_at >= ${since}
+         and (a.ward_id = ${wardId} or bt.to_bed_id in (select id from beds where ward_id = ${wardId}))
+    `;
+    const overdueTasks = await tx`
+      select count(*)::int as count from nursing_tasks nt
+        join admissions a on a.id = nt.admission_id
+       where a.tenant_id = ${auth.activeTenant!.id} and a.status = 'admitted' and a.ward_id = ${wardId}
+         and nt.status = 'pending' and nt.due_at is not null and nt.due_at < now()
+    `;
+    const awaitingDischarge = await tx`
+      select count(*)::int as count from admissions
+       where tenant_id = ${auth.activeTenant!.id} and status = 'admitted' and ward_id = ${wardId}
+    `;
+    return {
+      ward,
+      capacity: {
+        totalBeds,
+        availableBeds: bedCounts.available ?? 0,
+        occupiedBeds: bedCounts.occupied ?? 0,
+        reservedBeds: bedCounts.reserved ?? 0,
+        unavailableBeds: (bedCounts.unavailable ?? 0) + (bedCounts["out-of-service"] ?? 0),
+        cleaningBeds: bedCounts.cleaning ?? 0,
+        occupancyRate: totalBeds > 0 ? Math.round((bedCounts.occupied ?? 0) / totalBeds * 100) / 100 : 0,
+      },
+      census: Number(census[0]?.count ?? 0),
+      admissionsLast24h: Number(admissionsLast24h[0]?.count ?? 0),
+      dischargesLast24h: Number(dischargesLast24h[0]?.count ?? 0),
+      transfersLast24h: Number(transfersLast24h[0]?.count ?? 0),
+      overdueTasks: Number(overdueTasks[0]?.count ?? 0),
+      awaitingDischarge: Number(awaitingDischarge[0]?.count ?? 0),
+    };
+  });
+  await withStaffActor(c, async (tx) => writeAudit(tx, c.get("deps").config, requestAudit(c, "ward.capacity.read", {
+    resourceType: "Ward", resourceId: wardId,
+  })));
+  return c.json(data);
+});
+
 inpatientRoutes.get("/wards", async (c) => {
   requireStaff(c);
   assertWardView(requestActor(c));
@@ -50,7 +170,10 @@ inpatientRoutes.get("/wards", async (c) => {
   const rows = await withStaffActor(c, async (tx) => tx`
     select w.id, w.name, w.ward_type, w.description, w.status, w.created_at,
       (select count(*)::int from beds b where b.ward_id = w.id) as bed_count,
-      (select count(*)::int from beds b where b.ward_id = w.id and b.status = 'available') as available_beds
+      (select count(*)::int from beds b where b.ward_id = w.id and b.status = 'available') as available_beds,
+      (select count(*)::int from beds b where b.ward_id = w.id and b.status = 'occupied') as occupied_beds,
+      (select count(*)::int from beds b where b.ward_id = w.id and b.status = 'reserved') as reserved_beds,
+      (select count(*)::int from beds b where b.ward_id = w.id and b.status in ('unavailable','out-of-service')) as unavailable_beds
       from wards w where w.tenant_id = ${auth.activeTenant!.id}
      order by w.name
   `);
@@ -73,6 +196,27 @@ inpatientRoutes.post("/wards", async (c) => {
     }));
   });
   return c.json({ ok: true, ward: { id } }, 201);
+});
+
+inpatientRoutes.patch("/wards/:id", async (c) => {
+  requireStaff(c);
+  assertMembershipAdmin(requestActor(c));
+  const auth = c.get("auth")!;
+  const wardId = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, wardUpdateSchema);
+  await withStaffActor(c, async (tx) => {
+    const ward = await requireRows(await tx`
+      select id from wards where id = ${wardId} and tenant_id = ${auth.activeTenant!.id} for update
+    `, "Ward not found");
+    void ward;
+    if (body.name !== undefined) await tx`update wards set name = ${body.name} where id = ${wardId}`;
+    if (body.status !== undefined) await tx`update wards set status = ${body.status} where id = ${wardId}`;
+    if (body.description !== undefined) await tx`update wards set description = ${body.description || null} where id = ${wardId}`;
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "ward.update", {
+      resourceType: "Ward", resourceId: wardId, metadata: body as Record<string, unknown>,
+    }));
+  });
+  return c.json({ ok: true });
 });
 
 inpatientRoutes.post("/wards/:id/beds", async (c) => {
@@ -141,18 +285,23 @@ inpatientRoutes.get("/admissions", async (c) => {
   assertWardAccess(requestActor(c));
   const auth = c.get("auth")!;
   const status = c.req.query("status");
+  const wardId = c.req.query("wardId");
+  const attendingUserId = c.req.query("attendingUserId");
   const rows = await withStaffActor(c, async (tx) => tx`
-    select a.id, a.patient_id, a.encounter_id, a.ward_type, a.status, a.version, a.reason, a.admitted_at,
+    select a.id, a.patient_id, a.encounter_id, a.ward_type, a.ward_id, a.status, a.version, a.reason, a.admitted_at,
            a.discharged_at, p.public_id, p.given_name, p.family_name, u.display_name as attending_name,
-           b.label as bed_label, w.name as ward_name
+           b.label as bed_label, coalesce(wa.name, w.name) as ward_name
       from admissions a
       join patients p on p.id = a.patient_id
       left join users u on u.id = a.attending_user_id
       left join bed_assignments ba on ba.admission_id = a.id and ba.released_at is null
       left join beds b on b.id = ba.bed_id
       left join wards w on w.id = b.ward_id
+      left join wards wa on wa.id = a.ward_id
      where a.tenant_id = ${auth.activeTenant!.id}
        ${status ? tx`and a.status = ${status}` : tx``}
+       ${wardId ? tx`and a.ward_id = ${uuidSchema.parse(wardId)}` : tx``}
+       ${attendingUserId ? tx`and a.attending_user_id = ${uuidSchema.parse(attendingUserId)}` : tx``}
      order by a.admitted_at desc limit 200
   `);
   return c.json({ admissions: rows });
@@ -179,9 +328,16 @@ inpatientRoutes.post("/admissions", async (c) => {
        and status = 'admitted'
     `;
     if (existing.length) throw new ConflictError("This encounter already has an active admission");
+    if (body.wardId) {
+      const ward = await tx`select id, ward_type, status from wards where id = ${body.wardId} and tenant_id = ${auth.activeTenant!.id}`;
+      if (!ward[0]) throw new NotFoundError("Ward not found");
+      const wardType = String((ward[0] as any).wardType ?? (ward[0] as any).ward_type);
+      if (wardType !== body.wardType) throw new ValidationError("Ward type does not match the admission ward type");
+      if (String(ward[0].status) !== "open") throw new ConflictError("Admissions to a closed ward are not permitted");
+    }
     await tx`
-      insert into admissions (id, tenant_id, patient_id, encounter_id, ward_type, attending_user_id, reason, admitted_by)
-      values (${id}, ${auth.activeTenant!.id}, ${body.patientId}, ${body.encounterId}, ${body.wardType},
+      insert into admissions (id, tenant_id, patient_id, encounter_id, ward_type, ward_id, attending_user_id, reason, admitted_by)
+      values (${id}, ${auth.activeTenant!.id}, ${body.patientId}, ${body.encounterId}, ${body.wardType}, ${body.wardId ?? null},
         ${body.attendingUserId ?? auth.user.id}, ${body.reason}, ${auth.user.id})
     `;
     await tx`
@@ -254,18 +410,19 @@ inpatientRoutes.post("/admissions/:id/bed", async (c) => {
       select id, bed_id from bed_assignments where admission_id = ${id} and released_at is null for update
     `;
     if (current[0]?.bedId === body.bedId) throw new ConflictError("The patient is already in this bed");
-    if (bed.status !== "available" && current[0]?.bedId !== body.bedId) throw new ConflictError("The selected bed is not available");
+    if (!["available", "reserved"].includes(bed.status) && current[0]?.bedId !== body.bedId) throw new ConflictError("The selected bed is not available");
     const now = new Date();
     if (current[0]) {
       await tx`update bed_assignments set released_at = ${now}, release_reason = ${body.reason || "transfer"} where id = ${current[0].id}`;
       await tx`update beds set status = 'available', version = version + 1, updated_at = now() where id = ${current[0].bedId}`;
     }
+    const bedWard = await tx`select ward_id from beds where id = ${body.bedId}`;
     await tx`
       insert into bed_assignments (id, tenant_id, admission_id, bed_id, assigned_by, assigned_at)
       values (${crypto.randomUUID()}, ${auth.activeTenant!.id}, ${id}, ${body.bedId}, ${auth.user.id}, ${now})
     `;
     await tx`update beds set status = 'occupied', status_reason = null, version = version + 1, updated_at = now() where id = ${body.bedId}`;
-    await tx`update admissions set version = version + 1, updated_at = now() where id = ${id}`;
+    await tx`update admissions set version = version + 1, ward_id = ${bedWard[0]?.ward_id ?? null}, updated_at = now() where id = ${id}`;
     if (current[0]) {
       await tx`
         insert into bed_transfers (id, tenant_id, admission_id, from_bed_id, to_bed_id, reason, transferred_by)

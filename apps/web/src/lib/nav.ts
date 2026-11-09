@@ -405,6 +405,12 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
     id: "ai", label: "Assistive AI", to: "/ai", icon: "ai", section: "intelligence", mobile: "knowledge",
     roles: ["nurse", "clinician"], modules: ["outpatient", "radiology"],
     description: "Decision-support job history, never a diagnosis", quickAction: true,
+    activePrefixes: ["/ai/chat"],
+  },
+  {
+    id: "ai-chat", label: "AI chat", to: "/ai/chat", icon: "ai", section: "intelligence", mobile: "knowledge",
+    roles: ["nurse", "clinician"], modules: ["outpatient", "radiology"],
+    description: "Assistive conversation with Medveris Intelligence",
   },
   {
     id: "reports", label: "Reports", to: "/reports", icon: "reports", section: "intelligence", mobile: "analytics",

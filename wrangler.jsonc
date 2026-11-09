@@ -340,7 +340,7 @@
 				"EMAIL_FROM": "Medveris <no-reply@medveris.online>",
 				"STORAGE_ADAPTER": "r2",
 				// No licensed terminology service is contracted: coded entries report 503 instead of synthetic codes.
-				"TERMINOLOGY_MODE": "unavailable",
+				"TERMINOLOGY_MODE": "local-reference",
 				"DEV_SHOW_TOTP_SECRETS": "false",
 				"FHIR_EXTERNAL_WRITES_ENABLED": "false",
 				"FHIR_BULK_EXPORT_ENABLED": "false",
@@ -357,6 +357,7 @@
 				"FEATURE_TELEMEDICINE": "false",
 				"FEATURE_DEVICES": "false",
 				"FEATURE_AI": "false",
+				"AI_BASE_URL": "https://ollama.medveris.online",
 				// Yo! mobile money: set FEATURE_PAYMENTS=true and YO_MODE=production, and add YO_API_USERNAME,
 				// YO_API_PASSWORD and YO_PUBLIC_KEY to secrets.required (wrangler secret put) before enabling.
 				// LivePay provider selection is a plaintext feature flag, not a secret. Yo! stays disabled.
@@ -378,6 +379,7 @@
 					"AUDIT_SIGNING_KEY",
 					"MFA_ENCRYPTION_KEY",
 					"RESEND_API_KEY",
+					"AI_TOKEN",
 					"LIVEPAY_API_KEY",
 					"LIVEPAY_WEBHOOK_SECRET"
 				]

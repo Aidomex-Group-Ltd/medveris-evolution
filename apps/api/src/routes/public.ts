@@ -37,7 +37,11 @@ publicRoutes.get("/public/config", async (c) => {
       available: config.terminologyMode !== "unavailable",
       label: config.terminologyMode === "synthetic"
         ? "Synthetic development terminology"
-        : config.terminologyMode === "unavailable" ? UNAVAILABLE_LABEL : "Production terminology adapter configured",
+        : config.terminologyMode === "local-reference"
+          ? "Local reference terminology catalogue configured (not a licensed SNOMED CT/LOINC distribution)"
+          : config.terminologyMode === "unavailable"
+            ? UNAVAILABLE_LABEL
+            : "Production terminology provider configured",
       /** Surface the live terminology status so the web app and operators can distinguish configured+reachable from configured+unverified from unavailable. */
       status: terminology.status,
     },

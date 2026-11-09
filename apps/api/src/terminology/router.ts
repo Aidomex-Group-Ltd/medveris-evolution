@@ -1,11 +1,26 @@
 import { Hono, type Context } from "hono";
+import { createTerminology } from "../terminology/index.js";
+import type { TerminologyConcept } from "../terminology/types.js";
 import { terminology } from "../services/clinical.js";
+import { FIELD_VALUE_SETS as LOCAL_REFERENCE_FIELD_VALUE_SETS, LOINC_SYSTEM, SNOMED_SYSTEM, UCUM_SYSTEM } from "./local-reference.js";
+import { FIELD_VALUE_SETS as SYNTHETIC_FIELD_VALUE_SETS } from "./synthetic.js";
 import { AppError, ValidationError } from "../lib/errors.js";
 import { requireAuth } from "../auth/middleware.js";
 import type { AppEnv } from "../types.js";
-import { FIELD_VALUE_SETS, LOINC_SYSTEM, SNOMED_SYSTEM, UCUM_SYSTEM } from "./synthetic.js";
 
 export const terminologyRoutes = new Hono<AppEnv>();
+
+function fieldValueSet(c: Context<AppEnv>, field: string): string | undefined {
+  const config = c.get("deps").config;
+  const map = config.terminologyMode === "synthetic" ? SYNTHETIC_FIELD_VALUE_SETS : LOCAL_REFERENCE_FIELD_VALUE_SETS;
+  return map[field];
+}
+
+function fieldValueSets(c: Context<AppEnv>): ReadonlyMap<string, string> {
+  const config = c.get("deps").config;
+  const map = config.terminologyMode === "synthetic" ? SYNTHETIC_FIELD_VALUE_SETS : LOCAL_REFERENCE_FIELD_VALUE_SETS;
+  return new Map(Object.entries(map));
+}
 
 const FHIR_CONTENT = "application/fhir+json; charset=utf-8";
 
@@ -65,38 +80,56 @@ function requireSession(c: Context<AppEnv>) {
 
 terminologyRoutes.get("/terminology/fhir/r4/metadata", (c) => {
   const config = c.get("deps").config;
+  const terminology = createTerminology(config);
+  const releases = terminology.status.releases;
+  const productionCodeSystems: Array<{ uri: string; version: string; source: string }> = [];
+  for (const release of releases) {
+    if (release.source === "configured-provider") {
+      productionCodeSystems.push({ uri: release.system, version: release.version, source: release.source });
+    }
+  }
+  const syntheticCodeSystems: Array<{ uri: string; version: string; source: string }> = [];
+  for (const release of releases) {
+    if (release.source === "local-reference-catalogue") {
+      syntheticCodeSystems.push({ uri: release.system, version: release.version, source: release.source });
+    }
+  }
+  const codeSystems = [
+    ...productionCodeSystems.map((cs) => ({ uri: cs.uri, version: cs.version, content: "fragment", subsumption: false, extension: [{ url: "https://medveris.example/fhir/StructureDefinition/terminology-source", valueString: cs.source }] })),
+    ...syntheticCodeSystems.map((cs) => ({ uri: cs.uri, version: cs.version, content: "fragment", subsumption: false, extension: [{ url: "https://medveris.example/fhir/StructureDefinition/terminology-source", valueString: cs.source }] })),
+  ];
   return fhir(c, {
     resourceType: "TerminologyCapabilities",
     id: "medveris-m1-terminology",
     url: "https://medveris.example/fhir/TerminologyCapabilities/medveris-m1-terminology",
-    name: "MedverisSyntheticTerminology",
-    title: config.terminologyMode === "synthetic"
-      ? "Synthetic development terminology (not for production)"
-      : config.terminologyMode === "unavailable" ? "Terminology service not configured" : "Configured production terminology adapter",
-    status: "draft",
-    experimental: true,
-    date: "2026-10-25",
+    name: config.terminologyMode === "synthetic" ? "MedverisSyntheticTerminology" : "MedverisTerminologyFacade",
+    title: terminology.status.label,
+    status: terminology.status.connected && terminology.status.mode === "production" ? "active" : "draft",
+    experimental: terminology.status.mode !== "production" || !terminology.status.connected,
+    date: new Date().toISOString(),
     kind: "instance",
     software: { name: "Medveris Terminology Facade", version: "0.1.0" },
     implementation: {
       description:
-        config.terminologyMode === "synthetic"
-          ? "Synthetic fixtures for local development and automated tests. They are not production SNOMED CT or LOINC content."
-          : config.terminologyMode === "unavailable"
+        terminology.status.mode === "synthetic"
+          ? "Synthetic fixtures for local development and automated tests. They are not production SNOMED CT or LOINC content and are labelled as local reference catalogues."
+          : terminology.status.mode === "unavailable"
           ? "No licensed terminology service is configured; every terminology operation returns 503 dependency_unavailable."
-          : "Production adapter boundary. Supported operations depend on the configured licensed terminology service.",
+          : terminology.status.connected
+            ? `Production adapter connected to ${terminology.status.providerHost} (provider version ${terminology.status.providerVersion}); supported operations depend on the configured licensed terminology service and approved value sets/maps.`
+            : `Production terminology adapter configured for ${terminology.status.providerHost} but a live connection has not been verified; operations return 503 until the provider is reachable.`,
       url: "/terminology/fhir/r4",
     },
     lockedDate: false,
-    codeSystem: [
-      { uri: SNOMED_SYSTEM, version: config.snomedEditionUri ?? "synthetic", content: "fragment", subsumption: false },
-      { uri: LOINC_SYSTEM, version: config.loincRelease ?? "synthetic", content: "fragment", subsumption: false },
+    codeSystem: codeSystems.length ? codeSystems : [
+      { uri: SNOMED_SYSTEM, version: "synthetic", content: "fragment", subsumption: false },
+      { uri: LOINC_SYSTEM, version: "synthetic", content: "fragment", subsumption: false },
       { uri: UCUM_SYSTEM, version: "synthetic", content: "fragment", subsumption: false },
     ],
     expansion: { parameter: [{ name: "filter" }, { name: "count" }, { name: "offset" }, { name: "activeOnly" }] },
     validateCode: { translations: true },
     translation: { needsMap: true },
-    valueSet: Object.entries(FIELD_VALUE_SETS).map(([field, canonical]) => ({
+    valueSet: Array.from(fieldValueSets(c).entries()).map(([field, canonical]) => ({
       url: canonical,
       version: "1.0.0",
       documentation: `Contextual value set for ${field}`,
@@ -122,7 +155,7 @@ terminologyRoutes.get("/terminology/fhir/r4/CodeSystem/$lookup", async (c) => {
       { name: "active", valueBoolean: concept.active },
       { name: "system", valueString: concept.system },
       { name: "code", valueString: concept.code },
-      { name: "designation", part: concept.synonyms.map((value) => ({ name: "designation", part: [{ name: "value", valueString: value }] })) },
+      { name: "designation", part: concept.synonyms.map((value: string) => ({ name: "designation", part: [{ name: "value", valueString: value }] })) },
     ],
   });
 });
@@ -212,7 +245,7 @@ async function expandResponse(c: Context<AppEnv>) {
         timestamp: new Date().toISOString(),
         total: expanded.total,
         offset,
-        contains: expanded.concepts.map((concept) => ({
+        contains: expanded.concepts.map((concept: TerminologyConcept) => ({
           system: concept.system,
           version: concept.version,
           code: concept.code,
@@ -295,15 +328,34 @@ terminologyRoutes.get("/api/v1/terminology/search", async (c) => {
   const field = c.req.query("field") ?? "";
   const query = c.req.query("q") ?? "";
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 20), 1), 50);
-  if (!FIELD_VALUE_SETS[field]) throw new AppError(400, "invalid_field", "Unsupported contextual terminology field");
+  const valueSet = fieldValueSet(c, field);
+  if (!valueSet) throw new AppError(400, "invalid_field", "Unsupported contextual terminology field");
   if (query.length > 100) throw new ValidationError("Search text is too long");
   const adapter = terminology(c);
   const concepts = await adapter.search(field, query, limit);
   return c.json({
     field,
-    valueSet: FIELD_VALUE_SETS[field],
+    valueSet,
     terminologyMode: adapter.mode,
     label: adapter.label,
     concepts,
   });
+});
+
+terminologyRoutes.get("/api/v1/terminology/fields", async (c) => {
+  requireSession(c);
+  return c.json({ fields: Array.from(fieldValueSets(c).keys()), mode: createTerminology(c.get("deps").config).mode });
+});
+
+terminologyRoutes.get("/api/v1/terminology/autocomplete", async (c) => {
+  requireSession(c);
+  const field = c.req.query("field") ?? "";
+  const query = c.req.query("q") ?? "";
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 10), 1), 20);
+  const valueSet = fieldValueSet(c, field);
+  if (!valueSet) throw new AppError(400, "invalid_field", "Unsupported contextual terminology field");
+  if (query.length > 100) throw new ValidationError("Autocomplete text is too long");
+  const adapter = terminology(c);
+  const concepts = await adapter.search(field, query, limit);
+  return c.json({ field, valueSet, terminologyMode: adapter.mode, label: adapter.label, suggestions: concepts });
 });

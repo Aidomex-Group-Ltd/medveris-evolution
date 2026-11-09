@@ -2,6 +2,7 @@ import type {
   ConceptMapDefinition,
   TerminologyAdapter,
   TerminologyConcept,
+  TerminologyStatus,
   TranslateInput,
   ValueSetDefinition,
   ValidateCodeResult,
@@ -243,4 +244,25 @@ export class SyntheticTerminologyAdapter implements TerminologyAdapter {
     const expanded = await this.expand({ valueSet: canonical, filter: query, count: limit, offset: 0, activeOnly: true });
     return expanded.concepts;
   }
+
+  async verifyConnection(): Promise<void> {
+    // Synthetic terminology is stocked locally; there is no external provider to probe, so the
+    // status report stays connected=false and the catalogue remains labeled as development-only.
+  }
+
+  readonly status: TerminologyStatus = {
+    mode: "synthetic",
+    label: SYNTHETIC_LABEL,
+    connected: false,
+    providerHost: null,
+    providerVersion: null,
+    lastVerifiedAt: null,
+    releases: [
+      { system: SNOMED_SYSTEM, version: SNOMED_SYNTHETIC_VERSION, source: "local-reference-catalogue" },
+      { system: LOINC_SYSTEM, version: LOINC_SYNTHETIC_VERSION, source: "local-reference-catalogue" },
+      { system: UCUM_SYSTEM, version: UCUM_SYNTHETIC_VERSION, source: "local-reference-catalogue" },
+      { system: LOCAL_LAB_SYSTEM, version: "1.0.0", source: "local-reference-catalogue" },
+      { system: "https://medveris.example/synthetic-terminology", version: "1.0.0", source: "local-reference-catalogue" },
+    ],
+  };
 }

@@ -60,9 +60,25 @@ export interface ValidateCodeResult {
   valueSetVersion?: string;
 }
 
-export interface TerminologyAdapter {
-  readonly mode: "synthetic" | "production" | "unavailable";
+export interface TerminologyStatus {
+  readonly mode: TerminologyAdapter["mode"];
   readonly label: string;
+  /** For the production adapter, whether a live connection to the configured provider has been verified. */
+  readonly connected: boolean;
+  /** For the production adapter, the provider host the adapter is configured to call. */
+  readonly providerHost: string | null;
+  /** For the production adapter, the provider API version observed during the last successful verification, if any. */
+  readonly providerVersion: string | null;
+  /** For the production adapter, when the connection was last successfully verified; null before any successful verification. */
+  readonly lastVerifiedAt: string | null;
+  /** For the production adapter, the canonical terminology releases the adapter is configured to use. Empty for the production adapter without a configured provider; populated explicitly for local reference catalogues only. */
+  readonly releases: Array<{ system: string; version: string; source: "configured-provider" | "local-reference-catalogue" }>;
+}
+
+export interface TerminologyAdapter {
+  readonly mode: "synthetic" | "production" | "local-reference" | "unavailable";
+  readonly label: string;
+  readonly status: TerminologyStatus;
   lookup(system: string, code: string, version?: string): Promise<TerminologyConcept | null>;
   validateCode(input: {
     system: string;
@@ -86,4 +102,7 @@ export interface TerminologyAdapter {
     match?: { toCode: string; toDisplay: string; equivalence: string; specimen?: string; method?: string; unit?: string };
   }>;
   search(field: string, query: string, limit: number): Promise<TerminologyConcept[]>;
+  /** An adapter-specific reachability/connectivity probe, used only for status and operator-initiated
+   * verification. It must not modify clinical data and must be safe to call infrequently. */
+  verifyConnection(): Promise<void>;
 }

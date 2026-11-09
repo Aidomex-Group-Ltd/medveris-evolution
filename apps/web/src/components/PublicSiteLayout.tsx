@@ -5,6 +5,7 @@ import { COMPANY } from "../content/company";
 
 const links = [
   { to: "/about", label: "About us" },
+  { to: "/pricing", label: "Pricing" },
   { to: "/help", label: "Help & support" },
   { to: "/contacts", label: "Contacts" },
 ];
@@ -44,6 +45,7 @@ export function SiteFooter() {
       </div>
       <nav aria-label="Company">
         <Link to="/about">About us</Link>
+        <Link to="/pricing">Pricing</Link>
         <Link to="/help">Help &amp; support</Link>
         <Link to="/contacts">Contacts</Link>
         <Link to="/terms">Terms of Service</Link>

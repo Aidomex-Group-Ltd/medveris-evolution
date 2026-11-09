@@ -15,12 +15,12 @@ export function AIPage() {
           <Table head={["Patient", "Task", "Provider / model", "Status", "Created", "Disclaimer"]} caption="AI job history">
             {jobs.data.jobs.map((job) => (
               <tr key={job.id}>
-                <td>{job.givenName} {job.familyName}<div className="mv-small mv-muted mv-id">{job.publicId}</div></td>
-                <td>{job.taskType}<div className="mv-small mv-muted mv-id">{job.requestDigest.slice(0, 16)}…</div></td>
-                <td>{job.provider}{job.model ? ` / ${job.model}` : ""}</td>
-                <td><Badge tone={job.status === "failed" ? "danger" : job.status === "completed" ? "success" : "neutral"}>{job.status}</Badge></td>
-                <td className="mv-small">{formatDateTime(job.createdAt)}<div className="mv-muted">{job.createdByName}</div></td>
-                <td className="mv-small">{job.disclaimer}</td>
+                <td data-label="Patient">{job.givenName} {job.familyName}<div className="mv-small mv-muted mv-id">{job.publicId}</div></td>
+                <td data-label="Task">{job.taskType}<div className="mv-small mv-muted mv-id">{job.requestDigest.slice(0, 16)}…</div></td>
+                <td data-label="Provider / model">{job.provider}{job.model ? ` / ${job.model}` : ""}</td>
+                <td data-label="Status"><Badge tone={job.status === "failed" ? "danger" : job.status === "completed" ? "success" : "neutral"}>{job.status}</Badge></td>
+                <td data-label="Created" className="mv-small">{formatDateTime(job.createdAt)}<div className="mv-muted">{job.createdByName}</div></td>
+                <td data-label="Disclaimer" className="mv-small">{job.disclaimer}</td>
               </tr>
             ))}
           </Table>

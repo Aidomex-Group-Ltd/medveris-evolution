@@ -81,11 +81,11 @@ export function QueuesPage() {
           <Table head={["Patient", "Priority", "Status", "Queued", "Encounter"]} caption="Active queue entries">
             {entries.data.entries.map((entry) => (
               <tr key={entry.id}>
-                <td><strong>{entry.givenName} {entry.familyName}</strong><div className="mv-small mv-muted mv-id">{entry.publicId}</div></td>
-                <td><Badge tone={entry.priority === "emergency" ? "danger" : entry.priority === "urgent" ? "warning" : "neutral"}>{entry.priority}</Badge></td>
-                <td>{entry.status}</td>
-                <td>{new Date(entry.createdAt).toLocaleString()}</td>
-                <td>{entry.encounterState ?? "not started"}</td>
+                <td data-label="Patient"><strong>{entry.givenName} {entry.familyName}</strong><div className="mv-small mv-muted mv-id">{entry.publicId}</div></td>
+                <td data-label="Priority"><Badge tone={entry.priority === "emergency" ? "danger" : entry.priority === "urgent" ? "warning" : "neutral"}>{entry.priority}</Badge></td>
+                <td data-label="Status">{entry.status}</td>
+                <td data-label="Queued">{new Date(entry.createdAt).toLocaleString()}</td>
+                <td data-label="Encounter">{entry.encounterState ?? "not started"}</td>
               </tr>
             ))}
           </Table>

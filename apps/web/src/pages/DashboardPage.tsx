@@ -281,11 +281,11 @@ function PatientFlowCard() {
         <Table head={["Department", "Waiting", "In progress", "Done today", ""]} caption="Department work queues">
           {rows.map((row) => (
             <tr key={row.department}>
-              <td><strong>{departmentLabel(row.department)}</strong>{row.emergency ? <> <Badge tone="danger">{row.emergency} emergency</Badge></> : row.urgent ? <> <Badge tone="warning">{row.urgent} urgent</Badge></> : null}</td>
-              <td>{row.requested + row.accepted}</td>
-              <td>{row.inProgress}</td>
-              <td>{row.completedToday}</td>
-              <td>{row.canWork ? <Link to={`/work-queues/${row.department}`}>Open queue</Link> : null}</td>
+              <td data-label="Department"><strong>{departmentLabel(row.department)}</strong>{row.emergency ? <> <Badge tone="danger">{row.emergency} emergency</Badge></> : row.urgent ? <> <Badge tone="warning">{row.urgent} urgent</Badge></> : null}</td>
+              <td data-label="Waiting">{row.requested + row.accepted}</td>
+              <td data-label="In progress">{row.inProgress}</td>
+              <td data-label="Done today">{row.completedToday}</td>
+              <td data-label="">{row.canWork ? <Link to={`/work-queues/${row.department}`}>Open queue</Link> : null}</td>
             </tr>
           ))}
         </Table>

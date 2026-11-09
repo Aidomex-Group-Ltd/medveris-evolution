@@ -175,7 +175,7 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
     baselineReason: "No validated model, intended-use statement or clinical evaluation is approved",
     requiredConfiguration: [
       "model provider credentials",
-      "for the live Ollama path: AI_BASE_URL (HTTPS outside local development), AI_TOKEN (Worker secret) and AI_MODEL",
+      "for the live Ollama path: AI_BASE_URL (HTTPS outside local development), AI_MODEL, and Ollama HTTP Basic Auth credentials (OLLAMA_USERNAME and OLLAMA_PASSWORD as Worker secrets)",
       "for the sandbox path: OLLAMA_URL and OLLAMA_MODEL (local development only; refused in production)",
     ],
     prerequisites: ["provider adapter implementation", "risk assessment and privacy review", "clinically approved evaluation", "human-oversight workflow", "verified connection to the configured model provider"],
@@ -303,8 +303,11 @@ export function aiConfigProblems(config: AppConfig): string[] {
   if (config.appEnv === "production" && !config.ai.baseUrl.startsWith("https://")) {
     problems.push("AI_BASE_URL must use HTTPS in production");
   }
-  if (!config.ai.token) {
-    problems.push("AI_TOKEN is not set for the live AI provider");
+  if (!config.ai.ollamaUsername || !config.ai.ollamaPassword) {
+    problems.push("OLLAMA_USERNAME and OLLAMA_PASSWORD are required for the live Ollama path; AI_TOKEN alone is not sufficient");
+  }
+  if (config.ai.token) {
+    problems.push("AI_TOKEN is set but the live Ollama path uses Ollama HTTP Basic Auth (OLLAMA_USERNAME / OLLAMA_PASSWORD); remove AI_TOKEN or select a different AI_MODE/provider");
   }
   if (!config.aiModel.model) {
     problems.push("AI_MODEL is not set for the live AI provider");
