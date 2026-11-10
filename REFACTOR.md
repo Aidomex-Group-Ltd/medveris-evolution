@@ -340,3 +340,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: behavior is stricter for non-care mutations under restricted subscriptions (intended); allowlist may need refinement per facility-policy (e.g. patient-billing vs facility-subscription admin writes) with explicit tests. Monitor for unintended blocks in operations/finance workflows and adjust narrowly with audit-backed policy.
 - External dependencies/blockers: payment verification/callback behavior depends on configured providers; full lifecycle verification requires integration/e2e in configured environments.
 - Status: partial/incremental (centralized mutating-write enforcement added; comprehensive route classification, policy config, and automated enforcement tests to follow).
+
+### Execution record: Prompt 2.1 — RBAC model consolidation & security planning baseline
+- Date: 2026-11-10
+- Scope/files reviewed: `packages/authz/**`, `apps/api/src/auth/**`, `lib/{audit,scope,platform-roles}.ts`, routes including admin/consent/billing/finance/clinical, RLS context usage.
+- Changes made: added `docs/refactor/SECURITY_RBAC_PLAN.md` documenting current controls, gaps, candidate high-risk operations for dual authorization, incremental implementation approach, and verification requirements.
+- DB migrations (if any): none.
+- Tests/checks run: N/A (planning/documentation only).
+- Behavioral verification: N/A.
+- Risks/breaking changes/mitigations: none; informs subsequent enforcement work.
+- External dependencies/blockers: facility policy decisions for dual-approval scope, clinical governance/privacy review.
+- Status: partial (planning baseline complete; canonical granular permission model and enforcement rollout pending).
