@@ -396,7 +396,11 @@ describe("M2/M3 department workflows", () => {
     let detail = await expectOk(await call(finance, `/api/v1/invoices/${invoiceId}`));
     expect(detail.invoice.status).toBe("paid");
     expect(detail.payments).toHaveLength(1);
-    await expectOk(await call(finance, `/api/v1/payments/${payment.payment.id}/reverse`, {
+    // Separation of duties: the user who recorded the payment cannot reverse it; a different authorized user must.
+    expect((await call(finance, `/api/v1/payments/${payment.payment.id}/reverse`, {
+      method: "POST", body: JSON.stringify({ reason: "Synthetic self-reversal attempt" }),
+    })).status).toBe(403);
+    await expectOk(await call(admin, `/api/v1/payments/${payment.payment.id}/reverse`, {
       method: "POST", body: JSON.stringify({ reason: "Synthetic test reversal with reason" }),
     }));
     detail = await expectOk(await call(finance, `/api/v1/invoices/${invoiceId}`));
