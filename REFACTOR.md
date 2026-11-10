@@ -384,3 +384,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: global responsive changes can affect existing layouts; mitigated by additive media rules and preserving desktop behavior. Some tables remain unlabeled until per-page `data-label`/component refactors (Phase 4.3).
 - External dependencies/blockers: none.
 - Status: partial (foundations applied; shell and module-by-module retrofit pending).
+
+### Execution record: Prompt 4.1 — Responsive primitives enhancement (tables/labels)
+- Date: 2026-11-10
+- Scope/files reviewed: `packages/ui/src/primitives.tsx`.
+- Changes made: `Table` now auto-derives and injects `data-label` attributes on body cells from headers in responsive mode, enabling consistent mobile stacked presentation without requiring every call site to be manually updated immediately.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: type-checked; preserves existing table API and desktop rendering.
+- Risks/breaking changes/mitigations: label text derived from header nodes may be imperfect for complex headers; can be overridden per cell later. No contract break expected.
+- External dependencies/blockers: none.
+- Status: partial (foundational primitive improved; module-level UI verification remains).

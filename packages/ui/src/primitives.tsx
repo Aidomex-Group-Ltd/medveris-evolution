@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TdHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 
@@ -393,13 +393,49 @@ export function DataList({ items }: { items: { label: string; value: ReactNode }
   );
 }
 
+function labelText(value: ReactNode): string | undefined {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (Array.isArray(value)) {
+    const parts = value.map(labelText).filter(Boolean);
+    return parts.length ? parts.join(" ") : undefined;
+  }
+  if (isValidElement<{ children?: ReactNode }>(value)) return labelText(value.props.children);
+  return undefined;
+}
+
+function withTableLabels(head: ReactNode[], node: ReactNode): ReactNode {
+  return Children.map(node, (child) => {
+    if (!isValidElement(child)) return child;
+    const element = child as ReactElement<{ children?: ReactNode } & TdHTMLAttributes<HTMLTableCellElement>>;
+    if (element.type === "tr") {
+      let index = 0;
+      const cells = Children.map(element.props.children, (cell) => {
+        if (!isValidElement(cell)) return cell;
+        const cellEl = cell as ReactElement<{ children?: ReactNode; "data-label"?: string } & TdHTMLAttributes<HTMLTableCellElement>>;
+        if (cellEl.type === "td" || cellEl.type === "th") {
+          const label = cellEl.props["data-label"] ?? labelText(head[index]);
+          index += 1;
+          return label ? cloneElement(cellEl, { "data-label": label }) : cellEl;
+        }
+        return cellEl;
+      });
+      return cloneElement(element, undefined, cells);
+    }
+    if (element.props.children != null) {
+      return cloneElement(element, undefined, withTableLabels(head, element.props.children));
+    }
+    return element;
+  });
+}
+
 export function Table({ head, children, caption, responsive = true }: { head: ReactNode[]; children: ReactNode; caption?: string; responsive?: boolean }) {
+  const labeledChildren = responsive ? withTableLabels(head, children) : children;
   return (
     <div className={`mv-table-wrap${responsive ? " mv-table-wrap--responsive" : ""}`}>
       <table className="mv-table">
         {caption ? <caption>{caption}</caption> : null}
         <thead><tr>{head.map((cell, index) => <th key={index} scope="col">{cell}</th>)}</tr></thead>
-        <tbody>{children}</tbody>
+        <tbody>{labeledChildren}</tbody>
       </table>
     </div>
   );
