@@ -239,14 +239,37 @@ describe("organizations, sites and explicit linking", () => {
   });
 
   it("enforces RLS isolation for organization_stock_transfers rows", async () => {
-    const dispatched = await h.sql`select id from organization_stock_transfers where source_tenant_id = ${hospitalId} or destination_tenant_id = ${hospitalId} limit 1`;
-    if (!dispatched[0]) return; // transfer state not retained in this run; isolation covered by route-level checks
+    const dispatched = await h.sql`
+      select id
+      from organization_stock_transfers
+      where source_tenant_id = ${hospitalId}
+         or destination_tenant_id = ${hospitalId}
+      limit 1
+    `;
+
+    const dispatchedTransfer = dispatched[0];
+    if (!dispatchedTransfer) return; // transfer state not retained in this run; isolation covered by route-level checks
+
     const otherTenant = "22222222-2222-4222-8222-222222222222";
+
     const visible = await h.sql.begin(async (tx) => {
-      await tx`select set_config('app.tenant_id', ${otherTenant}, true), set_config('app.roles', 'clinician,clinical_staff', true), set_config('app.user_id', ${"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}, true)`;
-      return tx`select count(*)::int as n from organization_stock_transfers where id = ${dispatched[0].id}`;
+      await tx`
+        select
+          set_config('app.tenant_id', ${otherTenant}, true),
+          set_config('app.roles', 'clinician,clinical_staff', true),
+          set_config('app.user_id', ${"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}, true)
+      `;
+
+      return tx`
+        select count(*)::int as n
+        from organization_stock_transfers
+        where id = ${dispatchedTransfer.id}
+      `;
     });
-    expect(Number(visible[0].n)).toBe(0);
+
+    const visibleTransfer = visible[0];
+    expect(visibleTransfer).toBeDefined();
+    expect(Number(visibleTransfer?.n)).toBe(0);
   });
 
   it("holds a possible duplicate site for an explicit resolution before approval", async () => {
