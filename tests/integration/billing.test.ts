@@ -1,3 +1,5 @@
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { totpCode } from "@medveris/auth";
 import { createSql } from "@medveris/db";
@@ -31,6 +33,16 @@ async function get(session: Session, path: string, status = 200): Promise<any> {
 
 async function patch(session: Session, path: string, body: unknown, status = 200): Promise<any> {
   return h.expectOk(await h.call(session, path, { method: "PATCH", body: JSON.stringify(body) }), status);
+}
+
+async function invitedToken(email: string): Promise<string> {
+  const files = (await readdir(h.mailDir).catch(() => [])).filter((name) => name.includes(email)).sort().reverse();
+  for (const name of files) {
+    const text = await readFile(join(h.mailDir, name), "utf8");
+    const match = /\/accept-invitation\?token=([A-Za-z0-9_-]+)/.exec(text);
+    if (match) return match[1]!;
+  }
+  throw new Error(`no invitation email for ${email}`);
 }
 
 let owner: Session;
@@ -250,15 +262,34 @@ describe("price governance, refunds and voiding", () => {
   });
 
   it("keeps payments and refunds in the bill's currency without changing the original payment", async () => {
+    // Separation of duties: a different finance user than the one who recorded the payment must perform the refund.
+    const reviewerEmail = `billing.finance.${run}@example.test`;
+    await h.post(owner, "/api/v1/admin/invitations", { email: reviewerEmail, roles: ["finance"] }, 201);
+    const reviewerToken = await invitedToken(reviewerEmail);
+    const regRes = await anonymous("/api/v1/auth/invitations/register", {
+      token: reviewerToken, givenName: "Synthetic", familyName: "Finance", password: PASSWORD, legal: await h.legalAcceptance(),
+    });
+    const reg = await h.expectOk(regRes, 201);
+    const reviewerFinance: Session = { cookie: cookieFrom(regRes), csrf: reg.csrfToken as string };
+    await h.post(reviewerFinance, "/api/v1/auth/mfa/enroll/start", {}, 200).then(async (started) => {
+      await h.post(reviewerFinance, "/api/v1/auth/mfa/enroll/verify", { code: await totpCode(started.secret) }, 200);
+    });
+    await h.expectOk(await h.call(reviewerFinance, "/api/v1/auth/invitations/accept", { method: "POST", body: JSON.stringify({ token: reviewerToken }) }), 200);
+
     const invoice = await h.post(owner, "/api/v1/invoices", {
       patientId, items: [{ serviceId: usdItemId, description: "USD consultation", quantity: 2 }],
     }, 201);
     const paid = await h.post(owner, `/api/v1/invoices/${invoice.invoice.id}/cash`, { amount: 40, amountTendered: 50 }, 201, `usd-cash-${run}`);
     expect(paid.payment.change).toBe(10);
-    const refund = await h.post(owner, `/api/v1/payments/${paid.payment.id}/refunds`, {
+    const selfRefund = await h.call(owner, `/api/v1/payments/${paid.payment.id}/refunds`, {
+      method: "POST", body: JSON.stringify({ amount: 5.5, method: "cash", reason: "Synthetic partial refund" }),
+    });
+    expect(selfRefund.status).toBe(403);
+
+    const refund = await h.post(reviewerFinance, `/api/v1/payments/${paid.payment.id}/refunds`, {
       amount: 5.5, method: "cash", reason: "Synthetic partial refund",
     }, 201, `usd-refund-${run}`);
-    const replay = await h.post(owner, `/api/v1/payments/${paid.payment.id}/refunds`, {
+    const replay = await h.post(reviewerFinance, `/api/v1/payments/${paid.payment.id}/refunds`, {
       amount: 5.5, method: "cash", reason: "Synthetic partial refund",
     }, 200, `usd-refund-${run}`);
     expect(replay.refund.id).toBe(refund.refund.id);
@@ -268,28 +299,42 @@ describe("price governance, refunds and voiding", () => {
     expect(Number(detail.payments[0].amount)).toBe(40);
     expect(Number(detail.refunds[0].amount)).toBe(5.5);
     expect(detail.refunds[0]).toMatchObject({ currency: "USD", reason: "Synthetic partial refund" });
-    const over = await h.call(owner, `/api/v1/payments/${paid.payment.id}/refunds`, {
+    const over = await h.call(reviewerFinance, `/api/v1/payments/${paid.payment.id}/refunds`, {
       method: "POST", body: JSON.stringify({ amount: 40, method: "cash", reason: "Synthetic over refund" }),
     });
     expect(over.status).toBe(422);
   });
 
   it("voids an unpaid bill, releases its lines and refuses further payments", async () => {
+    // Separation of duties: a different finance user than the issuer must void an unpaid bill.
+    const voiderEmail = `billing.voider.${run}@example.test`;
+    await h.post(owner, "/api/v1/admin/invitations", { email: voiderEmail, roles: ["finance"] }, 201);
+    const voiderToken = await invitedToken(voiderEmail);
+    const regRes = await anonymous("/api/v1/auth/invitations/register", {
+      token: voiderToken, givenName: "Synthetic", familyName: "Voider", password: PASSWORD, legal: await h.legalAcceptance(),
+    });
+    const reg = await h.expectOk(regRes, 201);
+    const voider: Session = { cookie: cookieFrom(regRes), csrf: reg.csrfToken as string };
+    const started = await h.post(voider, "/api/v1/auth/mfa/enroll/start", {}, 200);
+    await h.post(voider, "/api/v1/auth/mfa/enroll/verify", { code: await totpCode(started.secret) }, 200);
+    await h.expectOk(await h.call(voider, "/api/v1/auth/invitations/accept", { method: "POST", body: JSON.stringify({ token: voiderToken }) }), 200);
+
     const invoice = await h.post(owner, "/api/v1/invoices", {
       patientId, items: [{ description: "Manual charge to void", quantity: 1, unitPrice: 700 }],
     }, 201);
     expect((await h.call(owner, `/api/v1/invoices/${invoice.invoice.id}/cash`, { method: "POST", body: JSON.stringify({ amount: 700 }), idempotencyKey: `void-cash-${run}` })).status).toBe(201);
-    expect((await h.call(owner, `/api/v1/invoices/${invoice.invoice.id}/void`, { method: "POST", body: JSON.stringify({ reason: "Synthetic paid bill cannot be voided" }) })).status).toBe(409);
+    expect((await h.call(voider, `/api/v1/invoices/${invoice.invoice.id}/void`, { method: "POST", body: JSON.stringify({ reason: "Synthetic paid bill cannot be voided" }) })).status).toBe(409);
 
     const unpaid = await h.post(owner, "/api/v1/invoices", {
       patientId, items: [{ description: "Manual charge to release", quantity: 1, unitPrice: 700 }],
     }, 201);
-    await h.post(owner, `/api/v1/invoices/${unpaid.invoice.id}/void`, { reason: "Synthetic duplicate bill" }, 200);
+    expect((await h.call(owner, `/api/v1/invoices/${unpaid.invoice.id}/void`, { method: "POST", body: JSON.stringify({ reason: "Synthetic self-void attempt" }) })).status).toBe(403);
+    await h.post(voider, `/api/v1/invoices/${unpaid.invoice.id}/void`, { reason: "Synthetic duplicate bill" }, 200);
     const detail = await get(owner, `/api/v1/invoices/${unpaid.invoice.id}`);
     expect(detail.invoice.status).toBe("void");
     expect(detail.items.every((item: any) => item.releasedAt)).toBe(true);
     expect((await h.call(owner, `/api/v1/invoices/${unpaid.invoice.id}/cash`, { method: "POST", body: JSON.stringify({ amount: 100 }), idempotencyKey: `void-rejected-${run}` })).status).toBe(409);
-    expect((await h.call(owner, `/api/v1/invoices/${unpaid.invoice.id}/void`, { method: "POST", body: JSON.stringify({ reason: "Synthetic second void" }) })).status).toBe(409);
+    expect((await h.call(voider, `/api/v1/invoices/${unpaid.invoice.id}/void`, { method: "POST", body: JSON.stringify({ reason: "Synthetic second void" }) })).status).toBe(409);
   });
 
   it("waives unbilled visit work with a reason instead of losing it", async () => {
