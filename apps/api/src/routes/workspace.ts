@@ -342,7 +342,7 @@ workspaceRoutes.get("/workspace/shared-supply", async (c) => {
   const data = await withStaffActor(c, async (tx) => {
     const link = await liveLink(tx, tenantId);
     if (!hasLiveWorkspaceLink(link as Record<string, unknown> | null) || String((link as any)?.inventoryMode ?? "independent") !== "shared-supply") {
-      throw new ForbiddenError("Shared supply is not available for this workspace");
+      return { sites: [], transfers: [] };
     }
     const sites = await tx`select tenant_id, name, organization_id from app.shared_supply_sites(${tenantId})`;
     const transfers = await tx`
