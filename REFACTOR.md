@@ -472,3 +472,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: billing now occurs only when explicitly configured/enabled; misconfiguration does not fail registration (returns unavailable/not_configured status). Existing facilities default disabled. Requires applying migration and configuring an approved catalog item per facility.
 - External dependencies/blockers: facility-specific fee selection, exemptions/insurance/discount policy UX, and full reporting/reconciliation validation.
 - Status: partial (backend hook/config/migration implemented; UI visibility, exemptions, and end-to-end DB/integration verification pending).
+
+### Execution record: Prompt 5.2 — Registration billing radar/UX visibility and initial integration test (incremental)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/web/src/pages/PatientsPage.tsx`, `apps/web/src/pages/PriceListPage.tsx`, `tests/integration/registration-billing.test.ts`.
+- Changes made: surfaced `registrationBilling` outcome in patient registration and enrollment flows (billed/already-billed/not-configured/unavailable messaging) so reception sees initial charge creation/status; extended billing settings UI to enable/configure default registration/initial consultation charge against approved active catalog items. Added integration test `tests/integration/registration-billing.test.ts` covering configuration, creation on registration, idempotent replay, and single-marker invariant (with cleanup/disable). 
+- DB migrations (if any): none (uses 122).
+- Tests/checks run: `npm run -s typecheck` -> pass. New integration test added but **not executed** in this session (DB/env).
+- Behavioral verification: static UI/API contract review; runtime/integration verification pending.
+- Risks/breaking changes/mitigations: UI depends on backend `registrationBilling` payload (now provided); settings payload now includes registration charge fields (backward-compatible defaults). Test mutates tenant billing settings/catalog in synthetic DB and restores disabled state.
+- External dependencies/blockers: full exemptions/insurance/discount/zero-cost flows, billing-radar/report reconciliation views, and DB-backed CI execution.
+- Status: partial.
