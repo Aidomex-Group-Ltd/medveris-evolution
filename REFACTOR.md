@@ -373,3 +373,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: each area requires careful additive migrations and compatibility; external dependencies documented.
 - External dependencies/blockers: terminology licensing/content, PACS/FHIR partners, payment/regulator integrations, clinical/governance approvals.
 - Status: partial (blueprints complete; implementation pending).
+
+### Execution record: Prompt 4.1 — Responsive design system foundations (incremental implementation)
+- Date: 2026-11-10
+- Scope/files reviewed: `packages/ui/src/styles.css`, `apps/web/src/styles.css`, responsive primitives behavior.
+- Changes made: improved shared responsive foundations - mobile table-wrap now stacks rows/cells full-width with left-aligned content and supports optional `data-label`, dialogs use dynamic viewport height and full-width sheet sizing on small screens, form/grid/row/datalist/card/page-header patterns collapse/stack to full-width on narrow breakpoints, and added universal mobile overflow/stack safeguards in app styles.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: static CSS/structure review; ensures no forced min-width overflow from core grid/form patterns and better small-screen stacking. Full visual verification across all modules/pages still pending.
+- Risks/breaking changes/mitigations: global responsive changes can affect existing layouts; mitigated by additive media rules and preserving desktop behavior. Some tables remain unlabeled until per-page `data-label`/component refactors (Phase 4.3).
+- External dependencies/blockers: none.
+- Status: partial (foundations applied; shell and module-by-module retrofit pending).
