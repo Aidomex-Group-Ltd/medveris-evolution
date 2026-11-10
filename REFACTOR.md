@@ -318,3 +318,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: protocol is guidance; must be enforced in every subsequent migration/change.
 - External dependencies/blockers: environment backup/PITR tooling and approved restore drills/RPO-RTO for non-synthetic environments.
 - Status: completed.
+
+### Execution record: Prompt 1.1 — Establish module boundaries and refactor conventions
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/api/src/{app,routes,services,lib,auth}`, `packages/{domain,authz,contracts,db}`, monolith size hotspots.
+- Changes made: added `docs/refactor/ARCHITECTURE_CONVENTIONS.md` defining target layering, cross-cutting conventions (validation/authz/audit/tx/idempotency/errors/subscription/interoperability), file-size targets, priority extraction seams, and slice refactor workflow.
+- DB migrations (if any): none.
+- Tests/checks run: N/A (documentation only).
+- Behavioral verification: N/A.
+- Risks/breaking changes/mitigations: none; conventions guide future slices.
+- External dependencies/blockers: none.
+- Status: completed.
