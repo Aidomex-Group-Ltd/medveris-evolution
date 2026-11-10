@@ -461,3 +461,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: layout-only.
 - External dependencies/blockers: `ClinicalNotePanel` deeper responsive refactor and cross-device verification pending.
 - Status: partial.
+
+### Execution record: Prompt 5.1 — Registration-to-initial-billing automation (incremental, additive)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/api/src/routes/reception.ts`, `apps/api/src/routes/finance.ts`, `apps/api/src/services/registration-billing.ts`, `packages/contracts/src/index.ts`, `packages/db/migrations/122_registration_initial_billing.sql`, billing/catalog/settings migrations.
+- Changes made: added additive migration `122_registration_initial_billing.sql` (facility setting fields `registration_charge_enabled`, `registration_charge_catalog_id` and idempotent trace table `patient_registration_billing` with unique `(tenant_id, patient_id)`, RLS/grants). Extended billing settings contract/API to configure an approved active price-list item as the default registration/initial consultation charge. Implemented transactional, idempotent `ensureInitialRegistrationBilling` (advisory lock + unique marker) that creates an open invoice/line labeled auto-generated (not service delivery/payment) and emits audit/outbox; safely no-ops when disabled/unconfigured/unavailable. Wired into assisted registration and facility enrollment in `reception.ts` so first facility link can generate a single initial charge and results are returned in API payload.
+- DB migrations (if any): `packages/db/migrations/122_registration_initial_billing.sql` (additive, forward-only).
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: static code review of transactional/idempotent paths and configuration validation; DB-backed/integration and retry-concurrency behavior not executed in this session.
+- Risks/breaking changes/mitigations: billing now occurs only when explicitly configured/enabled; misconfiguration does not fail registration (returns unavailable/not_configured status). Existing facilities default disabled. Requires applying migration and configuring an approved catalog item per facility.
+- External dependencies/blockers: facility-specific fee selection, exemptions/insurance/discount policy UX, and full reporting/reconciliation validation.
+- Status: partial (backend hook/config/migration implemented; UI visibility, exemptions, and end-to-end DB/integration verification pending).

@@ -263,17 +263,32 @@ financeRoutes.put("/billing-settings", async (c) => {
   const settings = await withStaffActor(c, async (tx) => {
     const before = await facilitySettings(tx, tenantId);
     ensureMatch(body.expectedVersion, before.version);
-    const currencies = [...new Set(body.allowedCurrencies)];
+    const currencies = [...new Set(body.allowedCurrencies)] as string[];
+    let registrationChargeCatalogId = body.registrationChargeCatalogId ?? null;
+    if (body.registrationChargeEnabled) {
+      if (!registrationChargeCatalogId) throw new ValidationError("Choose an approved consultation/registration price-list item for the automatic registration charge");
+      const [item] = await tx`
+        select id, name, price, currency, active, price_status from service_catalog
+         where id = ${registrationChargeCatalogId} and tenant_id = ${tenantId}
+      `;
+      if (!item) throw new ValidationError("Selected registration charge item was not found in this facility's price list");
+      if (!item.active || item.priceStatus !== "approved") throw new ValidationError(`"${item.name}" must be active and approved before it can be used for automatic registration billing`);
+      if (!currencies.includes(String(item.currency))) throw new ValidationError(`Registration charge item currency (${item.currency}) must be enabled for this facility`);
+    }
     await tx`
-      insert into facility_billing_settings (tenant_id, allowed_currencies, allow_zero_prices, allow_manual_charges, significant_change_percent, version, updated_by)
-      values (${tenantId}, ${currencies}, ${body.allowZeroPrices}, ${body.allowManualCharges}, ${body.significantChangePercent}, 1, ${auth.user.id})
+      insert into facility_billing_settings (tenant_id, allowed_currencies, allow_zero_prices, allow_manual_charges, significant_change_percent, registration_charge_enabled, registration_charge_catalog_id, version, updated_by)
+      values (${tenantId}, ${currencies}, ${body.allowZeroPrices}, ${body.allowManualCharges}, ${body.significantChangePercent}, ${body.registrationChargeEnabled}, ${registrationChargeCatalogId}, 1, ${auth.user.id})
       on conflict (tenant_id) do update set allowed_currencies = excluded.allowed_currencies, allow_zero_prices = excluded.allow_zero_prices,
         allow_manual_charges = excluded.allow_manual_charges, significant_change_percent = excluded.significant_change_percent,
+        registration_charge_enabled = excluded.registration_charge_enabled, registration_charge_catalog_id = excluded.registration_charge_catalog_id,
         version = facility_billing_settings.version + 1, updated_by = excluded.updated_by, updated_at = now()
     `;
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "facility.billing-settings.update", {
       resourceType: "FacilityBillingSettings", resourceId: tenantId,
-      metadata: { before: { ...before, version: undefined }, after: { allowedCurrencies: currencies, allowZeroPrices: body.allowZeroPrices, allowManualCharges: body.allowManualCharges, significantChangePercent: body.significantChangePercent } },
+      metadata: {
+        before: { ...before, version: undefined },
+        after: { allowedCurrencies: currencies, allowZeroPrices: body.allowZeroPrices, allowManualCharges: body.allowManualCharges, significantChangePercent: body.significantChangePercent, registrationChargeEnabled: body.registrationChargeEnabled, registrationChargeCatalogId },
+      },
     }));
     return facilitySettings(tx, tenantId);
   });
