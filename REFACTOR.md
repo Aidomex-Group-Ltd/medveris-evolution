@@ -395,3 +395,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: label text derived from header nodes may be imperfect for complex headers; can be overridden per cell later. No contract break expected.
 - External dependencies/blockers: none.
 - Status: partial (foundational primitive improved; module-level UI verification remains).
+
+### Execution record: Prompt 4.2/4.3 — Shell and auth/onboarding mobile-first refinements (incremental)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/web/src/components/AppShell.tsx`, `AuthFrame.tsx`, auth pages (`LoginPage`, `RegisterPage`, `InvitationPage`), shell/auth styles.
+- Changes made: added app-level CSS refinements for full-width/left-aligned auth intro and panel stacking on mobile, full-width auth card actions on small screens, and mobile-safe search/sheet viewport sizing to reduce clipping/overflow.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: style/structure review; no route or API behavior changes. Comprehensive per-page viewport and interaction verification remains pending.
+- Risks/breaking changes/mitigations: broader button width rules scoped to auth cards/small screens to limit regressions.
+- External dependencies/blockers: none.
+- Status: partial (targeted improvements applied; full module-by-module retrofit and manual/device checks pending).

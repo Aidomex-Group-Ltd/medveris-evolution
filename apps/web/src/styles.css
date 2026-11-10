@@ -175,3 +175,59 @@ details > summary:hover { text-decoration: underline; }
     padding: 16px;
   }
 }
+
+/* Phase 4.2/4.3 incremental: auth and shell mobile-first refinements */
+.mv-auth__card,
+.mv-auth__intro,
+.mv-auth__intro > div,
+.mv-auth__intro h1,
+.mv-auth__intro p,
+.mv-auth__features,
+.mv-auth__features li {
+  max-width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+.mv-auth__intro h1 {
+  max-width: 100%;
+}
+@media (max-width: 900px) {
+  .mv-auth__intro {
+    min-height: 0;
+    justify-content: flex-start;
+  }
+  .mv-auth__panel {
+    place-items: stretch;
+  }
+  .mv-auth__card,
+  .mv-auth__card--wide {
+    width: 100%;
+  }
+}
+@media (max-width: 600px) {
+  .mv-auth__panel {
+    padding: 12px;
+  }
+  .mv-auth__card .mv-stack > .mv-button,
+  .mv-auth__card form > .mv-button,
+  .mv-auth__card .mv-row > .mv-button {
+    width: 100%;
+  }
+  .mv-topbar__left,
+  .mv-topbar__tools {
+    min-width: 0;
+  }
+  .mv-search__panel {
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    border-radius: 0;
+  }
+  .mv-search__results {
+    max-height: calc(100dvh - 140px);
+  }
+  .mv-sheet__panel {
+    width: 100%;
+  }
+}
