@@ -27,8 +27,9 @@ const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 /**
  * Paths that must remain available while a facility subscription is restricted:
  * - auth/session, subscription recovery/payment, public callbacks, legal and health checks
- * - core patient-care and emergency documentation continuity (facility subscription must not
- *   compromise patient records or emergency-care documentation)
+ * - core patient-care, emergency documentation, and patient-billing/collection continuity
+ *   (facility subscription must not compromise patient records or emergency-care documentation;
+ *   billing patients and paying Medveris remain possible)
  * Read-only access remains available because only mutating operations are restricted.
  */
 const RESTRICTED_MUTATION_ALLOWLIST: RegExp[] = [
@@ -48,6 +49,7 @@ const RESTRICTED_MUTATION_ALLOWLIST: RegExp[] = [
   /^\/api\/v1\/radiology(?:\/|$)/,
   /^\/api\/v1\/pharmacy(?:\/|$)/,
   /^\/api\/v1\/pharmacy-pos(?:\/|$)/,
+  /^\/api\/v1\/finance(?:\/|$)/,
   /^\/api\/v1\/inpatient(?:\/|$)/,
   /^\/api\/v1\/theatre(?:\/|$)/,
   /^\/api\/v1\/maternity(?:\/|$)/,
@@ -55,6 +57,8 @@ const RESTRICTED_MUTATION_ALLOWLIST: RegExp[] = [
   /^\/api\/v1\/devices(?:\/|$)/,
   /^\/api\/v1\/telehealth(?:\/|$)/,
   /^\/api\/v1\/programmes(?:\/|$)/,
+  /^\/api\/v1\/operations(?:\/|$)/,
+  /^\/api\/v1\/patient-merges(?:\/|$)/,
 ];
 
 function isAllowlistedWhileRestricted(path: string): boolean {
