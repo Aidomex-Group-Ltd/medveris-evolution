@@ -42,14 +42,16 @@ function fallbackMessage(status: number): string {
   return `Request failed (${status})`;
 }
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+
 export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<T> {
   const method = options.method ?? "GET";
   const headers: Record<string, string> = { accept: "application/json", ...(options.headers ?? {}) };
   if (options.body !== undefined) headers["content-type"] = "application/json";
   if (csrfToken && !["GET", "HEAD", "OPTIONS"].includes(method)) headers["x-medveris-csrf"] = csrfToken;
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(`${API_BASE}/api/v1${path}`, {
     method,
-    credentials: "same-origin",
+    credentials: API_BASE ? "include" : "same-origin",
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     signal: options.signal,
