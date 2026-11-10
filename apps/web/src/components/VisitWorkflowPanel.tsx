@@ -118,7 +118,7 @@ export function VisitWorkflowPanel({ encounterId, compact = false }: { encounter
 
       {data.permissions.bill ? (
         <div className="mv-row mv-no-print">
-          <Link className="mv-button mv-button--secondary mv-button--md" to={`/pos?encounter=${encounterId}`}>Bill this visit</Link>
+          <Link className="mv-button mv-button--secondary mv-button--md mv-full-width-sm" to={`/pos?encounter=${encounterId}`}>Bill this visit</Link>
         </div>
       ) : null}
     </div>
@@ -301,7 +301,7 @@ function RecommendationForm({ encounterId, departments, consultation, catalogue,
         {!consultation ? <Field label="Requested by (optional)" htmlFor="rec-referrer" hint="Referring clinician or facility."><Input id="rec-referrer" value={referrer} onChange={(event) => setReferrer(event.target.value)} maxLength={300} /></Field> : null}
       </div>
       <Field label="Instructions for the department" htmlFor="rec-instructions" hint="Clinical question, site, fasting status, dose or preparation."><Textarea id="rec-instructions" value={instructions} onChange={(event) => setInstructions(event.target.value)} maxLength={4000} /></Field>
-      <div className="mv-row"><Button type="submit" disabled={busy}>{busy ? "Sending…" : consultation ? "Send recommendation" : "Add request"}</Button><Button variant="ghost" onClick={onCancel}>Cancel</Button></div>
+      <div className="mv-row"><Button type="submit" className="mv-full-width-sm" disabled={busy}>{busy ? "Sending…" : consultation ? "Send recommendation" : "Add request"}</Button><Button variant="ghost" className="mv-full-width-sm" onClick={onCancel}>Cancel</Button></div>
     </form>
   );
 }
@@ -362,7 +362,7 @@ function SupplyForm({ encounterId, catalogue, requests, onCancel, onSaved }: {
         </Field>
       </div>
       <Field label="Note (optional)" htmlFor="supply-note"><Input id="supply-note" value={note} onChange={(event) => setNote(event.target.value)} maxLength={1000} /></Field>
-      <div className="mv-row"><Button type="submit" disabled={busy}>{busy ? "Recording…" : "Record item"}</Button><Button variant="ghost" onClick={onCancel}>Cancel</Button></div>
+      <div className="mv-row"><Button type="submit" className="mv-full-width-sm" disabled={busy}>{busy ? "Recording…" : "Record item"}</Button><Button variant="ghost" className="mv-full-width-sm" onClick={onCancel}>Cancel</Button></div>
     </form>
   );
 }

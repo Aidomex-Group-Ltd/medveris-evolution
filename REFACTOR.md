@@ -450,3 +450,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: layout-only.
 - External dependencies/blockers: encounter subcomponents (`ClinicalNotePanel`, `VisitWorkflowPanel`, `TriagePanel`) still need deeper responsive retrofit.
 - Status: partial.
+
+### Execution record: Prompt 4.2/4.3 — Triage and workflow panel mobile actions (incremental)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/web/src/components/TriagePanel.tsx`, `apps/web/src/components/VisitWorkflowPanel.tsx`.
+- Changes made: made triage submit, billing link/action, recommendation and supply form submit/cancel actions full-width on small screens for consistent stacking and tap targets.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: static UI/layout review; no workflow/API logic changes.
+- Risks/breaking changes/mitigations: layout-only.
+- External dependencies/blockers: `ClinicalNotePanel` deeper responsive refactor and cross-device verification pending.
+- Status: partial.

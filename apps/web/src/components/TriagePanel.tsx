@@ -114,7 +114,7 @@ export function TriagePanel({ encounterId, onSaved }: { encounterId: string; onS
             {missingAllergySubstance ? <Notice tone="warning">A recorded allergy requires a validated substance. Unknown is distinct from no known allergies.</Notice> : null}
           </div>
         </details>
-        <Button type="submit" disabled={busy || missingAllergySubstance || !complaint.trim()}>{busy ? "Saving triage…" : "Save triage"}</Button>
+        <Button type="submit" className="mv-full-width-sm" disabled={busy || missingAllergySubstance || !complaint.trim()}>{busy ? "Saving triage…" : "Save triage"}</Button>
       </form>
     </Card>
   );
