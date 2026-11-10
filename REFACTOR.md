@@ -439,3 +439,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: layout-only.
 - External dependencies/blockers: broader encounter subcomponent responsive retrofit still pending.
 - Status: partial.
+
+### Execution record: Prompt 4.2/4.3 — Encounter actions mobile ergonomics (incremental)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/web/src/pages/EncounterPage.tsx`.
+- Changes made: made observation/follow-up/referral submit actions full-width on small screens for improved tap targets and stacking consistency.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: static UI review; no clinical logic/API changes.
+- Risks/breaking changes/mitigations: layout-only.
+- External dependencies/blockers: encounter subcomponents (`ClinicalNotePanel`, `VisitWorkflowPanel`, `TriagePanel`) still need deeper responsive retrofit.
+- Status: partial.

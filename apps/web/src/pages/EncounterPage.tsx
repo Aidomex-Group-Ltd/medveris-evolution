@@ -280,7 +280,7 @@ function ObservationForm({ encounterId, onSaved }: { encounterId: string; onSave
       {error ? <FriendlyError {...describeError(error)} /> : null}
       <CodingPicker field="observation" label="Add validated observation (LOINC)" value={coding} onChange={setCoding} />
       {coding ? <div className="mv-form-grid"><Field label="Value"><Input type="number" step="any" value={value} onChange={(e) => setValue(e.target.value)} required /></Field><Field label="UCUM unit"><Select value={unit} onChange={(e) => setUnit(e.target.value)}>{UNITS.map((code) => <option key={code}>{code}</option>)}</Select></Field></div> : null}
-      <Button type="submit" variant="secondary" disabled={!coding || busy || value === ""}>{busy ? "Saving…" : "Add observation"}</Button>
+      <Button type="submit" variant="secondary" className="mv-full-width-sm" disabled={!coding || busy || value === ""}>{busy ? "Saving…" : "Add observation"}</Button>
     </form>
   );
 }
@@ -310,7 +310,7 @@ function FollowUpForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
       {error ? <FriendlyError {...describeError(error)} /> : null}
       <Field label="Follow-up date"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required /></Field>
       <Field label="Instructions"><Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} required /></Field>
-      <Button type="submit" variant="secondary" disabled={busy}>{busy ? "Saving…" : "Schedule follow-up"}</Button>
+      <Button type="submit" variant="secondary" className="mv-full-width-sm" disabled={busy}>{busy ? "Saving…" : "Schedule follow-up"}</Button>
     </form>
   );
 }
@@ -344,7 +344,7 @@ function ReferralForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
       <Field label="Destination facility or service" htmlFor="referral-destination"><Input id="referral-destination" value={toFacility} onChange={(event) => setToFacility(event.target.value)} required maxLength={300} /></Field>
       <Field label="Referral reason" htmlFor="referral-reason"><Textarea id="referral-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={4000} /></Field>
       <Field label="Priority" htmlFor="referral-priority"><Select id="referral-priority" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></Select></Field>
-      <Button type="submit" variant="secondary" disabled={busy || !toFacility.trim() || !reason.trim()}>{busy ? "Saving…" : "Record referral"}</Button>
+      <Button type="submit" variant="secondary" className="mv-full-width-sm" disabled={busy || !toFacility.trim() || !reason.trim()}>{busy ? "Saving…" : "Record referral"}</Button>
     </form>
   );
 }
