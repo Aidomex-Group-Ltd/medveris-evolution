@@ -267,7 +267,7 @@ if (!versionsDeploy([`${blue}@100%`, `${green}@0%`], `stage green ${green} at 0%
   process.exit(1);
 }
 
-const expectedEntry = /src="(\/assets\/index-[^"]+\.js)"/.exec(readFileSync("apps/web/dist/index.html", "utf8"))?.[1];
+const expectedEntry = /src="(\.\/assets\/index-[^"]+\.js)"/.exec(readFileSync("apps/web/dist/index.html", "utf8"))?.[1];
 const greenCheck = await verifyVersion(green, { override: true, expectedEntry });
 if (!greenCheck.ok) {
   console.error(`staging release: green failed verification (${greenCheck.detail}); removing it`);

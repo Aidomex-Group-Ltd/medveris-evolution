@@ -215,7 +215,7 @@ evidence.checks["wrangler packaging dry run"] = packaging.status === 0 ? "pass" 
 if (packaging.status !== 0) problems.push(`wrangler deploy --dry-run failed (exit ${packaging.status})`);
 if (/REPLACE_WITH|local-only|staging/.test(packaging.stdout)) problems.push("the packaged production bindings contain placeholders or staging resources");
 const expectedEntry = existsSync("apps/web/dist/index.html")
-  ? /src="(\/assets\/index-[^\"]+\.js)"/.exec(readFileSync("apps/web/dist/index.html", "utf8"))?.[1]
+  ? /src="(\.\/assets\/index-[^\"]+\.js)"/.exec(readFileSync("apps/web/dist/index.html", "utf8"))?.[1]
   : undefined;
 if (!expectedEntry || !existsSync(join("apps/web/dist", expectedEntry))) problems.push("the built web shell or its entry bundle is missing");
 evidence.assetsEntry = expectedEntry ?? null;
