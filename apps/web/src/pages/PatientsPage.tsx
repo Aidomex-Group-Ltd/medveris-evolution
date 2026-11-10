@@ -182,9 +182,9 @@ export function PatientsPage() {
                 <Button variant="secondary" disabled={busy !== null} onClick={() => void enrollHere()}>{busy === "enroll" ? "Adding…" : "Add to this facility"}</Button>
               </div>
             ) : null}
-            <div className="mv-row">
+            <div className="mv-form-grid">
               <Field label="Encounter reason" htmlFor="encounter-reason"><Input id="encounter-reason" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
-              <Button onClick={() => void startEncounter()} disabled={busy === "encounter" || busy === "enroll" || !reason.trim()}>{busy === "encounter" ? "Starting…" : "Start walk-in encounter"}</Button>
+              <div className="mv-field"><span className="mv-field__label" aria-hidden="true">&nbsp;</span><Button onClick={() => void startEncounter()} disabled={busy === "encounter" || busy === "enroll" || !reason.trim()}>{busy === "encounter" ? "Starting…" : "Start walk-in encounter"}</Button></div>
             </div>
           </div>
         </Card>
@@ -226,7 +226,7 @@ export function PatientsPage() {
         <form className="mv-form-grid" onSubmit={submitSearch}>
           <Field label="Name, ID or MRN" htmlFor="search-q" hint="At least 2 characters."><Input id="search-q" name="q" minLength={2} maxLength={120} required autoComplete="off" /></Field>
           <Field label="Date of birth (optional)" htmlFor="search-dob"><Input id="search-dob" name="searchDob" type="date" /></Field>
-          <div className="mv-row" style={{ alignItems: "flex-end" }}><Button type="submit" disabled={busy === "search"}>{busy === "search" ? "Searching…" : "Search"}</Button></div>
+          <div className="mv-row"><Button type="submit" disabled={busy === "search"}>{busy === "search" ? "Searching…" : "Search"}</Button></div>
         </form>
         {searchResult && search ? (
           !searchResult.patients.length ? <EmptyState title="No patients found" description="No patient linked to this facility matches. Use exact lookup for patients registered elsewhere." /> : (

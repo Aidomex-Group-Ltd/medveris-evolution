@@ -133,10 +133,11 @@ button, input, select, textarea { font: inherit; }
     grid-template-columns: 1fr;
   }
   .mv-form-grid > *, .mv-grid > *, .mv-datalist > * { min-width: 0; width: 100%; }
-  .mv-row { flex-direction: column; align-items: stretch; }
+  .mv-row { flex-direction: column; align-items: stretch !important; }
   .mv-row > * { width: 100%; max-width: 100%; }
   .mv-spread, .mv-card__header, .mv-page-header { flex-direction: column; align-items: stretch; }
   .mv-card__actions, .mv-page-header__actions { width: 100%; }
+  .mv-patient-banner, .mv-patient-banner__meta { align-items: stretch; }
 }
 @media (max-width: 600px) {
   .mv-nav-strip__label { display: none; }
