@@ -406,3 +406,25 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: broader button width rules scoped to auth cards/small screens to limit regressions.
 - External dependencies/blockers: none.
 - Status: partial (targeted improvements applied; full module-by-module retrofit and manual/device checks pending).
+
+### Execution record: Prompt 2.2/3.1 — Subscription policy hardening for high-risk finance mutations (incremental)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/api/src/lib/billing-middleware.ts`, finance route mutation inventory.
+- Changes made: refined backend subscription-restriction enforcement to remove blanket finance-route mutation allowance; only essential patient-billing/collection continuity POSTs remain allowlisted (bill/invoice creation, line removal, payment/cash/mobile-money collection and status checks). High-risk finance mutations (e.g. reversals, refunds, voids, waivers, billing settings, catalog/pricing changes) are now blocked under restricted subscriptions in enforce mode.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: static route-policy review; DB-backed/integration verification pending.
+- Risks/breaking changes/mitigations: stricter than prior behavior by design for protected operations; continuity paths preserved to avoid disrupting care/payment collection.
+- External dependencies/blockers: full policy/permission matrix and dual-auth for designated high-risk ops still pending.
+- Status: partial.
+
+### Execution record: Prompt 4.2/4.3 — Shell, dashboard and queues mobile retrofit (incremental)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/web/src/components/AppShell.tsx`, `apps/web/src/pages/DashboardPage.tsx`, `apps/web/src/pages/QueuesPage.tsx`, `apps/web/src/styles.css`.
+- Changes made: improved primary nav strip active/overflow behavior for small screens, hardened dashboard role/stat text wrapping, and made queue add action full-width on mobile; adjusted shell styles for responsive scrolling/spacing.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: static responsive/layout review; device/manual viewport verification pending.
+- Risks/breaking changes/mitigations: additive CSS/layout-only changes; no API/route behavior changes.
+- External dependencies/blockers: full module-by-module retrofit and UI verification remain.
+- Status: partial.

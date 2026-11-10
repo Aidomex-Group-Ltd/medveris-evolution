@@ -316,7 +316,7 @@ function PrimaryNavStrip({ sections, platform, active, locationPathname }: { sec
       {sections.map((section) => {
         const primaryItem = section.items[0];
         const itemId = primaryItem?.id;
-        const isActive = active?.id === itemId;
+        const isActive = active?.id === itemId || active?.section === section.id;
         const href = primaryItem?.to;
         return (
           <Link

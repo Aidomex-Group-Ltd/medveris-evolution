@@ -49,7 +49,6 @@ const RESTRICTED_MUTATION_ALLOWLIST: RegExp[] = [
   /^\/api\/v1\/radiology(?:\/|$)/,
   /^\/api\/v1\/pharmacy(?:\/|$)/,
   /^\/api\/v1\/pharmacy-pos(?:\/|$)/,
-  /^\/api\/v1\/finance(?:\/|$)/,
   /^\/api\/v1\/inpatient(?:\/|$)/,
   /^\/api\/v1\/theatre(?:\/|$)/,
   /^\/api\/v1\/maternity(?:\/|$)/,
@@ -61,8 +60,23 @@ const RESTRICTED_MUTATION_ALLOWLIST: RegExp[] = [
   /^\/api\/v1\/patient-merges(?:\/|$)/,
 ];
 
-function isAllowlistedWhileRestricted(path: string): boolean {
-  return RESTRICTED_MUTATION_ALLOWLIST.some((pattern) => pattern.test(path));
+const RESTRICTED_FINANCE_CONTINUITY_ALLOWLIST: RegExp[] = [
+  /^\/api\/v1\/finance\/encounters\/[0-9a-f-]{36}\/bill$/,
+  /^\/api\/v1\/finance\/invoices$/,
+  /^\/api\/v1\/finance\/invoices\/[0-9a-f-]{36}\/items\/[0-9a-f-]{36}\/remove$/,
+  /^\/api\/v1\/finance\/invoices\/[0-9a-f-]{36}\/payments$/,
+  /^\/api\/v1\/finance\/invoices\/[0-9a-f-]{36}\/cash$/,
+  /^\/api\/v1\/finance\/invoices\/[0-9a-f-]{36}\/mobile-money$/,
+  /^\/api\/v1\/finance\/mobile-money\/[0-9a-f-]{36}\/check$/,
+  /^\/api\/v1\/finance\/claims$/,
+];
+
+function isAllowlistedWhileRestricted(method: string, path: string): boolean {
+  if (RESTRICTED_MUTATION_ALLOWLIST.some((pattern) => pattern.test(path))) return true;
+  if (path.startsWith("/api/v1/finance")) {
+    return method === "POST" && RESTRICTED_FINANCE_CONTINUITY_ALLOWLIST.some((pattern) => pattern.test(path));
+  }
+  return false;
 }
 
 /**
@@ -84,11 +98,11 @@ export function subscriptionGuard(): MiddlewareHandler<AppEnv> {
             `${CAPABILITY_LABELS[route.capability]} is paused until the subscription is brought up to date. Patient records and care workflows are not affected.`,
             { capability: route.capability, status });
         }
-      } else if (!READ_ONLY_METHODS.has(c.req.method) && !isAllowlistedWhileRestricted(c.req.path)) {
+      } else if (!READ_ONLY_METHODS.has(c.req.method) && !isAllowlistedWhileRestricted(c.req.method, c.req.path)) {
         const status = await tenantSubscriptionStatus(c, auth.activeTenant.id);
         if (accessModeFor(status) === "restricted") {
           throw new AppError(402, "subscription_restricted",
-            "This workspace subscription is not active. Protected changes are paused until the subscription is brought up to date. Read access remains available.",
+            "This workspace subscription is not active. Protected changes are paused until the subscription is brought up to date. Read access and essential care/billing continuity remain available.",
             { status, path: c.req.path, method: c.req.method });
         }
       }
