@@ -274,6 +274,8 @@ financeRoutes.put("/billing-settings", async (c) => {
       if (!item) throw new ValidationError("Selected registration charge item was not found in this facility's price list");
       if (!item.active || item.priceStatus !== "approved") throw new ValidationError(`"${item.name}" must be active and approved before it can be used for automatic registration billing`);
       if (!currencies.includes(String(item.currency))) throw new ValidationError(`Registration charge item currency (${item.currency}) must be enabled for this facility`);
+    } else {
+      registrationChargeCatalogId = registrationChargeCatalogId ?? null;
     }
     await tx`
       insert into facility_billing_settings (tenant_id, allowed_currencies, allow_zero_prices, allow_manual_charges, significant_change_percent, registration_charge_enabled, registration_charge_catalog_id, version, updated_by)
