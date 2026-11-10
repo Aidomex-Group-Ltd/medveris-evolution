@@ -488,3 +488,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Date: 2026-11-10
 - Summary: completed A (4.2/4.3 mobile retrofit slices) and B (5.1 backend hook + 5.2 registration/enrollment billing-status UX, billing-settings config UI, and added `tests/integration/registration-billing.test.ts` [not executed]). 
 - Next: begin 2.2/2.3 RBAC/dual-auth rollout per `docs/refactor/SECURITY_RBAC_PLAN.md` with incremental, backend-enforced hardening on high-risk modules and design/additive scaffolding for dual authorization (no destructive changes).
+
+### Execution record: Prompt 2.3 — Separation-of-duties hardening on finance high-risk operations (incremental)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/api/src/routes/finance.ts` (payment reversal/refund, invoice void, billing waiver handlers).
+- Changes made: added backend self-approval/separation-of-duties guards for designated high-risk finance mutations: block reversal/refund by the user who recorded the payment; block invoice void by the user who issued the bill; block/skip waiver of items billed by the same user and reject when only self-billed items are selected. Audit metadata enriched with actor linkage (received/issued/refunded/voided/waived/selfBlocked).
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: static code review; integration/negative authorization tests and DB-backed behavior not executed in this session.
+- Risks/breaking changes/mitigations: stricter than previous behavior (intentional for separation of duties); may affect single-operator workflows—requires operational roles/process and future configurable dual-approval workflow. Full request→independent approve→execute workflow for all designated ops still pending (additive schema/service/UI).
+- External dependencies/blockers: generalized dual-authorization entities/state machine, facility policy configuration, and comprehensive permission-matrix tests.
+- Status: partial.
