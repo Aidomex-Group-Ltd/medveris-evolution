@@ -391,3 +391,12 @@ export type {
   PolicyDecision,
   PolicyReason,
 } from "./policy.js";
+
+export {
+  AUTHZ_CONTRACT_VERSION,
+  ADMINISTRATIVE_DELEGATION_BOUNDARIES,
+  LEGACY_CHECK_MAPPINGS,
+  isKnownPermission,
+  normalizeRolesForCompatibility,
+} from "./contract.js";
+export type { ActionDefinition, ActionVerb, DelegationBoundary, LegacyRoleCheckMapping, ResourceDomain } from "./contract.js";

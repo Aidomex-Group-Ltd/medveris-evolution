@@ -38,6 +38,10 @@ function requirePermission(c: C, permission: Permission, message: string): void 
   if (!can(c, permission)) throw new ForbiddenError(message);
 }
 
+function hasLiveWorkspaceLink(link: Record<string, unknown> | null): boolean {
+  return Boolean(link && ["pending", "active"].includes(String(link.status)));
+}
+
 function levelOf(row: Record<string, unknown>): ResolvedLevel {
   return {
     levelStatus: row.levelStatus as LevelStatus,
@@ -336,6 +340,10 @@ workspaceRoutes.get("/workspace/shared-supply", async (c) => {
   requirePermission(c, "inventory.stock.read", "Inventory access is required");
   const tenantId = auth.activeTenant!.id;
   const data = await withStaffActor(c, async (tx) => {
+    const link = await liveLink(tx, tenantId);
+    if (!hasLiveWorkspaceLink(link as Record<string, unknown> | null) || String((link as any)?.inventoryMode ?? "independent") !== "shared-supply") {
+      throw new ForbiddenError("Shared supply is not available for this workspace");
+    }
     const sites = await tx`select tenant_id, name, organization_id from app.shared_supply_sites(${tenantId})`;
     const transfers = await tx`
       select t.id, t.transfer_number, t.status, t.item_code, t.item_name, t.lot_number, t.expires_on, t.quantity, t.unit, t.base_quantity,
@@ -345,6 +353,7 @@ workspaceRoutes.get("/workspace/shared-supply", async (c) => {
         from organization_stock_transfers t
         join tenants src on src.id = t.source_tenant_id
         join tenants dst on dst.id = t.destination_tenant_id
+       where t.source_tenant_id = ${tenantId} or t.destination_tenant_id = ${tenantId}
        order by t.dispatched_at desc limit 200`;
     return { sites, transfers };
   });
@@ -404,6 +413,10 @@ workspaceRoutes.post("/workspace/shared-supply/transfers/:id/receive", async (c)
   await withStaffActor(c, async (tx) => {
     const transfer = await requireRows(await tx`
       select * from organization_stock_transfers where id = ${id} and destination_tenant_id = ${tenantId} for update`, "Transfer not found");
+    const [arrangement] = await tx`select app.shared_supply_organization(${tenantId}, ${String(transfer.sourceTenantId)}) as organization_id`;
+    if (!arrangement?.organizationId || String(arrangement.organizationId) !== String(transfer.organizationId)) {
+      throw new ForbiddenError("Shared supply transfer is not authorized for this workspace context");
+    }
     if (transfer.status !== "dispatched") throw new ConflictError(`This transfer is ${transfer.status}`);
     await locationRow(tx, tenantId, body.destinationLocationId);
     await assertLocationInScope(tx, c, body.destinationLocationId);
@@ -453,6 +466,10 @@ workspaceRoutes.post("/workspace/shared-supply/transfers/:id/cancel", async (c) 
   await withStaffActor(c, async (tx) => {
     const transfer = await requireRows(await tx`
       select * from organization_stock_transfers where id = ${id} and source_tenant_id = ${tenantId} for update`, "Transfer not found");
+    const [arrangement] = await tx`select app.shared_supply_organization(${tenantId}, ${String(transfer.destinationTenantId)}) as organization_id`;
+    if (!arrangement?.organizationId || String(arrangement.organizationId) !== String(transfer.organizationId)) {
+      throw new ForbiddenError("Shared supply transfer is not authorized for this workspace context");
+    }
     if (transfer.status !== "dispatched") throw new ConflictError(`This transfer is ${transfer.status}`);
     const [lot] = transfer.lotNumber
       ? await tx`select id from inventory_lots where tenant_id = ${tenantId} and item_id = ${transfer.sourceItemId} and lot_number = ${transfer.lotNumber}`

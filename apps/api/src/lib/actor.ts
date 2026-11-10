@@ -3,12 +3,17 @@ import type { ActorContext } from "@medveris/authz";
 import type { AppEnv } from "../types.js";
 import { auditMeta } from "./http.js";
 import type { AuditInput } from "./audit.js";
-import { NotFoundError } from "./errors.js";
+import { NotFoundError, UnauthorizedError } from "./errors.js";
 import type { Tx } from "@medveris/db";
 
+/**
+ * Lightweight session-derived actor for legacy/fast checks.
+ * Authentication is required (401 when missing). This does not by itself establish
+ * resource ownership, tenant/resource authorization, full policy context, or domain invariants.
+ */
 export function requestActor(c: Context<AppEnv>): ActorContext {
   const auth = c.get("auth");
-  if (!auth) throw new NotFoundError("Authenticated actor context is missing");
+  if (!auth) throw new UnauthorizedError("Authenticated actor context is missing");
   return {
     userId: auth.user.id,
     roles: auth.activeTenant?.roles ?? (auth.patientId ? ["patient"] : []),
