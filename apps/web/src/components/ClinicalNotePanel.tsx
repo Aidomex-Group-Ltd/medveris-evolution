@@ -284,17 +284,17 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
 
       {signed && !amending ? (
         <div className="mv-row">
-          {entry.status !== "entered-in-error" && entry.status !== "voided" ? (canSign ? <Button onClick={() => setAmending(true)}>Amend signed note</Button> : <span className="mv-small mv-muted">Only a clinician may amend a signed note.</span>) : <span className="mv-small mv-muted">This version cannot be amended.</span>}
-          {entry.status !== "entered-in-error" && entry.status !== "voided" && canSign ? <Button variant="ghost" disabled={busy !== null} onClick={() => void markEnteredInError()}>{busy === "error" ? "Saving…" : "Mark entered in error"}</Button> : null}
-          {entry.status !== "voided" && entry.status !== "archived" && entry.archivedAt === null && canSign ? <Button variant="ghost" disabled={busy !== null} onClick={() => void archiveNote()}>{busy === "archive" ? "Archiving…" : "Archive note"}</Button> : null}
-          {entry.status !== "voided" && canSign ? <Button variant="ghost" disabled={busy !== null} onClick={() => void voidNote()}>{busy === "void" ? "Voiding…" : "Void note"}</Button> : null}
+          {entry.status !== "entered-in-error" && entry.status !== "voided" ? (canSign ? <Button className="mv-full-width-sm" onClick={() => setAmending(true)}>Amend signed note</Button> : <span className="mv-small mv-muted">Only a clinician may amend a signed note.</span>) : <span className="mv-small mv-muted">This version cannot be amended.</span>}
+          {entry.status !== "entered-in-error" && entry.status !== "voided" && canSign ? <Button variant="ghost" className="mv-full-width-sm" disabled={busy !== null} onClick={() => void markEnteredInError()}>{busy === "error" ? "Saving…" : "Mark entered in error"}</Button> : null}
+          {entry.status !== "voided" && entry.status !== "archived" && entry.archivedAt === null && canSign ? <Button variant="ghost" className="mv-full-width-sm" disabled={busy !== null} onClick={() => void archiveNote()}>{busy === "archive" ? "Archiving…" : "Archive note"}</Button> : null}
+          {entry.status !== "voided" && canSign ? <Button variant="ghost" className="mv-full-width-sm" disabled={busy !== null} onClick={() => void voidNote()}>{busy === "void" ? "Voiding…" : "Void note"}</Button> : null}
         </div>
       ) : null}
       {entry && entry.status !== "voided" && entry.status !== "entered-in-error" ? (
         <div className="mv-stack" style={{ marginTop: 12 }}>
           <div className="mv-row">
             <Field label="Link uploaded file"><Input id="note-attach" type="text" value={attachUploadId} onChange={(e) => setAttachUploadId(e.target.value)} placeholder="Upload id (uuid)" /></Field>
-            <Button variant="secondary" size="sm" disabled={!attachUploadId || attachLoading} onClick={() => void addAttachment()}>{attachLoading ? "Linking…" : "Link attachment"}</Button>
+            <Button variant="secondary" size="sm" className="mv-full-width-sm" disabled={!attachUploadId || attachLoading} onClick={() => void addAttachment()}>{attachLoading ? "Linking…" : "Link attachment"}</Button>
           </div>
           <p className="mv-small mv-muted">Attach an existing upload by its id. The file is not stored in the note body; only the link is recorded against this encounter and patient.</p>
         </div>
@@ -339,9 +339,9 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
             </>
           )}
           <div className="mv-row">
-            <Button type="submit" disabled={busy !== null}>{busy === "save" || busy === "amend" ? "Saving…" : amending ? "Append amendment" : entry ? "Save draft revision" : "Create draft"}</Button>
-            {amending ? <Button variant="ghost" onClick={() => setAmending(false)}>Cancel amendment</Button> : null}
-            {entry && entry.status === "draft" ? <Button variant="secondary" type="button" onClick={() => void sign()} disabled={busy !== null}>{busy === "sign" ? "Signing…" : "Sign draft"}</Button> : null}
+            <Button type="submit" className="mv-full-width-sm" disabled={busy !== null}>{busy === "save" || busy === "amend" ? "Saving…" : amending ? "Append amendment" : entry ? "Save draft revision" : "Create draft"}</Button>
+            {amending ? <Button variant="ghost" className="mv-full-width-sm" onClick={() => setAmending(false)}>Cancel amendment</Button> : null}
+            {entry && entry.status === "draft" ? <Button variant="secondary" type="button" className="mv-full-width-sm" onClick={() => void sign()} disabled={busy !== null}>{busy === "sign" ? "Signing…" : "Sign draft"}</Button> : null}
           </div>
         </form>
       ) : !showForm && !canSign ? <Notice tone="info">You can read this record but only clinicians may create, sign or amend notes.</Notice> : null}
