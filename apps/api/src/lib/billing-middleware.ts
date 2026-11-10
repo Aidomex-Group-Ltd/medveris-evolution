@@ -22,10 +22,68 @@ const CAPABILITY_LABELS: Record<RestrictedCapability, string> = {
   integrations: "Adding integrations",
 };
 
+const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Paths that must remain available while a facility subscription is restricted:
+ * - auth/session, subscription recovery/payment, public callbacks, legal and health checks
+ * - core patient-care, emergency documentation, and patient-billing/collection continuity
+ *   (facility subscription must not compromise patient records or emergency-care documentation;
+ *   billing patients and paying Medveris remain possible)
+ * Read-only access remains available because only mutating operations are restricted.
+ */
+const RESTRICTED_MUTATION_ALLOWLIST: RegExp[] = [
+  /^\/api\/v1\/auth\//,
+  /^\/api\/v1\/me(?:\/|$)/,
+  /^\/api\/v1\/billing(?:\/|$)/,
+  /^\/api\/v1\/public(?:\/|$)/,
+  /^\/api\/v1\/legal(?:\/|$)/,
+  /^\/api\/health$/,
+  /^\/api\/v1\/emergency(?:\/|$)/,
+  /^\/api\/v1\/clinical(?:\/|$)/,
+  /^\/api\/v1\/care(?:\/|$)/,
+  /^\/api\/v1\/reception(?:\/|$)/,
+  /^\/api\/v1\/workflow(?:\/|$)/,
+  /^\/api\/v1\/consent(?:\/|$)/,
+  /^\/api\/v1\/diagnostics(?:\/|$)/,
+  /^\/api\/v1\/radiology(?:\/|$)/,
+  /^\/api\/v1\/pharmacy(?:\/|$)/,
+  /^\/api\/v1\/pharmacy-pos(?:\/|$)/,
+  /^\/api\/v1\/inpatient(?:\/|$)/,
+  /^\/api\/v1\/theatre(?:\/|$)/,
+  /^\/api\/v1\/maternity(?:\/|$)/,
+  /^\/api\/v1\/documents(?:\/|$)/,
+  /^\/api\/v1\/devices(?:\/|$)/,
+  /^\/api\/v1\/telehealth(?:\/|$)/,
+  /^\/api\/v1\/programmes(?:\/|$)/,
+  /^\/api\/v1\/operations(?:\/|$)/,
+  /^\/api\/v1\/patient-merges(?:\/|$)/,
+];
+
+const RESTRICTED_FINANCE_CONTINUITY_ALLOWLIST: RegExp[] = [
+  /^\/api\/v1\/finance\/encounters\/[0-9a-f-]{36}\/bill$/,
+  /^\/api\/v1\/finance\/invoices$/,
+  /^\/api\/v1\/finance\/invoices\/[0-9a-f-]{36}\/items\/[0-9a-f-]{36}\/remove$/,
+  /^\/api\/v1\/finance\/invoices\/[0-9a-f-]{36}\/payments$/,
+  /^\/api\/v1\/finance\/invoices\/[0-9a-f-]{36}\/cash$/,
+  /^\/api\/v1\/finance\/invoices\/[0-9a-f-]{36}\/mobile-money$/,
+  /^\/api\/v1\/finance\/mobile-money\/[0-9a-f-]{36}\/check$/,
+  /^\/api\/v1\/finance\/claims$/,
+];
+
+function isAllowlistedWhileRestricted(method: string, path: string): boolean {
+  if (RESTRICTED_MUTATION_ALLOWLIST.some((pattern) => pattern.test(path))) return true;
+  if (path.startsWith("/api/v1/finance")) {
+    return method === "POST" && RESTRICTED_FINANCE_CONTINUITY_ALLOWLIST.some((pattern) => pattern.test(path));
+  }
+  return false;
+}
+
 /**
  * With BILLING_ENFORCEMENT=enforce, a workspace whose subscription is restricted, suspended, cancelled
- * or past its trial cannot use the growth and analytics features above. Patient records, clinical
- * history, care workflows, billing patients and paying Medveris are never blocked.
+ * or past its trial cannot use protected mutating functionality or restricted growth features.
+ * Read access, authentication/session, subscription recovery/payment, public callbacks and health checks
+ * remain available. Backend enforcement is authoritative (UI restrictions are not sufficient).
  */
 export function subscriptionGuard(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
@@ -39,6 +97,13 @@ export function subscriptionGuard(): MiddlewareHandler<AppEnv> {
           throw new AppError(402, "subscription_restricted",
             `${CAPABILITY_LABELS[route.capability]} is paused until the subscription is brought up to date. Patient records and care workflows are not affected.`,
             { capability: route.capability, status });
+        }
+      } else if (!READ_ONLY_METHODS.has(c.req.method) && !isAllowlistedWhileRestricted(c.req.method, c.req.path)) {
+        const status = await tenantSubscriptionStatus(c, auth.activeTenant.id);
+        if (accessModeFor(status) === "restricted") {
+          throw new AppError(402, "subscription_restricted",
+            "This workspace subscription is not active. Protected changes are paused until the subscription is brought up to date. Read access and essential care/billing continuity remain available.",
+            { status, path: c.req.path, method: c.req.method });
         }
       }
     }

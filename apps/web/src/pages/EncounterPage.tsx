@@ -219,7 +219,7 @@ export function EncounterPage() {
               {timeline ? (
                 <div className="mv-stack" style={{ gap: 8 }}>
                   {timeline.map((row) => (
-                    <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer" }} onClick={() => { setSelectedEntry(row.id); setShowTimeline(false); }}>
+                    <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer", width: "100%" }} onClick={() => { setSelectedEntry(row.id); setShowTimeline(false); }}>
                       <div className="mv-spread"><strong>{row.title}</strong><Badge tone={row.status === "signed" || row.status === "amended" ? "success" : row.status === "draft" ? "warning" : "danger"}>{row.status}</Badge></div>
                       <div className="mv-small mv-muted">{noteTypeLabel(row.noteType)} · v{row.currentVersion} (latest v{row.latestVersion}) · {row.authorName}{row.archivedAt ? ` · archived ${new Date(row.archivedAt).toLocaleString()}` : ""}{row.voidReason ? ` · voided: ${row.voidReason}` : ""}{row.attachmentCount ? ` · ${row.attachmentCount} attachment${row.attachmentCount === 1 ? "" : "s"}` : ""}</div>
                     </button>
@@ -235,7 +235,7 @@ export function EncounterPage() {
                 {!data.entries.length ? <p className="mv-small mv-muted">No notes yet.</p> : (
                   <div className="mv-stack" style={{ gap: 6 }}>
                     {data.entries.map((row) => (
-                      <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer" }} onClick={() => setSelectedEntry(row.id)} aria-pressed={row.id === entry?.id}>
+                      <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer", width: "100%" }} onClick={() => setSelectedEntry(row.id)} aria-pressed={row.id === entry?.id}>
                         <strong>{row.title}</strong>
                         <div className="mv-small mv-muted">v{row.currentVersion} · {row.status}{row.archivedAt ? " · archived" : ""}{row.voidReason ? " · voided" : ""}</div>
                         <div className="mv-small mv-muted">{noteTypeLabel(row.noteType)} · {row.authorName}{row.attachmentCount ? ` · ${row.attachmentCount} attachment${row.attachmentCount === 1 ? "" : "s"}` : ""}</div>
@@ -280,7 +280,7 @@ function ObservationForm({ encounterId, onSaved }: { encounterId: string; onSave
       {error ? <FriendlyError {...describeError(error)} /> : null}
       <CodingPicker field="observation" label="Add validated observation (LOINC)" value={coding} onChange={setCoding} />
       {coding ? <div className="mv-form-grid"><Field label="Value"><Input type="number" step="any" value={value} onChange={(e) => setValue(e.target.value)} required /></Field><Field label="UCUM unit"><Select value={unit} onChange={(e) => setUnit(e.target.value)}>{UNITS.map((code) => <option key={code}>{code}</option>)}</Select></Field></div> : null}
-      <Button type="submit" variant="secondary" disabled={!coding || busy || value === ""}>{busy ? "Saving…" : "Add observation"}</Button>
+      <Button type="submit" variant="secondary" className="mv-full-width-sm" disabled={!coding || busy || value === ""}>{busy ? "Saving…" : "Add observation"}</Button>
     </form>
   );
 }
@@ -310,7 +310,7 @@ function FollowUpForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
       {error ? <FriendlyError {...describeError(error)} /> : null}
       <Field label="Follow-up date"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required /></Field>
       <Field label="Instructions"><Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} required /></Field>
-      <Button type="submit" variant="secondary" disabled={busy}>{busy ? "Saving…" : "Schedule follow-up"}</Button>
+      <Button type="submit" variant="secondary" className="mv-full-width-sm" disabled={busy}>{busy ? "Saving…" : "Schedule follow-up"}</Button>
     </form>
   );
 }
@@ -344,7 +344,7 @@ function ReferralForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
       <Field label="Destination facility or service" htmlFor="referral-destination"><Input id="referral-destination" value={toFacility} onChange={(event) => setToFacility(event.target.value)} required maxLength={300} /></Field>
       <Field label="Referral reason" htmlFor="referral-reason"><Textarea id="referral-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={4000} /></Field>
       <Field label="Priority" htmlFor="referral-priority"><Select id="referral-priority" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></Select></Field>
-      <Button type="submit" variant="secondary" disabled={busy || !toFacility.trim() || !reason.trim()}>{busy ? "Saving…" : "Record referral"}</Button>
+      <Button type="submit" variant="secondary" className="mv-full-width-sm" disabled={busy || !toFacility.trim() || !reason.trim()}>{busy ? "Saving…" : "Record referral"}</Button>
     </form>
   );
 }

@@ -1,0 +1,38 @@
+# Refactor Traceability Matrix (Phase 0.1)
+
+Date: 2026-11-10 (codebase audit snapshot)
+Status: baseline discovery, no behavior changes.
+
+## Master requirements mapping
+
+| Area | Current implementation (key paths) | Status / gaps | Disposition | Dependencies / blockers / risks |
+|---|---|---|---|---|
+| 1. Mission/incremental approach | Existing docs (`docs/REQUIREMENT_IMPLEMENTATION_MATRIX.md`, `docs/IMPLEMENTATION_*`, `STAGE_0_DISCOVERY.md`), monorepo structure, migrations/tests | Broad but uneven implementation; many monoliths and partial modules | Keep + refactor incrementally | Must preserve data/workflows; verify each module |
+| 2. RBAC & dual auth | `packages/authz/src/{index,permissions,policy}.ts`, `apps/api/src/auth/{middleware,session,integration}.ts`, `apps/api/src/lib/{scope,platform-roles}.ts`, routes/admin/consent/content/organization, RLS context in `packages/db/src/index.ts` | Rich role/permission primitives, scoped/platform roles, break-glass & some separation-of-duties; **not uniformly enforced across all routes/services**, granular configurable owner permissions and generalized dual-approval for all designated high-risk ops incomplete | Refactor/extend, centralize | Additive schema possible; careful migration of existing role assignments; avoid privilege escalation regressions |
+| 2b. Sensitive audit trails | `apps/api/src/lib/audit.ts` (hash-chained HMAC + outbox), route/service audit writes | Strong primitive; **coverage/completeness (previous/new state, approver fields, protected reads) must be verified per sensitive operation** | Extend | Storage/perf considerations; immutability guarantees |
+| 3. Universal mobile-first UX | `apps/web/src/{App.tsx,styles.css,components/AppShell.tsx,lib/nav.ts,lib/route-modules.ts}`, `packages/ui/src/{styles.css,primitives.tsx}`, many `pages/*.tsx` and landing/pricing CSS | Lazy routing, responsive helpers exist but **not universally mobile-first** (mixed desktop-first patterns, min-width grids, inconsistent stacking/alignment, table mobile-label contract not enforced, bespoke dialogs, large pages) | Refactor/standardize | Visual/behavior regressions; needs viewport + accessibility checks per module |
+| 4. Subscription enforcement | `packages/domain/src/billing.ts`, `apps/api/src/services/{subscriptions,subscription-checkout,billing,mobile-money}.ts`, `apps/api/src/lib/billing-middleware.ts`, `routes/{billing,subscription-checkout,payment-callbacks,finance}.ts`, jobs billing | Models/checkout/status exist; **backend enforcement narrow/config-gated** (specific capability routes), not centralized for all protected functionality; read-only continuity rules need codification | Refactor/extend | Payment provider callbacks/verification; avoid blocking emergency/historical access inappropriately |
+| 5. Registration & initial billing | patient/reception/onboarding/organization routes, billing services/catalog/price config, tenant/facility settings | Registration and billing primitives exist; **automatic facility billing-radar + idempotent initial consultation charge with facility-specific price lists must be verified/implemented end-to-end** | Extend | Correct facility config source; idempotency keys; exemptions/insurance/zero-cost rules |
+| 6. Financial management | `routes/{finance,billing,pharmacy-pos}.ts`, billing domain/services, migrations 004/034/035/036/039/040/041/121 etc., jobs billing | Invoices/payments/reversals/claims/catalog flows present; **full payroll processing (runs/payslips/deductions history), operational expenditure ledger, and complete reporting/reconciliation** incomplete (reference payroll scaffolding exists: migrations 118/120, seed/reference routes) | Extend (additive schema/services) | Separation of payroll/clinical/finance; authorization; reporting accuracy |
+| 7. Clinical workflow/order routing | `routes/{workflow,clinical,reception,care,diagnostics,radiology,pharmacy,pharmacy-pos,inpatient,theatre,maternity,emergency,operations,programmes}.ts`, `services/clinical.ts`, `care_recommendations`/orders/results tables | Broad modules and workflow/queue concepts exist; **immediate destination routing, consistent statuses/notifications, result-linkback, and retry-safe no-duplicates** need hardening/verification across all departments | Refactor/extend | Cross-module state consistency; transactional/idempotent commands; jobs/outbox integration |
+| 8. Staff onboarding & cadres | `routes/{workforce-reference,organization,organizations,workspace,credentials,onboarding,operations,admin}.ts`, `services/invitations.ts`, reference data/seed, migrations 009/012/021/029/032/050/118/120 | Rich taxonomy/reference scaffolding and invitation flows exist; **comprehensive searchable configurable cadres and strict separation of cadre/department/system role/permission with secure onboarding** need consolidation | Extend/refactor | Data-driven config without code changes per cadre; least privilege |
+| 9. Interoperability (FHIR/ICD-11/LOINC/DICOM/SNOMED) | `apps/api/src/fhir/*`, `terminology/*`, `integrations/{dicomweb,dhis2,registry}.ts`, `routes/{ehmis,data-exchange,radiology,integrations}.ts`, specs/docs | Limited read-only FHIR, terminology adapters (synthetic/local/production-gated), DICOMweb client/tests, eHMIS/data-exchange scaffolding; **broad FHIR coverage, production terminology (ICD-11/SNOMED/LOINC licensing/version pinning), centralized versioned mapping layer, DICOMweb completeness (e.g. STOW-RS)** partial/blocked | Extend with safe fallbacks | External licenses/content, partner systems, credentials, regulatory validation |
+| 10. DB integrity & compatibility | `packages/db/migrations/*`, `scripts/db-*.ts`, RLS/policies/triggers/functions, idempotency tables/indexes | Strong RLS/immutability/constraints patterns; **migration history has numbering gaps/odd sequence, no down/checksum**, reset is destructive (dev-only) | Keep discipline, additive forward-only | Backups/restore drills, representative-data validation, expand/contract deploy sequencing |
+| 11. Testing & acceptance | `tests/{unit,integration,e2e}`, vitest/playwright, smoke/load scripts | Good base but uneven vs master scope; some environment-dependent flows | Extend significantly per module | CI/hosted runners, external sandboxes, synthetic data |
+
+## Highest-risk hotspots (prioritize seams/tests)
+
+- **Authorization & sensitive ops:** all protected routes, `packages/authz/policy.ts` adoption, platform roles, financial/clinical mutations.
+- **Subscription guard:** `apps/api/src/lib/billing-middleware.ts` currently limited scope.
+- **Monolith routes:** `inventory.ts`, `finance.ts`, `content.ts`, `clinical.ts`, `directory.ts`, `radiology.ts`, `reception.ts`, `inpatient.ts`, `organization.ts`, `auth.ts`, `workflow.ts`.
+- **Financial correctness:** billing + missing payroll/expenditure/report reconciliation.
+- **Clinical routing/idempotency:** order creation, queue placement, status transitions, result linkage.
+- **Migrations:** additive-only, preserve `app.*` helpers/RLS/policies/grants/triggers; validate on copy.
+
+## Initial dependency graph (execution order)
+
+1. Phase 0 safety/docs/baseline → 2. RBAC/dual-auth/audit primitives → 3. subscription backend enforcement → 5. registration+initial billing → 6. finance/payroll/expenditure → 7. clinical routing.
+2. Phase 1 modularization runs continuously as seams are touched.
+3. Phase 4 mobile-first foundations early, module retrofits incrementally (can parallelize by UI area).
+4. Phase 8 workforce/cadres and 9 interoperability depend on stable domain models/config/licensing; scaffold and gate where blocked.
+5. Phase 10 continuous verification and final evidence/report.

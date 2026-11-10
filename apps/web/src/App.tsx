@@ -69,6 +69,8 @@ const EmergencyCasePage = lazyPage(() => import("./pages/EmergencyCasePage"), "E
 const CareCoordinationPage = lazyPage(() => import("./pages/CareCoordinationPage"), "CareCoordinationPage");
 const AppointmentsPage = lazyPage(() => import("./pages/AppointmentsPage"), "AppointmentsPage");
 const WorkforcePage = lazyPage(() => import("./pages/WorkforcePage"), "WorkforcePage");
+const ClinicalGovernancePage = lazyPage(() => import("./pages/ClinicalGovernancePage"), "ClinicalGovernancePage");
+const PayrollPage = lazyPage(() => import("./pages/PayrollPage"), "PayrollPage");
 const DocumentsPage = lazyPage(() => import("./pages/DocumentsPage"), "DocumentsPage");
 const MaternityPage = lazyPage(() => import("./pages/MaternityPage"), "MaternityPage");
 const OperationsPage = lazyPage(() => import("./pages/OperationsPage"), "OperationsPage");
@@ -185,7 +187,9 @@ export function App() {
         <Route path="portal/access" element={<ProtectedRoute patient><AccessHistoryPage /></ProtectedRoute>} />
         <Route path="credentials" element={<ProtectedRoute><CredentialsPage /></ProtectedRoute>} />
         <Route path="documents" element={<ProtectedRoute roles={["clinician", "nurse", "records", "receptionist", "facility_admin", "hr", "quality"]}><DocumentsPage /></ProtectedRoute>} />
-        <Route path="workforce" element={<ProtectedRoute roles={["hr", "facility_admin"]}><WorkforcePage /></ProtectedRoute>} />
+        <Route path="workforce" element={<ProtectedRoute roles={["hr", "facility_admin", "clinician", "nurse"]}><WorkforcePage /></ProtectedRoute>} />
+        <Route path="clinical-governance" element={<ProtectedRoute roles={["facility_admin", "clinician", "specialist_clinician", "hr"]}><ClinicalGovernancePage /></ProtectedRoute>} />
+        <Route path="payroll" element={<ProtectedRoute roles={["hr", "facility_admin", "finance"]}><PayrollPage /></ProtectedRoute>} />
         <Route path="onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
         <Route path="caregivers" element={<ProtectedRoute patient><CaregiversPage /></ProtectedRoute>} />
         <Route path="caregiver-requests" element={<ProtectedRoute roles={["facility_admin", "records"]}><CaregiversPage /></ProtectedRoute>} />

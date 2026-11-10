@@ -890,6 +890,8 @@ export const facilityBillingSettingsSchema = z.object({
   allowZeroPrices: z.boolean(),
   allowManualCharges: z.boolean(),
   significantChangePercent: z.number().min(1).max(100),
+  registrationChargeEnabled: z.boolean().default(false),
+  registrationChargeCatalogId: uuidSchema.nullable().default(null),
 }).strict();
 
 export const priceConversionQuoteSchema = z.object({ targetCurrency: z.enum(FACILITY_PRICE_CURRENCIES) }).strict();

@@ -263,17 +263,32 @@ financeRoutes.put("/billing-settings", async (c) => {
   const settings = await withStaffActor(c, async (tx) => {
     const before = await facilitySettings(tx, tenantId);
     ensureMatch(body.expectedVersion, before.version);
-    const currencies = [...new Set(body.allowedCurrencies)];
+    const currencies = [...new Set(body.allowedCurrencies)] as string[];
+    let registrationChargeCatalogId = body.registrationChargeCatalogId ?? null;
+    if (body.registrationChargeEnabled) {
+      if (!registrationChargeCatalogId) throw new ValidationError("Choose an approved consultation/registration price-list item for the automatic registration charge");
+      const [item] = await tx`
+        select id, name, price, currency, active, price_status from service_catalog
+         where id = ${registrationChargeCatalogId} and tenant_id = ${tenantId}
+      `;
+      if (!item) throw new ValidationError("Selected registration charge item was not found in this facility's price list");
+      if (!item.active || item.priceStatus !== "approved") throw new ValidationError(`"${item.name}" must be active and approved before it can be used for automatic registration billing`);
+      if (!currencies.includes(String(item.currency))) throw new ValidationError(`Registration charge item currency (${item.currency}) must be enabled for this facility`);
+    }
     await tx`
-      insert into facility_billing_settings (tenant_id, allowed_currencies, allow_zero_prices, allow_manual_charges, significant_change_percent, version, updated_by)
-      values (${tenantId}, ${currencies}, ${body.allowZeroPrices}, ${body.allowManualCharges}, ${body.significantChangePercent}, 1, ${auth.user.id})
+      insert into facility_billing_settings (tenant_id, allowed_currencies, allow_zero_prices, allow_manual_charges, significant_change_percent, registration_charge_enabled, registration_charge_catalog_id, version, updated_by)
+      values (${tenantId}, ${currencies}, ${body.allowZeroPrices}, ${body.allowManualCharges}, ${body.significantChangePercent}, ${body.registrationChargeEnabled}, ${registrationChargeCatalogId}, 1, ${auth.user.id})
       on conflict (tenant_id) do update set allowed_currencies = excluded.allowed_currencies, allow_zero_prices = excluded.allow_zero_prices,
         allow_manual_charges = excluded.allow_manual_charges, significant_change_percent = excluded.significant_change_percent,
+        registration_charge_enabled = excluded.registration_charge_enabled, registration_charge_catalog_id = excluded.registration_charge_catalog_id,
         version = facility_billing_settings.version + 1, updated_by = excluded.updated_by, updated_at = now()
     `;
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "facility.billing-settings.update", {
       resourceType: "FacilityBillingSettings", resourceId: tenantId,
-      metadata: { before: { ...before, version: undefined }, after: { allowedCurrencies: currencies, allowZeroPrices: body.allowZeroPrices, allowManualCharges: body.allowManualCharges, significantChangePercent: body.significantChangePercent } },
+      metadata: {
+        before: { ...before, version: undefined },
+        after: { allowedCurrencies: currencies, allowZeroPrices: body.allowZeroPrices, allowManualCharges: body.allowManualCharges, significantChangePercent: body.significantChangePercent, registrationChargeEnabled: body.registrationChargeEnabled, registrationChargeCatalogId },
+      },
     }));
     return facilitySettings(tx, tenantId);
   });
@@ -783,17 +798,18 @@ financeRoutes.post("/payments/:id/reverse", async (c) => {
   const body = await parseJson(c, paymentReversalSchema);
   await withStaffActor(c, async (tx) => {
     const payment = await requireRows(await tx`
-      select p.id, p.invoice_id, p.reversed_at, i.patient_id from payments p join invoices i on i.id = p.invoice_id
+      select p.id, p.invoice_id, p.reversed_at, p.received_by, i.patient_id from payments p join invoices i on i.id = p.invoice_id
        where p.id = ${id} and p.tenant_id = ${auth.activeTenant!.id} for update
     `, "Payment not found");
     if (payment.reversedAt) throw new ConflictError("The payment is already reversed");
+    if (String(payment.receivedBy) === auth.user.id) throw new ForbiddenError("You cannot reverse a payment you recorded");
     await tx`
       update payments set reversed_at = now(), reversed_by = ${auth.user.id}, reversal_reason = ${body.reason} where id = ${id}
     `;
     await refreshInvoice(tx, auth.activeTenant!.id, String(payment.invoiceId), auth.user.id);
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "payment.reverse", {
       subjectPatientId: String(payment.patientId), resourceType: "Payment", resourceId: id,
-      metadata: { invoiceId: payment.invoiceId, reason: body.reason },
+      metadata: { invoiceId: payment.invoiceId, reason: body.reason, receivedBy: payment.receivedBy, reversedBy: auth.user.id },
     }));
   });
   return c.json({ ok: true });
@@ -820,11 +836,12 @@ financeRoutes.post("/payments/:id/refunds", async (c) => {
       const [replayed] = await tx`select id, receipt_number from payment_refunds where tenant_id = ${tenantId} and idempotency_key = ${key}`;
       if (replayed) return { id: String(replayed.id), receiptNumber: String(replayed.receiptNumber), replayed: true };
       const payment = await requireRows(await tx`
-        select p.id, p.invoice_id, p.amount, p.method, p.reversed_at, coalesce(p.currency, i.currency) as currency, i.patient_id, i.number
+        select p.id, p.invoice_id, p.amount, p.method, p.reversed_at, p.received_by, coalesce(p.currency, i.currency) as currency, i.patient_id, i.number
           from payments p join invoices i on i.id = p.invoice_id
          where p.id = ${id} and p.tenant_id = ${tenantId} for update of p
       `, "Payment not found");
       if (payment.reversedAt) throw new ConflictError("A reversed payment cannot be refunded");
+      if (String(payment.receivedBy) === auth.user.id) throw new ForbiddenError("You cannot refund a payment you recorded");
       const [refunded] = await tx`select coalesce(sum(amount), 0) as total from payment_refunds where payment_id = ${id}`;
       const remaining = roundMoney(Number(payment.amount) - Number(refunded?.total ?? 0));
       const amount = roundMoney(body.amount);
@@ -838,7 +855,7 @@ financeRoutes.post("/payments/:id/refunds", async (c) => {
       await refreshInvoice(tx, tenantId, String(payment.invoiceId), auth.user.id);
       await writeAudit(tx, c.get("deps").config, requestAudit(c, "payment.refund", {
         subjectPatientId: String(payment.patientId), resourceType: "PaymentRefund", resourceId: refundId,
-        metadata: { paymentId: id, invoiceId: payment.invoiceId, number: payment.number, amount, currency: payment.currency, method: body.method, reason: body.reason, receipt },
+        metadata: { paymentId: id, invoiceId: payment.invoiceId, number: payment.number, amount, currency: payment.currency, method: body.method, reason: body.reason, receipt, receivedBy: payment.receivedBy, refundedBy: auth.user.id },
       }));
       return { id: refundId, receiptNumber: receipt, replayed: false };
     });
@@ -871,9 +888,10 @@ financeRoutes.post("/invoices/:id/void", async (c) => {
   const body = await parseJson(c, invoiceVoidSchema);
   await withStaffActor(c, async (tx) => {
     const invoice = await requireRows(await tx`
-      select id, number, patient_id, status, currency from invoices where id = ${id} and tenant_id = ${tenantId} for update
+      select id, number, patient_id, status, currency, issued_by from invoices where id = ${id} and tenant_id = ${tenantId} for update
     `, "Bill not found");
     if (invoice.status === "void") throw new ConflictError("This bill is already void");
+    if (String(invoice.issuedBy) === auth.user.id) throw new ForbiddenError("You cannot void a bill you issued");
     const [net] = await tx`select app.invoice_net_paid(${id}) as paid`;
     if (Number(net?.paid ?? 0) !== 0) throw new ConflictError("This bill has a payment or refund. Settle it before voiding; the original records are kept.");
     const [pending] = await tx`select 1 from mobile_money_requests where invoice_id = ${id} and status in ('initiated','pending','indeterminate') limit 1`;
@@ -897,7 +915,7 @@ financeRoutes.post("/invoices/:id/void", async (c) => {
     `;
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "invoice.void", {
       subjectPatientId: String(invoice.patientId), resourceType: "Invoice", resourceId: id,
-      metadata: { number: invoice.number, reason: body.reason, releasedLines: lines.length },
+      metadata: { number: invoice.number, reason: body.reason, releasedLines: lines.length, issuedBy: invoice.issuedBy, voidedBy: auth.user.id },
     }));
     await writeOutbox(tx, { tenantId, eventType: "invoice.voided", aggregateId: id, payload: { number: invoice.number, reason: body.reason } });
   });
@@ -919,36 +937,62 @@ financeRoutes.post("/encounters/:id/waive", async (c) => {
     `, "Visit not found");
     let requests = 0;
     let supplies = 0;
+    let selfBlocked = 0;
     if (body.recommendationIds.length) {
-      const rows = await tx`
-        update care_recommendations set billing_status = 'waived', waived_by = ${auth.user.id}, waived_at = now(), waive_reason = ${body.reason}, updated_at = now()
-         where tenant_id = ${tenantId} and encounter_id = ${encounterId} and id = any(${body.recommendationIds}::uuid[])
-           and billing_status = 'unbilled' and status not in ('declined','cancelled')
-         returning id
+      const candidates = await tx`
+        select r.id, ii.created_by as biller_id
+          from care_recommendations r
+          left join invoice_items ii on ii.recommendation_id = r.id and ii.released_at is null
+         where r.tenant_id = ${tenantId} and r.encounter_id = ${encounterId} and r.id = any(${body.recommendationIds}::uuid[])
+           and r.billing_status = 'unbilled' and r.status not in ('declined','cancelled')
       `;
-      for (const row of rows) {
-        await tx`
-          insert into care_recommendation_events (id, tenant_id, recommendation_id, event, note, actor_user_id, actor_roles)
-          values (${crypto.randomUUID()}, ${tenantId}, ${row.id}, 'waived', ${body.reason}, ${auth.user.id}, ${auth.activeTenant!.roles})
+      const allowed = candidates.filter((row) => String(row.billerId ?? "") !== auth.user.id).map((row) => String(row.id));
+      selfBlocked += candidates.length - allowed.length;
+      if (allowed.length) {
+        const rows = await tx`
+          update care_recommendations set billing_status = 'waived', waived_by = ${auth.user.id}, waived_at = now(), waive_reason = ${body.reason}, updated_at = now()
+           where tenant_id = ${tenantId} and encounter_id = ${encounterId} and id = any(${allowed}::uuid[])
+             and billing_status = 'unbilled' and status not in ('declined','cancelled')
+           returning id
         `;
+        for (const row of rows) {
+          await tx`
+            insert into care_recommendation_events (id, tenant_id, recommendation_id, event, note, actor_user_id, actor_roles)
+            values (${crypto.randomUUID()}, ${tenantId}, ${row.id}, 'waived', ${body.reason}, ${auth.user.id}, ${auth.activeTenant!.roles})
+          `;
+        }
+        requests = rows.length;
       }
-      requests = rows.length;
     }
     if (body.supplyUsageIds.length) {
-      const rows = await tx`
-        update care_supply_usages set billing_status = 'waived', waived_by = ${auth.user.id}, waived_at = now(), waive_reason = ${body.reason}
-         where tenant_id = ${tenantId} and encounter_id = ${encounterId} and id = any(${body.supplyUsageIds}::uuid[])
-           and billing_status = 'unbilled' and voided_at is null
-         returning id
+      const candidates = await tx`
+        select s.id, ii.created_by as biller_id
+          from care_supply_usages s
+          left join invoice_items ii on ii.supply_usage_id = s.id and ii.released_at is null
+         where s.tenant_id = ${tenantId} and s.encounter_id = ${encounterId} and s.id = any(${body.supplyUsageIds}::uuid[])
+           and s.billing_status = 'unbilled' and s.voided_at is null
       `;
-      supplies = rows.length;
+      const allowed = candidates.filter((row) => String(row.billerId ?? "") !== auth.user.id).map((row) => String(row.id));
+      selfBlocked += candidates.length - allowed.length;
+      if (allowed.length) {
+        const rows = await tx`
+          update care_supply_usages set billing_status = 'waived', waived_by = ${auth.user.id}, waived_at = now(), waive_reason = ${body.reason}
+           where tenant_id = ${tenantId} and encounter_id = ${encounterId} and id = any(${allowed}::uuid[])
+             and billing_status = 'unbilled' and voided_at is null
+           returning id
+        `;
+        supplies = rows.length;
+      }
     }
-    if (!requests && !supplies) throw new ConflictError("None of the selected items were unbilled; reload the visit to see its current charges.");
+    if (!requests && !supplies) {
+      if (selfBlocked) throw new ForbiddenError("You cannot waive items you billed; a different authorized user must waive them");
+      throw new ConflictError("None of the selected items were unbilled; reload the visit to see its current charges.");
+    }
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "billing.waive", {
       subjectPatientId: String(encounter.patientId), resourceType: "Encounter", resourceId: encounterId,
-      metadata: { requests, supplies, reason: body.reason },
+      metadata: { requests, supplies, reason: body.reason, waivedBy: auth.user.id, selfBlocked },
     }));
-    return { requests, supplies };
+    return { requests, supplies, selfBlocked };
   });
   return c.json({ ok: true, ...result });
 });

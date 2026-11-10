@@ -27,6 +27,7 @@ import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
 import { resolveAttribution } from "../lib/scope.js";
 import { completeTriage, insertAllergy, insertObservation, validateClinicalCoding } from "../services/clinical.js";
 import type { AppEnv } from "../types.js";
+import { ensureInitialRegistrationBilling } from "../services/registration-billing.js";
 
 export const receptionRoutes = new Hono<AppEnv>();
 
@@ -115,7 +116,15 @@ receptionRoutes.post("/reception/patients", async (c) => {
       ...meta,
       metadata: { publicId, duplicateCandidates: possible.length },
     });
-    const payload = { patientId, publicId, duplicateReviewQueued: possible.length };
+    const registrationBilling = await ensureInitialRegistrationBilling(tx, {
+      tenantId: auth.activeTenant!.id,
+      patientId,
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      auditMeta: meta,
+      config: deps.config,
+    });
+    const payload = { patientId, publicId, duplicateReviewQueued: possible.length, registrationBilling };
     if (idemKey) {
       await tx`
         insert into idempotency_keys (id, key, actor_id, tenant_id, route, request_digest, response_status, response_body, expires_at)
@@ -187,13 +196,21 @@ receptionRoutes.post("/patients/enroll", async (c) => {
       ...meta,
       metadata: { publicId: String(survivor.publicId), alreadyLinked: Boolean(existing) },
     });
+    const registrationBilling = await ensureInitialRegistrationBilling(tx, {
+      tenantId: auth.activeTenant!.id,
+      patientId: targetId,
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      auditMeta: meta,
+      config: deps.config,
+    });
     await writeOutbox(tx, {
       tenantId: auth.activeTenant!.id,
       eventType: "patient.enrolled",
       aggregateId: targetId,
-      payload: { patientId: targetId, publicId: String(survivor.publicId), alreadyLinked: Boolean(existing) },
+      payload: { patientId: targetId, publicId: String(survivor.publicId), alreadyLinked: Boolean(existing), registrationBilling },
     });
-    return { id: targetId, publicId: survivor.publicId, alreadyLinked: Boolean(existing) };
+    return { id: targetId, publicId: survivor.publicId, alreadyLinked: Boolean(existing), registrationBilling };
   });
   return c.json({ ok: true, patient: result, alreadyLinked: result.alreadyLinked }, result.alreadyLinked ? 200 : 201);
 });

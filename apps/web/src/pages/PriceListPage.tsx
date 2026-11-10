@@ -9,7 +9,7 @@ import { departmentLabel } from "../lib/workspace";
 import type { CatalogueItem } from "../lib/types";
 
 interface Department { id: string; name: string; enabled: boolean }
-interface BillingSettings { allowedCurrencies: string[]; allowZeroPrices: boolean; allowManualCharges: boolean; significantChangePercent: number; version: number }
+interface BillingSettings { allowedCurrencies: string[]; allowZeroPrices: boolean; allowManualCharges: boolean; significantChangePercent: number; registrationChargeEnabled: boolean; registrationChargeCatalogId: string | null; version: number }
 interface HistoryRow {
   version: number; change: string; previousPrice: string | number | null; newPrice: string | number | null;
   previousCurrency: string | null; newCurrency: string | null; previousStatus: string | null; newStatus: string | null;
@@ -95,7 +95,7 @@ export function PriceListPage() {
         Prices marked as test are for training and set-up only. A bill line using a test price is refused until finance approves the price.
       </Notice>
       {canManage ? <AddItem departments={departments.data?.departments ?? []} currencies={settings.data?.settings.allowedCurrencies ?? ["UGX"]} onSaved={(message) => { action.setMessage(message); items.reload(); }} /> : null}
-      {settings.data ? <BillingSettingsCard settings={settings.data.settings} canManage={settings.data.canManage} onSaved={() => { settings.reload(); items.reload(); }} /> : null}
+      {settings.data ? <BillingSettingsCard settings={settings.data.settings} canManage={settings.data.canManage} items={items.data?.services ?? []} onSaved={() => { settings.reload(); items.reload(); }} /> : null}
       <Card
         title="Items"
         actions={<Input aria-label="Search the price list" placeholder="Search name or code" value={search} onChange={(event) => setSearch(event.target.value)} />}
@@ -366,14 +366,17 @@ function ConvertPanel({ item, allowedCurrencies, onClose, onConverted }: { item:
   );
 }
 
-function BillingSettingsCard({ settings, canManage, onSaved }: { settings: BillingSettings; canManage: boolean; onSaved: () => void }) {
+function BillingSettingsCard({ settings, canManage, items, onSaved }: { settings: BillingSettings; canManage: boolean; items: CatalogueItem[]; onSaved: () => void }) {
   const [currencies, setCurrencies] = useState(settings.allowedCurrencies.join(", "));
   const [zero, setZero] = useState(settings.allowZeroPrices);
   const [manual, setManual] = useState(settings.allowManualCharges);
   const [threshold, setThreshold] = useState(String(settings.significantChangePercent));
+  const [regEnabled, setRegEnabled] = useState(settings.registrationChargeEnabled ?? false);
+  const [regItem, setRegItem] = useState(settings.registrationChargeCatalogId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const eligible = items.filter((item) => item.active && item.priceStatus === "approved");
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -384,9 +387,17 @@ function BillingSettingsCard({ settings, canManage, onSaved }: { settings: Billi
     try {
       await api("/billing-settings", {
         method: "PUT",
-        body: { expectedVersion: settings.version, allowedCurrencies: [...new Set(allowed)], allowZeroPrices: zero, allowManualCharges: manual, significantChangePercent: Number(threshold) },
+        body: {
+          expectedVersion: settings.version,
+          allowedCurrencies: [...new Set(allowed)],
+          allowZeroPrices: zero,
+          allowManualCharges: manual,
+          significantChangePercent: Number(threshold),
+          registrationChargeEnabled: regEnabled,
+          registrationChargeCatalogId: regEnabled && regItem ? regItem : null,
+        },
       });
-      setMessage(`Billing settings saved. Unless an administrator changes them, the facility prices in ${[...new Set(allowed)].join(" or ")}.`);
+      setMessage(`Billing settings saved. ${regEnabled ? "Automatic initial registration/consultation charge is enabled for newly linked patients." : "Automatic initial registration charge is disabled."}`);
       onSaved();
     } catch (cause) {
       setError(errorMessage(cause));
@@ -407,11 +418,21 @@ function BillingSettingsCard({ settings, canManage, onSaved }: { settings: Billi
           </div>
           <label className="mv-check"><input type="checkbox" checked={zero} onChange={(event) => setZero(event.target.checked)} /><span>Allow zero prices</span></label>
           <label className="mv-check"><input type="checkbox" checked={manual} onChange={(event) => setManual(event.target.checked)} /><span>Allow manual charges at the till</span></label>
-          <div><Button type="submit" size="sm" disabled={busy}>{busy ? "Saving…" : "Save billing settings"}</Button></div>
+          <fieldset className="mv-note mv-stack">
+            <legend>Initial registration / consultation charge</legend>
+            <label className="mv-check"><input type="checkbox" checked={regEnabled} onChange={(event) => setRegEnabled(event.target.checked)} /><span>Automatically add a default charge when a patient is first registered or linked to this facility</span></label>
+            <Field label="Default charge item" htmlFor="settings-reg-item" hint="Must be an approved, active price-list item in an enabled currency. Creates an open billed item (not service delivered or paid).">
+              <Select id="settings-reg-item" value={regItem} onChange={(event) => setRegItem(event.target.value)} disabled={!regEnabled}>
+                <option value="">Select approved price-list item…</option>
+                {eligible.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.code}) — {formatMoney(item.price, item.currency)}</option>)}
+              </Select>
+            </Field>
+          </fieldset>
+          <div><Button type="submit" size="sm" disabled={busy || (regEnabled && !regItem)}>{busy ? "Saving…" : "Save billing settings"}</Button></div>
         </form>
       ) : (
-        <Table head={["Currencies", "Zero prices", "Manual charges", "Change threshold"]} caption="Billing settings">
-          <tr><td>{settings.allowedCurrencies.join(", ")}</td><td>{settings.allowZeroPrices ? "Allowed" : "Not allowed"}</td><td>{settings.allowManualCharges ? "Allowed" : "Not allowed"}</td><td>{settings.significantChangePercent}%</td></tr>
+        <Table head={["Currencies", "Zero prices", "Manual charges", "Change threshold", "Registration charge"]} caption="Billing settings">
+          <tr><td>{settings.allowedCurrencies.join(", ")}</td><td>{settings.allowZeroPrices ? "Allowed" : "Not allowed"}</td><td>{settings.allowManualCharges ? "Allowed" : "Not allowed"}</td><td>{settings.significantChangePercent}%</td><td>{settings.registrationChargeEnabled ? "Enabled" : "Disabled"}</td></tr>
         </Table>
       )}
     </Card>

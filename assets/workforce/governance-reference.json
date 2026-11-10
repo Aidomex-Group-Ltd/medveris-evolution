@@ -1,0 +1,60 @@
+{
+  "countryCode": "UG",
+  "version": 1,
+  "regulators": [
+    { "code": "UMDPC", "name": "Uganda Medical and Dental Practitioners Council", "regulatorType": "medical-dental", "country": "UG", "verificationMode": "manual", "website": "https://umdpc.go.ug", "notes": "Registers medical and dental practitioners. Verify registration status directly with council." },
+    { "code": "UNMC", "name": "Uganda Nurses and Midwives Council", "regulatorType": "nursing-midwifery", "country": "UG", "verificationMode": "manual", "website": "https://unmc.go.ug", "notes": "Registers nurses and midwives. Verify registration and any practice restrictions." },
+    { "code": "NDA", "name": "National Drug Authority", "regulatorType": "pharmacy", "country": "UG", "verificationMode": "manual", "website": "https://nda.go.ug", "notes": "Regulates pharmacy practice and drug distribution. Verify pharmacist and pharmacy technician registration." },
+    { "code": "UAHC", "name": "Uganda Allied Health Professionals Council", "regulatorType": "allied-health", "country": "UG", "verificationMode": "manual", "website": "https://uahc.go.ug", "notes": "Registers allied health professionals including laboratory, imaging, rehabilitation, nutrition." },
+    { "code": "UMLSC", "name": "Uganda Medical Laboratory Practitioners Council", "regulatorType": "laboratory", "country": "UG", "verificationMode": "manual", "website": "https://umlsc.go.ug", "notes": "Registers medical laboratory practitioners. Verify laboratory scientist and technician registration." },
+    { "code": "UCPC", "name": "Uganda Counselling and Psychotherapy Council", "regulatorType": "mental-health", "country": "UG", "verificationMode": "manual", "website": "https://ucpc.go.ug", "notes": "Registers counsellors and psychotherapists. Verify registration status." },
+    { "code": "UNBS", "name": "Uganda National Bureau of Standards", "regulatorType": "standards", "country": "UG", "verificationMode": "manual", "website": "https://unbs.go.ug", "notes": "Not a clinical regulator. May be relevant for facility equipment and product standards." },
+    { "code": "MOH", "name": "Ministry of Health Uganda", "regulatorType": "government", "country": "UG", "verificationMode": "manual", "website": "https://health.go.ug", "notes": "Sets national health policy, standards and guidelines. Not a registration body but relevant for facility licensing and compliance." },
+    { "code": "NONE", "name": "No statutory regulator recorded", "regulatorType": "none", "country": "UG", "verificationMode": "manual", "notes": "Used for non-clinical, support and administrative roles where no statutory registration applies." }
+  ],
+  "verificationStatuses": [
+    { "code": "not-provided", "name": "Not provided", "description": "Credential information has not been submitted." },
+    { "code": "pending-verification", "name": "Pending verification", "description": "Credentials submitted and awaiting verification." },
+    { "code": "verified-active", "name": "Verified and active", "description": "Credentials verified and professional registration is active." },
+    { "code": "expired", "name": "Expired", "description": "Professional registration or licence has expired." },
+    { "code": "suspended", "name": "Suspended", "description": "Professional registration or licence is suspended." },
+    { "code": "restricted", "name": "Restricted", "description": "Professional registration or licence has restrictions on practice." },
+    { "code": "rejected", "name": "Rejected", "description": "Credential verification was rejected." },
+    { "code": "not-applicable", "name": "Not applicable", "description": "No professional registration required for this role." }
+  ],
+  "employmentTypes": [
+    { "code": "permanent", "name": "Permanent", "description": "Ongoing employment with no fixed end date." },
+    { "code": "contract", "name": "Contract", "description": "Fixed-term employment contract." },
+    { "code": "part-time", "name": "Part-time", "description": "Regular employment with reduced hours." },
+    { "code": "locum", "name": "Locum", "description": "Temporary replacement or fill-in position." },
+    { "code": "sessional", "name": "Sessional", "description": "Paid per session or shift." },
+    { "code": "internship", "name": "Internship", "description": "Supervised practical training position." },
+    { "code": "residency", "name": "Residency", "description": "Specialist training position under supervision." },
+    { "code": "volunteer", "name": "Volunteer", "description": "Unpaid voluntary position." },
+    { "code": "student", "name": "Student", "description": "Clinical placement as part of educational programme." }
+  ],
+  "employmentStatuses": [
+    { "code": "pending", "name": "Pending", "description": "Employment application submitted, awaiting approval." },
+    { "code": "active", "name": "Active", "description": "Currently employed and active." },
+    { "code": "suspended", "name": "Suspended", "description": "Employment suspended temporarily." },
+    { "code": "ended", "name": "Ended", "description": "Employment has ended normally." },
+    { "code": "withdrawn", "name": "Withdrawn", "description": "Application or employment withdrawn." }
+  ],
+  "payrollFrequency": [
+    { "code": "weekly", "name": "Weekly", "description": "Paid once per week." },
+    { "code": "fortnightly", "name": "Fortnightly", "description": "Paid every two weeks." },
+    { "code": "monthly", "name": "Monthly", "description": "Paid once per month." },
+    { "code": "annual", "name": "Annual", "description": "Paid once per year." }
+  ],
+  "allowanceTypes": [
+    { "code": "professional", "name": "Professional allowance", "description": "Allowance for professional qualification and expertise." },
+    { "code": "responsibility", "name": "Responsibility allowance", "description": "Allowance for additional responsibilities or leadership roles." },
+    { "code": "housing", "name": "Housing allowance", "description": "Allowance for housing/accommodation." },
+    { "code": "transport", "name": "Transport allowance", "description": "Allowance for transport/commute." },
+    { "code": "shift", "name": "Shift allowance", "description": "Allowance for working shifts outside normal hours." },
+    { "code": "on-call", "name": "On-call allowance", "description": "Allowance for being on call outside normal hours." },
+    { "code": "overtime", "name": "Overtime", "description": "Pay for hours worked beyond normal schedule." },
+    { "code": "hardship", "name": "Hardship allowance", "description": "Allowance for working in difficult or remote locations." },
+    { "code": "risk", "name": "Risk allowance", "description": "Allowance for working in high-risk environments." }
+  ]
+}

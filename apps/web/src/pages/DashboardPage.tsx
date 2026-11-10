@@ -321,7 +321,7 @@ function FacilityOverview() {
       />
 
       <section className="mv-grid mv-grid--3" aria-label="Facility status">
-        <div className="mv-stat"><span>Active role</span><strong style={{ fontSize: "1.05rem" }}>{roles.join(", ") || "None"}</strong><span>Facility administrator does not imply clinical access</span></div>
+        <div className="mv-stat"><span>Active role</span><strong style={{ fontSize: "1.05rem", overflowWrap: "anywhere" }}>{roles.join(", ") || "None"}</strong><span>Facility administrator does not imply clinical access</span></div>
         <div className="mv-stat"><span>Waiting in queue</span><strong>{queues.loading ? "…" : queues.data?.queues.reduce((sum, q) => sum + q.waiting, 0) ?? "—"}</strong><span>{frontDesk ? "Across active queues" : "Front-desk role required"}</span></div>
         <div className="mv-stat"><span>Active encounters</span><strong>{worklist.loading ? "…" : worklist.data?.encounters.length ?? "—"}</strong><span>{clinical ? "Arrived, triaged or in progress" : "Clinical role required"}</span></div>
       </section>

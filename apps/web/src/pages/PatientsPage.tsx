@@ -8,7 +8,14 @@ import { departmentLabel, workspaceProfile } from "../lib/workspace";
 import type { PatientSummary } from "../lib/types";
 
 interface RecentResponse { patients: PatientSummary[] }
-interface RegisterResponse { patient: { patientId: string; publicId: string; duplicateReviewQueued: number } }
+interface RegistrationBilling {
+  status: "billed" | "already_billed" | "disabled" | "not_configured" | "unavailable";
+  invoiceId?: string;
+  amount?: number;
+  currency?: string;
+  reason?: string;
+}
+interface RegisterResponse { patient: { patientId: string; publicId: string; duplicateReviewQueued: number; registrationBilling?: RegistrationBilling } }
 interface ResolveResponse { matched: boolean; patient: PatientSummary | null; message?: string }
 interface SearchResponse { patients: Array<PatientSummary & { localMrn: string | null }>; hasMore: boolean; offset: number; limit: number }
 
@@ -76,7 +83,9 @@ export function PatientsPage() {
           assistedWithoutContactDetails: data.get("assisted") === "on",
         },
       });
-      setMessage(`Registered ${response.patient.publicId}.${response.patient.duplicateReviewQueued ? ` ${response.patient.duplicateReviewQueued} duplicate candidate(s) queued for manual review; no automatic merge occurred.` : ""}`);
+      const billing = response.patient.registrationBilling;
+      const billingNote = billing?.status === "billed" ? ` Initial registration charge created (${billing.amount ?? ""} ${billing.currency ?? ""}) and added to billing radar.` : billing?.status === "already_billed" ? " Initial registration charge already exists for this patient at this facility." : billing?.status === "unavailable" || billing?.status === "not_configured" ? ` Initial registration charge not created: ${billing.reason ?? "configuration unavailable"}.` : "";
+      setMessage(`Registered ${response.patient.publicId}.${response.patient.duplicateReviewQueued ? ` ${response.patient.duplicateReviewQueued} duplicate candidate(s) queued for manual review; no automatic merge occurred.` : ""}${billingNote}`);
       setResolved({ id: response.patient.patientId, publicId: response.patient.publicId, givenName: String(data.get("givenName")), familyName: String(data.get("familyName")), dateOfBirth: String(data.get("dateOfBirth")), sex: String(data.get("sex")) });
       form.reset();
       recent.reload();
@@ -115,11 +124,13 @@ export function PatientsPage() {
     setError(null);
     setMessage(null);
     try {
-      const response = await api<{ ok: boolean; patient: { id: string; publicId: string }; alreadyLinked: boolean }>("/patients/enroll", {
+      const response = await api<{ ok: boolean; patient: { id: string; publicId: string }; alreadyLinked: boolean; registrationBilling?: RegistrationBilling }>("/patients/enroll", {
         method: "POST",
         body: { publicId: resolved.publicId, familyName: resolved.familyName, dateOfBirth: resolved.dateOfBirth },
       });
-      setMessage(`${response.alreadyLinked ? "This patient is already registered here" : `${response.patient.publicId} is now registered at this facility`}. You can start the visit.`);
+      const billing = response.registrationBilling;
+      const billingNote = billing?.status === "billed" ? ` Initial registration charge created (${billing.amount ?? ""} ${billing.currency ?? ""}).` : billing?.status === "already_billed" ? " Initial registration charge already recorded." : billing?.status === "unavailable" || billing?.status === "not_configured" ? ` Initial registration charge not created: ${billing.reason ?? "configuration unavailable"}.` : "";
+      setMessage(`${response.alreadyLinked ? "This patient is already registered here" : `${response.patient.publicId} is now registered at this facility`}. You can start the visit.${billingNote}`);
       setResolved({ ...resolved, linked: true });
       recent.reload();
     } catch (cause) {
@@ -182,9 +193,9 @@ export function PatientsPage() {
                 <Button variant="secondary" disabled={busy !== null} onClick={() => void enrollHere()}>{busy === "enroll" ? "Adding…" : "Add to this facility"}</Button>
               </div>
             ) : null}
-            <div className="mv-row">
+            <div className="mv-form-grid">
               <Field label="Encounter reason" htmlFor="encounter-reason"><Input id="encounter-reason" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
-              <Button onClick={() => void startEncounter()} disabled={busy === "encounter" || busy === "enroll" || !reason.trim()}>{busy === "encounter" ? "Starting…" : "Start walk-in encounter"}</Button>
+              <div className="mv-field"><span className="mv-field__label" aria-hidden="true">&nbsp;</span><Button onClick={() => void startEncounter()} disabled={busy === "encounter" || busy === "enroll" || !reason.trim()}>{busy === "encounter" ? "Starting…" : "Start walk-in encounter"}</Button></div>
             </div>
           </div>
         </Card>
@@ -226,7 +237,7 @@ export function PatientsPage() {
         <form className="mv-form-grid" onSubmit={submitSearch}>
           <Field label="Name, ID or MRN" htmlFor="search-q" hint="At least 2 characters."><Input id="search-q" name="q" minLength={2} maxLength={120} required autoComplete="off" /></Field>
           <Field label="Date of birth (optional)" htmlFor="search-dob"><Input id="search-dob" name="searchDob" type="date" /></Field>
-          <div className="mv-row" style={{ alignItems: "flex-end" }}><Button type="submit" disabled={busy === "search"}>{busy === "search" ? "Searching…" : "Search"}</Button></div>
+          <div className="mv-row"><Button type="submit" disabled={busy === "search"}>{busy === "search" ? "Searching…" : "Search"}</Button></div>
         </form>
         {searchResult && search ? (
           !searchResult.patients.length ? <EmptyState title="No patients found" description="No patient linked to this facility matches. Use exact lookup for patients registered elsewhere." /> : (

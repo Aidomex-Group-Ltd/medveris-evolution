@@ -70,7 +70,7 @@ export function QueuesPage() {
                 <option value="emergency">Emergency</option>
               </Select>
             </label>
-            <Button onClick={() => void addEntry()} disabled={!selected || !patientId || busy}>{busy ? "Adding…" : "Add queue entry"}</Button>
+            <Button className="mv-full-width-sm" onClick={() => void addEntry()} disabled={!selected || !patientId || busy}>{busy ? "Adding…" : "Add queue entry"}</Button>
             {patients.error ? <ErrorState message={patients.error} onRetry={patients.reload} /> : null}
           </div>
         </Card>
