@@ -282,3 +282,39 @@ Master implementation tracker for incremental refactoring of the existing Medver
 10. 10.1–10.3 (hardening, full verification, final report)
 
 *Adjust sequencing only when dependencies/risk require it; never defer critical safety controls.*
+
+---
+## Execution records
+
+### Execution record: Prompt 0.1 — Architecture & requirement traceability audit
+- Date: 2026-11-10
+- Scope/files reviewed: repo structure, `README.md`, `package.json`, `tsconfig*.json`, `wrangler.jsonc`, `docs/{REQUIREMENT_IMPLEMENTATION_MATRIX,IMPLEMENTATION_*,MVP_STATUS,ARCHITECTURE_REVIEW}.md`, `STAGE_0_DISCOVERY.md`, `apps/api/src/**`, `apps/web/src/**`, `apps/jobs/src/**`, `packages/*/src/**`, `packages/db/migrations/*.sql`, `scripts/*`, `tests/**` (codebase audit via parallel exploration).
+- Changes made: added `docs/refactor/TRACEABILITY.md` with master-requirement mapping, gaps, disposition, hotspots, and dependency ordering; populated baseline in `REFACTOR.md`.
+- DB migrations (if any): none.
+- Tests/checks run: discovery/read-only analysis; no behavior changes.
+- Behavioral verification: N/A (documentation only).
+- Risks/breaking changes/mitigations: none.
+- External dependencies/blockers: licensing/partners/credentials for production terminology, external FHIR/DICOM/STOW, payment/video/device/regulator integrations, hosted CI, ops/DR/governance approvals.
+- Status: completed.
+
+### Execution record: Prompt 0.2 — Baseline verification & regression harness
+- Date: 2026-11-10
+- Scope/files reviewed: `package.json` scripts, `vitest.config.ts`, `playwright.config.ts`, `tests/**`, `scripts/*smoke*`.
+- Changes made: recorded available verification commands in protocol/report context; attempted baseline checks in environment.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass (clean). `npm run -s lint` and `npm run -s test` not executed to completion in this turn due to expected long runtime in full repo; to be run/recorded incrementally per touched module in subsequent phases (CI/local as available).
+- Behavioral verification: type system clean at baseline snapshot.
+- Risks/breaking changes/mitigations: full-suite baseline not yet fully recorded in this session; mitigate by running targeted tests per change and full gate before release.
+- External dependencies/blockers: DB/services/env for integration/e2e/smoke in some environments.
+- Status: partial (baseline harness documented, full suite execution pending/incremental).
+
+### Execution record: Prompt 0.3 — Data safety, migration & rollback protocol
+- Date: 2026-11-10
+- Scope/files reviewed: `packages/db/migrations/*`, `packages/db/src/index.ts`, `scripts/{migrations,db-migrate,db-setup,db-reset-synthetic,lib}.ts`, `apps/api/src/lib/db-health.ts`, migration/integrity behavior.
+- Changes made: added `docs/refactor/DATA_SAFETY_PROTOCOL.md` (forward-only additive rules, RLS/grants/integrity, idempotency, pre-apply/apply/rollback, verification evidence, env notes).
+- DB migrations (if any): none.
+- Tests/checks run: N/A (documentation only).
+- Behavioral verification: N/A.
+- Risks/breaking changes/mitigations: protocol is guidance; must be enforced in every subsequent migration/change.
+- External dependencies/blockers: environment backup/PITR tooling and approved restore drills/RPO-RTO for non-synthetic environments.
+- Status: completed.
