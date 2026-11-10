@@ -483,3 +483,8 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: UI depends on backend `registrationBilling` payload (now provided); settings payload now includes registration charge fields (backward-compatible defaults). Test mutates tenant billing settings/catalog in synthetic DB and restores disabled state.
 - External dependencies/blockers: full exemptions/insurance/discount/zero-cost flows, billing-radar/report reconciliation views, and DB-backed CI execution.
 - Status: partial.
+
+### Execution record: Continuation checkpoint — 5.2 done (partial), 2.2/2.3 next
+- Date: 2026-11-10
+- Summary: completed A (4.2/4.3 mobile retrofit slices) and B (5.1 backend hook + 5.2 registration/enrollment billing-status UX, billing-settings config UI, and added `tests/integration/registration-billing.test.ts` [not executed]). 
+- Next: begin 2.2/2.3 RBAC/dual-auth rollout per `docs/refactor/SECURITY_RBAC_PLAN.md` with incremental, backend-enforced hardening on high-risk modules and design/additive scaffolding for dual authorization (no destructive changes).
