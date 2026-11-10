@@ -351,3 +351,25 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: none; informs subsequent enforcement work.
 - External dependencies/blockers: facility policy decisions for dual-approval scope, clinical governance/privacy review.
 - Status: partial (planning baseline complete; canonical granular permission model and enforcement rollout pending).
+
+### Execution record: Prompt 4.1 (planning) — Universal mobile-first foundations & retrofit plan
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/web/src/**`, `packages/ui/src/**`, responsive/CSS/layout patterns, large pages/components.
+- Changes made: added `docs/refactor/MOBILE_FIRST_PLAN.md` with target behavior, gaps, shared-foundation tasks, module retrofit order/checklist, and risks.
+- DB migrations (if any): none.
+- Tests/checks run: N/A (planning).
+- Behavioral verification: N/A.
+- Risks/breaking changes/mitigations: UI regressions possible during retrofit; mitigate with per-module viewport checks and incremental commits.
+- External dependencies/blockers: design/accessibility review as needed.
+- Status: partial (plan complete; implementation pending).
+
+### Execution record: Prompts 5–9 (planning) — Registration/billing, finance, clinical routing, workforce, interoperability blueprints
+- Date: 2026-11-10
+- Scope/files reviewed: registration/reception/billing/finance/workflow/clinical/diagnostics/radiology/pharmacy/workforce/terminology/FHIR/DICOM modules and schemas.
+- Changes made: added `docs/refactor/CLINICAL_FINANCE_WORKFORCE_INTEROP_PLANS.md` consolidating implementation blueprints for Phase 5 (idempotent registration→initial billing), Phase 6 (revenue/payroll/expenditure/reporting), Phase 7 (order routing/status/result linkage/retries), Phase 8 (configurable cadres and secure onboarding), and Phase 9 (terminology mapping, LOINC/ICD-11/SNOMED, FHIR, DICOMweb) with cross-cutting safety requirements and blockers.
+- DB migrations (if any): none.
+- Tests/checks run: N/A (planning).
+- Behavioral verification: N/A.
+- Risks/breaking changes/mitigations: each area requires careful additive migrations and compatibility; external dependencies documented.
+- External dependencies/blockers: terminology licensing/content, PACS/FHIR partners, payment/regulator integrations, clinical/governance approvals.
+- Status: partial (blueprints complete; implementation pending).
