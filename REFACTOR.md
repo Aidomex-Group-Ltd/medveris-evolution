@@ -329,3 +329,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: none; conventions guide future slices.
 - External dependencies/blockers: none.
 - Status: completed.
+
+### Execution record: Prompt 3.1 — Central subscription policy and enforcement middleware/service (incremental)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/api/src/lib/billing-middleware.ts`, `apps/api/src/app.ts`, `apps/api/src/routes/{billing,subscription-checkout,reports}.ts`, `services/subscriptions.ts`, `packages/domain/src/billing.ts`, existing billing/subscription tests.
+- Changes made: expanded backend `subscriptionGuard` so that in `enforce` mode restricted/suspended/cancelled/expired-trial facility subscriptions block protected mutating API operations (not only a few growth routes), while preserving read-only access and allowlisting auth/session, subscription recovery/payment, public callbacks, legal/health, and core patient-care/emergency documentation continuity paths. Enforcement remains server-side and authoritative.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass. Targeted/full integration tests not run in this environment (DB-dependent); existing billing/subscription tests reviewed for compatibility (GET/report restriction and billing recovery paths remain consistent).
+- Behavioral verification: code-path review confirms mutating protected routes now return 402 `subscription_restricted` when tenant subscription access mode is restricted; allowlisted recovery/care paths and reads remain accessible.
+- Risks/breaking changes/mitigations: behavior is stricter for non-care mutations under restricted subscriptions (intended); allowlist may need refinement per facility-policy (e.g. patient-billing vs facility-subscription admin writes) with explicit tests. Monitor for unintended blocks in operations/finance workflows and adjust narrowly with audit-backed policy.
+- External dependencies/blockers: payment verification/callback behavior depends on configured providers; full lifecycle verification requires integration/e2e in configured environments.
+- Status: partial/incremental (centralized mutating-write enforcement added; comprehensive route classification, policy config, and automated enforcement tests to follow).
