@@ -114,7 +114,8 @@ describe("registration initial billing (5.1)", () => {
     expect(first.patient.registrationBilling?.invoiceId).toBeTruthy();
 
     const replay = await expectOk(await call(reception, "/api/v1/reception/patients", { method: "POST", headers: { "idempotency-key": key }, body }), 201);
-    expect(replay.patient.registrationBilling?.status).toBe("already_billed");
+    expect(replay.patient.patientId).toBe(first.patient.patientId);
+    expect(replay.patient.registrationBilling?.invoiceId).toBe(first.patient.registrationBilling?.invoiceId);
 
     // verify only one marker/invoice for patient+tenant
     const markers = await withContext(sql, {

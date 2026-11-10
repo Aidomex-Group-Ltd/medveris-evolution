@@ -499,3 +499,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: stricter than previous behavior (intentional for separation of duties); may affect single-operator workflows—requires operational roles/process and future configurable dual-approval workflow. Full request→independent approve→execute workflow for all designated ops still pending (additive schema/service/UI).
 - External dependencies/blockers: generalized dual-authorization entities/state machine, facility policy configuration, and comprehensive permission-matrix tests.
 - Status: partial.
+
+### Execution record: Registration billing verification/fix (5.1/5.2 hardening)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/api/src/services/registration-billing.ts`, `packages/db/migrations/122_registration_initial_billing.sql`, `apps/api/src/routes/reception.ts`, `tests/integration/registration-billing.test.ts`, invoice RLS/constraints in DB.
+- Changes made: applied migration 122 in local dev DB and added additive follow-up migrations `123_registration_billing_rls.sql` (allow tenant-scoped receptionist insert/read paths required for registration-generated invoice/item creation) and `124_registration_invoice_source.sql` (extend `invoice_items.source` to include `registration` while preserving source/link integrity constraints). Adjusted integration test replay assertion to validate idempotent replay by identical patient/invoice linkage and single-marker invariant.
+- DB migrations (if any): 123, 124 (additive/constraint-safe, forward-only).
+- Tests/checks run: `npm run -s typecheck` -> pass; `DATABASE_URL=... MIGRATION_DATABASE_URL=... APP_ENV=test npx vitest run tests/integration/registration-billing.test.ts` -> pass (1/1) against local dev DB.
+- Behavioral verification: end-to-end in-process API + DB confirms configured registration creates one billed invoice/line and replay/idempotency does not duplicate marker.
+- Risks/breaking changes/mitigations: broadened invoice/item insert RLS to receptionist for registration automation (tenant-bound, existing finance/admin retained); source enum expanded additively. Requires migration apply in other environments.
+- External dependencies/blockers: CI/hosted DB execution, exemptions/insurance/discount/zero-cost policy UI, reporting reconciliation.
+- Status: partial (core 5.1 path verified locally; broader billing/finance scope remains).
