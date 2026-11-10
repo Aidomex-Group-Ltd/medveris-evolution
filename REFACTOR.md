@@ -428,3 +428,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: additive CSS/layout-only changes; no API/route behavior changes.
 - External dependencies/blockers: full module-by-module retrofit and UI verification remain.
 - Status: partial.
+
+### Execution record: Prompt 4.2/4.3 — Encounter page mobile interaction tweaks (incremental)
+- Date: 2026-11-10
+- Scope/files reviewed: `apps/web/src/pages/EncounterPage.tsx`.
+- Changes made: made timeline/entry selection note buttons full-width to improve tap targets and stacked layout behavior on small screens.
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s typecheck` -> pass.
+- Behavioral verification: static UI review; no clinical/API logic changes. Device/manual verification pending.
+- Risks/breaking changes/mitigations: layout-only.
+- External dependencies/blockers: broader encounter subcomponent responsive retrofit still pending.
+- Status: partial.

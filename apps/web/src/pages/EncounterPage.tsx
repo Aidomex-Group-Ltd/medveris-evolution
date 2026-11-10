@@ -219,7 +219,7 @@ export function EncounterPage() {
               {timeline ? (
                 <div className="mv-stack" style={{ gap: 8 }}>
                   {timeline.map((row) => (
-                    <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer" }} onClick={() => { setSelectedEntry(row.id); setShowTimeline(false); }}>
+                    <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer", width: "100%" }} onClick={() => { setSelectedEntry(row.id); setShowTimeline(false); }}>
                       <div className="mv-spread"><strong>{row.title}</strong><Badge tone={row.status === "signed" || row.status === "amended" ? "success" : row.status === "draft" ? "warning" : "danger"}>{row.status}</Badge></div>
                       <div className="mv-small mv-muted">{noteTypeLabel(row.noteType)} · v{row.currentVersion} (latest v{row.latestVersion}) · {row.authorName}{row.archivedAt ? ` · archived ${new Date(row.archivedAt).toLocaleString()}` : ""}{row.voidReason ? ` · voided: ${row.voidReason}` : ""}{row.attachmentCount ? ` · ${row.attachmentCount} attachment${row.attachmentCount === 1 ? "" : "s"}` : ""}</div>
                     </button>
@@ -235,7 +235,7 @@ export function EncounterPage() {
                 {!data.entries.length ? <p className="mv-small mv-muted">No notes yet.</p> : (
                   <div className="mv-stack" style={{ gap: 6 }}>
                     {data.entries.map((row) => (
-                      <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer" }} onClick={() => setSelectedEntry(row.id)} aria-pressed={row.id === entry?.id}>
+                      <button key={row.id} type="button" className={`mv-note mv-note--${row.status}`} style={{ textAlign: "left", cursor: "pointer", width: "100%" }} onClick={() => setSelectedEntry(row.id)} aria-pressed={row.id === entry?.id}>
                         <strong>{row.title}</strong>
                         <div className="mv-small mv-muted">v{row.currentVersion} · {row.status}{row.archivedAt ? " · archived" : ""}{row.voidReason ? " · voided" : ""}</div>
                         <div className="mv-small mv-muted">{noteTypeLabel(row.noteType)} · {row.authorName}{row.attachmentCount ? ` · ${row.attachmentCount} attachment${row.attachmentCount === 1 ? "" : "s"}` : ""}</div>
