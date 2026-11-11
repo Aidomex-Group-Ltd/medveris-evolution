@@ -9,6 +9,66 @@ Master implementation tracker for incremental refactoring of the existing Medver
 > - Do not claim completion because build/dashboard loads; verify actual behavior and tests per affected module. Do not silently skip requirements—document blockers/dependencies.
 > - Prefer incremental, minimal-risk changes; avoid unnecessary rewrites or technology replacement.
 
+## Current status (rescan 2026-11-11)
+
+- **Branch/deploy:** `master@92da33b` = `origin/master` (clean). Production `medveris-production` serving `4778062e-20d3-4b00-9da3-b9c4bb0881d2@100%` (tag `92da33b`, `medveris.online`, promoted 2026-11-11; evidence `.wrangler/release-evidence/production-2026-11-11T07-47-16-023Z.json`). Deploy gates for that release passed (lint/typecheck/tests 765/88, audit, build, packaging, staged verification/smoke). Prod DB `medveris-prod` migration state readable/applied (75, up to date) per gate evidence.
+- **Phase 1A (deployed, partial):** remediation increment 1 code/docs merged in ancestors (`f34666a` + follow-ups `1a87e54,3883e88,6d3bc9b,92da33b`) — additive authz contract/helpers (`packages/authz/src/{contract,index}.ts`, `apps/api/src/lib/{actor,authorization}.ts`), workspace shared-supply safety behavior, targeted tests, `docs/refactor/phase1a/*`, `tests/unit/authz-phase1a.test.ts`. **Not fully complete/verified:** generalized dual-approval workflow not activated; uniform RBAC/policy adoption, full permission-matrix & negative/security coverage (cross-tenant/forged-destination/ended-link/invariants, conditional RLS proof, audit success/no-success-on-denial, outbox consumer/poison/dedup), and `requestActor` 404→401 full impact require further verification/hardening (see `docs/refactor/phase1a/REMEDIATION_1_REPORT.md`).
+- **Overall:** Phases 0.1, 0.3, 1.1 recorded completed; most prompts are **partial/not started** with significant external blockers in terminology/interoperability, partners/credentials, governance/ops, and large modularization/feature work.
+
+### Prompt status matrix (unfinished focus)
+
+| Phase/Prompt | Status | Unfinished work / notes | Blockers (if any) |
+|---|---|---|---|
+| 0.1 Audit & traceability | completed | — | — |
+| 0.2 Baseline verification harness | partial | Continuous recorded baseline in clean env; expand module-targeted/e2e/smoke conventions | Some integration/e2e/smoke require DB/services/env |
+| 0.3 Data safety/migration/rollback | completed | — | Backup/PITR/restore-drill tooling & approvals for non-synthetic envs |
+| 1.1 Module boundaries/conventions | completed | — | — |
+| 1.2+ Decompose monoliths by slice | not started | Extract services/domain/data-access for hotspots (`routes/inventory,finance,clinical,radiology,reception,inpatient,organization,auth,workflow,content`, etc.) with tests, no behavior change | Risk of regressions; requires incremental, well-tested slices |
+| 1.3 Contracts/types rationalization | not started | Split/version `packages/contracts`, remove dead/dup schemas, align validation | Backward-compat with API/web clients |
+| 2.1 RBAC model consolidation | partial | Canonical granular/owner-configurable permission model, additive schema/backfill/mapping, single authoritative decision path | Policy/product decisions for custom permissions |
+| 2.2 Enforce RBAC consistently | partial (1A slice deployed) | Centralized checks across all protected routes/services, untrusted-ID scoping, deny-by-default, permission-matrix tests | Large surface; behavior parity risk |
+| 2.3 Dual authorization (SoD) | partial | Generalized request→independent approve→execute workflow (states, expiry, actor separation, persistence/audit/idempotency/UI) for all designated high-risk ops | Facility policy config, governance, UX/process for single-operator workflows |
+| 2.4 Immutable/complete audit trail | partial | Coverage of prev/new state, approver fields, sensitive/protected-read auditing, review/query paths per action | Perf/storage/privacy review |
+| 2.5 Session/credential/data-protection hardening | open | PHI/secret leakage review, secure invitations/uploads/exports/access control, targeted security tests | Security/privacy review |
+| 3.1 Central subscription enforcement | partial | Exhaustive protected-route classification/policy config, allow/deny tests (preserve read-only/emergency/care continuity) | Policy refinement per module |
+| 3.2 Subscription lifecycle/checkout/restoration | open/partial | Verified transitions, payment callback idempotency/dup handling, automatic restoration tests | Provider sandbox/credentials/config |
+| 3.3 Usage metering & frontend UX alignment | open | UI states aligned to backend (no bypass) across modules | — |
+| 4.1 Responsive design foundations | partial | Universal table labeling/contract, primitives coverage, full verification | — |
+| 4.2 App shell/navigation/core interactions | partial | Full small-screen nav/overlays/search/notifications/accessibility verification & fixes | Design/accessibility review |
+| 4.3+ Module-by-module responsive retrofit | partial | Broad retrofit + per-module viewport checks for diagnostics/radiology/lab, pharmacy/POS, inpatient/theatre/maternity/emergency, finance/billing/reports, inventory/procurement/ops, admin/workforce/credentials/documents, directory/content/public, deep encounter subcomponents, etc. | Large UI surface, regression risk |
+| 5.1 Registration→initial billing (backend) | partial | Exemptions/insurance/discounts/zero-cost policy, broader concurrency/retry/reconciliation, env/CI verification | Facility policy/config, product rules |
+| 5.2 Registration/billing UX visibility | partial | Richer billing-radar/reconciliation visibility, end-to-end UX verification | — |
+| 6.1 Finance domain/ledger consistency | open/partial | Normalize flows, invariants, idempotent money commands, authz/dual-auth hooks, reconciliation tests | Domain review |
+| 6.2 Payroll module | largely unimplemented | Employment profiles, salaries/allowances, periods/runs, deductions/components, payment history, payslips, reports (additive schema, tx/idempotent/audit) | HR/payroll rules, approvals |
+| 6.3 Operational expenditure tracking | unimplemented | Categories, approvals/authz, traceable CRUD/reporting | Policy/approvals design |
+| 6.4 Financial reporting & exports | incomplete | Revenue/expenditure, cash flow, receivables, payroll expenditure, ops cost, P&L; authorized exports, reconciliation | Depends on 6.1–6.3 data correctness |
+| 7.1 Unified clinical order model & routing | incomplete | Immediate destination queue routing, unique IDs/notifications/events, consistent statuses across departments | Cross-module state design |
+| 7.2 Result/service completion linkage | incomplete | Link results/services to originating order/encounter, authorized clinician review | — |
+| 7.3 Idempotency/retries/failure handling | incomplete | Prevent duplicate orders, safe retry/failure states, observable non-PHI errors | — |
+| 7.4 Workflow verification (OPD/IPD/pharm/lab/rad) | incomplete | End-to-end acceptance scenarios, document clinical-safety/operational gaps | Clinical validation |
+| 8.1 Configurable cadres/departments/roles model | incomplete | Data-driven searchable taxonomy, add cadres without code changes, cadre/department/system-role/permission separation | Data modeling/migration |
+| 8.2 Invitations/secure onboarding/auth assignment | incomplete | Secure flows, least privilege, success/expiry/duplicate/unauthorized-assignment tests, mobile-first UX | Email/token/env config |
+| 9.1 Central terminology & code-mapping platform | incomplete | Versioned/effective-dated mappings, internal↔standard, audit, import/load, no hard-coding | **Licensing/distribution (SNOMED/ICD-11/LOINC)**, content access |
+| 9.2 LOINC integration | incomplete/blocked | Mapped lab/observations, validation/reporting hooks | **Licensed/reference data** |
+| 9.3 ICD-11 integration | incomplete/blocked | Searchable/version-aware diagnosis coding/mapping | **External access/licensing** |
+| 9.4 SNOMED CT integration | incomplete/blocked | Clinical concept representation/mapping/fallbacks | **Licensing/territory** |
+| 9.5 HL7 FHIR R4 expansion | partial | Truthful CapabilityStatement, broader resources/interactions, tenant/patient scoping, validation, tests | Partner/use-case validation, safe write semantics |
+| 9.6 DICOM/DICOMweb imaging | partial | Strengthen QIDO/WADO, assess/implement STOW-RS, linkage/access/audit verification | **PACS/config/architecture**, fake PACS in dev |
+| 10.1 Data integrity & idempotency hardening | incomplete | Transactions/unique keys/retry safety across key workflows, concurrency/retry tests | — |
+| 10.2 Comprehensive automated & scenario testing | incomplete | Coverage per acceptance criteria (security, subscription, clinical routing, finance/payroll, interop, mobile, migration integrity) | Env/fixtures/external sandboxes |
+| 10.3 End-to-end regression, docs, final report | incomplete | Full evidence run and final implementation report | Depends on prior phases |
+
+## Incremental execution procedure (mandatory per phase/slice)
+
+1. **Select slice:** pick next feasible unfinished prompt/slice with satisfied dependencies (or document why blocked/deferred). Keep scope bounded and low-risk.
+2. **Pre-check:** confirm clean working tree, review relevant code/tests/docs, ensure data-safety protocol for any schema/data change (no destructive changes without approved plan).
+3. **Implement:** minimal, behavior-preserving change where possible; backend-enforced security/subscription; additive, backward-compatible migrations only with RLS/grants/integrity.
+4. **Verify:** run targeted checks for touched scope (`typecheck`, `lint`, relevant `vitest`/integration/e2e/smoke as env allows). Do not claim unverified behavior.
+5. **Record:** update `REFACTOR.md` execution record (and phase status/matrix) with scope, changes, migrations, tests run+results, verification, risks, blockers, status.
+6. **Commit & push:** `git add -A && git commit -m "refactor(phaseX.Y): <concise slice>"` (or equivalent) and `git push origin <branch>` to keep working tree clean for next phase. Do not push secrets.
+7. **Iterate:** proceed to next slice/phase. If a gap is **not feasibly fixable** (external license/partner/credential/governance dependency, unavailable env, or requires unsafe/destructive change), mark **blocked** with concrete blocker, evidence, and required next action—do not silently skip or falsely claim completion.
+8. **Stop conditions:** continue until all gaps are implemented/verified or explicitly recorded as blocked with justification and owner/action required. Full “all gaps fixed” may be unattainable without external dependencies; progress must be maximal and transparent.
+
 ## 0. Codebase baseline (from audit, 2026-11-10)
 
 - **Stack/shape:** TypeScript monorepo (`apps/api` Hono API + Workers/Node, `apps/web` React/Vite SPA, `apps/jobs`, `packages/{db,domain,authz,auth,contracts,platform,reference,ai,ui}`), PostgreSQL with RLS/context helpers, migrations `packages/db/migrations/001..121` (note gaps/numbering irregularities e.g. missing 044/114; lexical order used), extensive docs/specs and synthetic-data workflows.
