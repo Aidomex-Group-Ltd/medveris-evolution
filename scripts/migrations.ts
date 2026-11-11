@@ -88,11 +88,22 @@ export async function assertMigrationsInLoadedDirectory(root = process.cwd(), lo
   );
 }
 
+function migrationSortKey(file: string): [number, string] {
+  const match = /^(\d+)/.exec(file);
+  return [match ? Number(match[1]) : Number.MAX_SAFE_INTEGER, file];
+}
+
 export async function loadMigrations(dir = MIGRATIONS_DIRECTORY): Promise<Migration[]> {
   // The guard only makes sense for the real project layout; an explicit custom
   // directory is used by tests and does not describe this repository.
   if (resolve(dir) === MIGRATIONS_DIRECTORY) await assertMigrationsInLoadedDirectory(process.cwd(), dir);
-  const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
+  const files = (await readdir(dir))
+    .filter((f) => f.endsWith(".sql"))
+    .sort((a, b) => {
+      const [an, as] = migrationSortKey(a);
+      const [bn, bs] = migrationSortKey(b);
+      return an - bn || as.localeCompare(bs);
+    });
   const migrations: Migration[] = [];
   for (const file of files) {
     migrations.push({ version: file, body: stripTransactionWrapper(file, await readFile(resolve(dir, file), "utf8")) });

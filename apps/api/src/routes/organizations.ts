@@ -292,9 +292,17 @@ organizationsRoutes.post("/organizations/:id/links/:linkId/inventory-mode", asyn
     const link = await lockLink(tx, id, linkId);
     if (link.status !== "active") throw new ConflictError("Inventory sharing applies to active sites only");
     if (body.mode === "independent") {
-      const open = await tx`select count(*)::int as n from organization_stock_transfers where organization_id = ${id} and status = 'dispatched'
-        and (source_tenant_id = ${link.tenantId} or destination_tenant_id = ${link.tenantId})`;
-      if (Number(open[0]?.n ?? 0) > 0) throw new ConflictError("This site has inter-site transfers in transit");
+      let inTransit = 0;
+      try {
+        const [open] = await tx`select app.organization_link_dispatched_transfers(${id}, ${linkId}) as count`;
+        inTransit = Number(open?.count ?? 0);
+      } catch (error) {
+        if ((error as { code?: string })?.code === "42883") {
+          throw new AppError(500, "schema_not_ready", "Database schema is not ready for this operation; required organization transfer helper is missing");
+        }
+        throw error;
+      }
+      if (inTransit > 0) throw new ConflictError("This site has inter-site transfers in transit");
       await tx`update organization_links set inventory_mode = 'independent', inventory_mode_proposed = null, inventory_mode_changed_at = now(), updated_at = now() where id = ${linkId}`;
       await recordLinkEvent(tx, { linkId, organizationId: id, tenantId: String(link.tenantId), event: "inventory-mode-accepted", actorUserId: auth.user.id, detail: { mode: "independent", note: body.note } });
       return { inventoryMode: "independent", pending: false };
@@ -319,9 +327,17 @@ organizationsRoutes.post("/organizations/:id/links/:linkId/end", async (c) => {
     await requireRole(tx, id, ADMIN_ROLES);
     const link = await lockLink(tx, id, linkId);
     if (link.status !== "active") throw new ConflictError(`This link is ${link.status}`);
-    const open = await tx`select count(*)::int as n from organization_stock_transfers where organization_id = ${id} and status = 'dispatched'
-      and (source_tenant_id = ${link.tenantId} or destination_tenant_id = ${link.tenantId})`;
-    if (Number(open[0]?.n ?? 0) > 0) throw new ConflictError("This site has inter-site transfers in transit");
+    let inTransit = 0;
+    try {
+      const [open] = await tx`select app.organization_link_dispatched_transfers(${id}, ${linkId}) as count`;
+      inTransit = Number(open?.count ?? 0);
+    } catch (error) {
+      if ((error as { code?: string })?.code === "42883") {
+        throw new AppError(500, "schema_not_ready", "Database schema is not ready for this operation; required organization transfer helper is missing");
+      }
+      throw error;
+    }
+    if (inTransit > 0) throw new ConflictError("This site has inter-site transfers in transit");
     await tx`update organization_links set status = 'ended', ended_by = ${auth.user.id}, ended_at = now(), end_reason = ${body.reason}, inventory_mode = 'independent', updated_at = now() where id = ${linkId}`;
     await tx`update tenants set organization_id = null, host_tenant_id = null, updated_at = now() where id = ${link.tenantId}`;
     await tx`update tenants set host_tenant_id = null where host_tenant_id = ${link.tenantId} and organization_id = ${id}`;

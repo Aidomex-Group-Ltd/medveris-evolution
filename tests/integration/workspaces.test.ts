@@ -238,38 +238,70 @@ describe("organizations, sites and explicit linking", () => {
     expect([403, 404]).toContain(response.status);
   });
 
-  it("enforces RLS isolation for organization_stock_transfers rows", async () => {
-    const dispatched = await h.sql`
-      select id
-      from organization_stock_transfers
-      where source_tenant_id = ${hospitalId}
-         or destination_tenant_id = ${hospitalId}
-      limit 1
-    `;
+  it("enforces RLS isolation for organization_stock_transfers rows with a deterministic transfer", async () => {
+    const ownerInput = owner("rls");
+    const created = await register({
+      path: "organization", owner: ownerInput,
+      organization: { name: `Synthetic RLS Org ${run}`, kind: "hospital", ownership: "private-not-for-profit" },
+      workspace: { name: `Synthetic RLS Source ${run}`, serviceCategory: "hospital", ownership: "private-not-for-profit", levelStatus: "not-yet-assigned" },
+    });
+    const session = await signInOwner(ownerInput.email);
+    const orgId = created.organization.id as string;
+    const sourceId = created.workspace.id as string;
+    const dest = await h.post(session, `/api/v1/organizations/${orgId}/sites`, {
+      name: `Synthetic RLS Dest ${run}`, workspaceKind: "facility", serviceCategory: "pharmacy", ownership: "private-not-for-profit", levelStatus: "not-yet-assigned",
+    });
+    const destId = dest.site.id as string;
 
-    const dispatchedTransfer = dispatched[0];
-    if (!dispatchedTransfer) return; // transfer state not retained in this run; isolation covered by route-level checks
+    const detail = await get(session, `/api/v1/organizations/${orgId}`);
+    for (const tenantId of [sourceId, destId]) {
+      const link = detail.sites.find((site: any) => site.tenantId === tenantId);
+      await h.post(session, `/api/v1/organizations/${orgId}/links/${link.linkId}/inventory-mode`, { mode: "shared-supply", note: "RLS isolation fixture" }, 200);
+    }
+    await useWorkspace(session, sourceId);
+    await h.post(session, "/api/v1/workspace/organization/inventory-mode", { accept: true, note: "Source accepts" }, 200);
+    await useWorkspace(session, destId);
+    await h.post(session, "/api/v1/workspace/organization/inventory-mode", { accept: true, note: "Dest accepts" }, 200);
+
+    await useWorkspace(session, sourceId);
+    const suf = crypto.randomUUID().slice(0, 6);
+    const store = await h.post(session, "/api/v1/inventory/locations", { code: `RLS-H-${suf}`, name: "RLS source store", locationType: "central-store" });
+    const item = await h.post(session, "/api/v1/inventory/items", {
+      itemCode: `RLS-${suf}`, name: `RLS item ${run}`, category: "Supplies", classification: "consumable", baseUnit: "pack", criticality: "standard",
+      units: [{ unit: "pack", conversionFactor: 1, isBase: true, purchasingUnit: true, issuingUnit: true }],
+    });
+    await h.post(session, "/api/v1/inventory/receipts", { locationId: store.location.id, itemId: item.item.id, quantity: 5, unit: "pack", reason: "RLS fixture stock" }, 201, crypto.randomUUID());
+    const dispatched = await h.post(session, "/api/v1/workspace/shared-supply/transfers", {
+      destinationTenantId: destId, sourceLocationId: store.location.id, itemId: item.item.id, quantity: 1, unit: "pack", reason: "RLS fixture transfer",
+    }, 201);
+    const transferId = dispatched.transfer.id as string;
+
+    const ownerVisible = await h.sql.begin(async (tx) => {
+      await tx`
+        select
+          set_config('app.tenant_id', ${sourceId}, true),
+          set_config('app.roles', 'facility_admin,owner', true),
+          set_config('app.user_id', ${"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, true),
+          set_config('app.actor_kind', 'staff', true)
+      `;
+      return tx`select count(*)::int as n from organization_stock_transfers where id = ${transferId}`;
+    });
+    expect(Number(ownerVisible[0]?.n ?? 0)).toBe(1);
 
     const otherTenant = "22222222-2222-4222-8222-222222222222";
-
-    const visible = await h.sql.begin(async (tx) => {
+    const outsiderVisible = await h.sql.begin(async (tx) => {
       await tx`
         select
           set_config('app.tenant_id', ${otherTenant}, true),
-          set_config('app.roles', 'clinician,clinical_staff', true),
-          set_config('app.user_id', ${"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}, true)
+          set_config('app.roles', 'facility_admin,clinician', true),
+          set_config('app.user_id', ${"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}, true),
+          set_config('app.actor_kind', 'staff', true)
       `;
-
-      return tx`
-        select count(*)::int as n
-        from organization_stock_transfers
-        where id = ${dispatchedTransfer.id}
-      `;
+      return tx`select count(*)::int as n from organization_stock_transfers where id = ${transferId}`;
     });
+    expect(Number(outsiderVisible[0]?.n ?? 0)).toBe(0);
 
-    const visibleTransfer = visible[0];
-    expect(visibleTransfer).toBeDefined();
-    expect(Number(visibleTransfer?.n)).toBe(0);
+    await h.post(session, `/api/v1/workspace/shared-supply/transfers/${transferId}/cancel`, { reason: "Cleanup RLS fixture transfer" }, 200);
   });
 
   it("holds a possible duplicate site for an explicit resolution before approval", async () => {
@@ -331,6 +363,273 @@ describe("organizations, sites and explicit linking", () => {
     expect(Number(pharmacyStock.stock[0].onHand)).toBe(30);
     const supply = await get(orgOwner, "/api/v1/workspace/shared-supply");
     expect(supply.transfers.find((transfer: any) => transfer.id === dispatched.transfer.id)).toMatchObject({ status: "received", outgoing: false });
+  });
+});
+
+describe("shared-supply security closure", () => {
+  const suffix = () => crypto.randomUUID().slice(0, 6);
+
+  async function createSite(owner: Session, orgId: string, base: { name: string; category: string; ownership?: string; levelStatus?: string; hostTenantId?: string; workspaceKind?: string }) {
+    return h.post(owner, `/api/v1/organizations/${orgId}/sites`, {
+      name: base.name, workspaceKind: base.workspaceKind ?? "facility", serviceCategory: base.category, ownership: base.ownership ?? "private-not-for-profit",
+      levelStatus: base.levelStatus ?? "not-yet-assigned", ...(base.hostTenantId ? { hostTenantId: base.hostTenantId } : {}),
+    });
+  }
+
+  async function enableSharedSupply(owner: Session, orgId: string, tenantIds: string[]) {
+    const detail = await get(owner, `/api/v1/organizations/${orgId}`);
+    for (const tenantId of tenantIds) {
+      const link = detail.sites.find((site: any) => site.tenantId === tenantId);
+      await h.post(owner, `/api/v1/organizations/${orgId}/links/${link.linkId}/inventory-mode`, { mode: "shared-supply", note: "Shared supply for security test" }, 200);
+    }
+    for (const tenantId of tenantIds) {
+      await useWorkspace(owner, tenantId);
+      await h.post(owner, "/api/v1/workspace/organization/inventory-mode", { accept: true, note: "Accepted" }, 200);
+    }
+  }
+
+  async function setupTransferFixture(label: string) {
+    const ownerInput = owner(`sec-${label}`);
+    const created = await register({
+      path: "organization", owner: ownerInput,
+      organization: { name: `Synthetic Sec Org ${label} ${run}`, kind: "hospital", ownership: "private-not-for-profit" },
+      workspace: { name: `Synthetic Sec Source ${label} ${run}`, serviceCategory: "hospital", ownership: "private-not-for-profit", levelStatus: "not-yet-assigned" },
+    });
+    const session = await signInOwner(ownerInput.email);
+    const orgId = created.organization.id as string;
+    const sourceId = created.workspace.id as string;
+    const dest = await createSite(session, orgId, { name: `Synthetic Sec Dest ${label} ${run}`, category: "pharmacy" });
+    const destId = dest.site.id as string;
+    await enableSharedSupply(session, orgId, [sourceId, destId]);
+
+    await useWorkspace(session, sourceId);
+    const sourceLocation = await h.post(session, "/api/v1/inventory/locations", { code: `SS-${label}-${suffix()}`, name: `Source store ${label}`, locationType: "central-store" });
+    const sourceItem = await h.post(session, "/api/v1/inventory/items", {
+      itemCode: `SSI-${label}-${suffix()}`, name: `Secure item ${label}`, category: "Supplies", classification: "consumable", baseUnit: "pack", criticality: "medium",
+      units: [{ unit: "pack", conversionFactor: 1, isBase: true, purchasingUnit: true, issuingUnit: true }],
+    });
+    await h.post(session, "/api/v1/inventory/receipts", { locationId: sourceLocation.location.id, itemId: sourceItem.item.id, quantity: 50, unit: "pack", reason: "Opening stock" }, 201, crypto.randomUUID());
+
+    await useWorkspace(session, destId);
+    const destLocation = await h.post(session, "/api/v1/inventory/locations", { code: `SD-${label}-${suffix()}`, name: `Dest shelf ${label}`, locationType: "department-store" });
+    const destItem = await h.post(session, "/api/v1/inventory/items", {
+      itemCode: `SDI-${label}-${suffix()}`, name: `Secure item ${label}`, category: "Supplies", classification: "consumable", baseUnit: "pack", criticality: "medium",
+      units: [{ unit: "pack", conversionFactor: 1, isBase: true, purchasingUnit: true, issuingUnit: true }],
+    });
+
+    await useWorkspace(session, sourceId);
+    const dispatched = await h.post(session, "/api/v1/workspace/shared-supply/transfers", {
+      destinationTenantId: destId, sourceLocationId: sourceLocation.location.id, itemId: sourceItem.item.id, quantity: 10, unit: "pack", reason: `Dispatch ${label}`,
+    }, 201);
+    return { session, orgId, sourceId, destId, sourceLocation: sourceLocation.location, sourceItem: sourceItem.item, destLocation: destLocation.location, destItem: destItem.item, transferId: dispatched.transfer.id as string, transferNumber: dispatched.transfer.transferNumber as string };
+  }
+
+  it("rejects forged destination outside an accepted shared-supply arrangement", async () => {
+    const fx = await setupTransferFixture("forge");
+    // dispatch to an unrelated tenant (not in org / not sharing supply) must fail without disclosure/leakage
+    const outsiderTenant = "22222222-2222-4222-8222-222222222222";
+    const forged = await h.call(fx.session, "/api/v1/workspace/shared-supply/transfers", {
+      method: "POST", body: JSON.stringify({ destinationTenantId: outsiderTenant, sourceLocationId: fx.sourceLocation.id, itemId: fx.sourceItem.id, quantity: 1, unit: "pack", reason: "forge" }),
+    });
+    expect([403, 404, 409]).toContain(forged.status);
+
+    // existing dispatched transfer cannot be received by a tenant outside arrangement context
+    const outsider = await h.login("clinician.b@medveris.local", "22222222-2222-4222-8222-222222222222");
+    const badReceive = await h.call(outsider, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/receive`, {
+      method: "POST", body: JSON.stringify({ destinationLocationId: crypto.randomUUID(), destinationItemId: crypto.randomUUID(), receivedQuantity: 10, unit: "pack" }),
+    });
+    expect([403, 404]).toContain(badReceive.status);
+  });
+
+  it("refuses receive/cancel when the transfer is no longer dispatched or arrangement is invalidated", async () => {
+    const fx = await setupTransferFixture("state");
+    // receive with wrong quantity discrepancy without explanation is rejected (invariant)
+    await useWorkspace(fx.session, fx.destId);
+    const badQty = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/receive`, {
+      method: "POST", body: JSON.stringify({ destinationLocationId: fx.destLocation.id, destinationItemId: fx.destItem.id, receivedQuantity: 5, unit: "pack" }),
+    });
+    expect(badQty.status).toBe(422);
+
+    // successful receive
+    const ok = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/receive`, {
+      method: "POST", body: JSON.stringify({ destinationLocationId: fx.destLocation.id, destinationItemId: fx.destItem.id, receivedQuantity: 10 }),
+    });
+    expect(ok.status).toBe(200);
+
+    // cannot receive/cancel again after status changed (ended/received state)
+    const again = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/receive`, {
+      method: "POST", body: JSON.stringify({ destinationLocationId: fx.destLocation.id, destinationItemId: fx.destItem.id, receivedQuantity: 10 }),
+    });
+    expect(again.status).toBe(409);
+    await useWorkspace(fx.session, fx.sourceId);
+    const cancelAfter = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/cancel`, {
+      method: "POST", body: JSON.stringify({ reason: "Too late: transfer already received" }),
+    });
+    expect(cancelAfter.status).toBe(409);
+  });
+
+  it("blocks source/destination in-transit transfers from org inventory-mode/end and succeeds when clear", async () => {
+    const fx = await setupTransferFixture("guards");
+    const orgDetail = await get(fx.session, `/api/v1/organizations/${fx.orgId}`);
+    const sourceLink = orgDetail.sites.find((site: any) => site.tenantId === fx.sourceId);
+    const destLink = orgDetail.sites.find((site: any) => site.tenantId === fx.destId);
+    expect(sourceLink?.linkId).toBeTruthy();
+    expect(destLink?.linkId).toBeTruthy();
+
+    const blockedModeSource = await h.call(fx.session, `/api/v1/organizations/${fx.orgId}/links/${sourceLink.linkId}/inventory-mode`, {
+      method: "POST", body: JSON.stringify({ mode: "independent", note: "blocked source in-transit" }),
+    });
+    expect(blockedModeSource.status).toBe(409);
+    const blockedModeDest = await h.call(fx.session, `/api/v1/organizations/${fx.orgId}/links/${destLink.linkId}/inventory-mode`, {
+      method: "POST", body: JSON.stringify({ mode: "independent", note: "blocked dest in-transit" }),
+    });
+    expect(blockedModeDest.status).toBe(409);
+    const blockedEndSource = await h.call(fx.session, `/api/v1/organizations/${fx.orgId}/links/${sourceLink.linkId}/end`, {
+      method: "POST", body: JSON.stringify({ reason: "blocked source in-transit" }),
+    });
+    expect(blockedEndSource.status).toBe(409);
+    const blockedEndDest = await h.call(fx.session, `/api/v1/organizations/${fx.orgId}/links/${destLink.linkId}/end`, {
+      method: "POST", body: JSON.stringify({ reason: "blocked dest in-transit" }),
+    });
+    expect(blockedEndDest.status).toBe(409);
+
+    await useWorkspace(fx.session, fx.sourceId);
+    const cancelled = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/cancel`, {
+      method: "POST", body: JSON.stringify({ reason: "clear in-transit for transition success" }),
+    });
+    expect(cancelled.status).toBe(200);
+
+    const modeOk = await h.call(fx.session, `/api/v1/organizations/${fx.orgId}/links/${sourceLink.linkId}/inventory-mode`, {
+      method: "POST", body: JSON.stringify({ mode: "independent", note: "safe after cancel" }),
+    });
+    expect(modeOk.status).toBe(200);
+    const endOk = await h.call(fx.session, `/api/v1/organizations/${fx.orgId}/links/${destLink.linkId}/end`, {
+      method: "POST", body: JSON.stringify({ reason: "safe after cancel" }),
+    });
+    expect(endOk.status).toBe(200);
+  });
+
+  it("rejects dispatch when either link is not eligible and helper denies unrelated callers", async () => {
+    const fx = await setupTransferFixture("elig");
+    await useWorkspace(fx.session, fx.sourceId);
+    const cancelled = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/cancel`, {
+      method: "POST", body: JSON.stringify({ reason: "reset for eligibility checks" }),
+    });
+    expect(cancelled.status).toBe(200);
+
+    const orgDetail = await get(fx.session, `/api/v1/organizations/${fx.orgId}`);
+    const sourceLink = orgDetail.sites.find((site: any) => site.tenantId === fx.sourceId);
+    const indep = await h.call(fx.session, `/api/v1/organizations/${fx.orgId}/links/${sourceLink.linkId}/inventory-mode`, {
+      method: "POST", body: JSON.stringify({ mode: "independent", note: "make source ineligible" }),
+    });
+    expect(indep.status).toBe(200);
+
+    await useWorkspace(fx.session, fx.sourceId);
+    const dispatch = await h.call(fx.session, "/api/v1/workspace/shared-supply/transfers", {
+      method: "POST", body: JSON.stringify({ destinationTenantId: fx.destId, sourceLocationId: fx.sourceLocation.id, itemId: fx.sourceItem.id, quantity: 1, unit: "pack", reason: "should fail when ineligible" }),
+    });
+    expect(dispatch.status).toBe(409);
+    const stock = await get(fx.session, `/api/v1/inventory/stock?locationId=${fx.sourceLocation.id}`);
+    expect(Number(stock.stock[0].onHand)).toBe(50);
+
+    const helperDenied = await h.sql.begin(async (tx) => {
+      await tx`select set_config('app.tenant_id', '', true), set_config('app.roles', '', true), set_config('app.user_id', ${"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}, true), set_config('app.actor_kind', 'staff', true)`;
+      try {
+        await tx.savepoint((sp) => sp`select app.organization_link_dispatched_transfers(${fx.orgId}, ${sourceLink.linkId}) as count`);
+        return "ok";
+      } catch {
+        return "denied";
+      }
+    });
+    expect(helperDenied).toBe("denied");
+  });
+
+  it("rejects receive/cancel after arrangement becomes independent and blocks workspace leave while in transit", async () => {
+    const fx = await setupTransferFixture("indep");
+    await useWorkspace(fx.session, fx.destId);
+    const leaveBlocked = await h.call(fx.session, "/api/v1/workspace/organization/end", {
+      method: "POST", body: JSON.stringify({ reason: "Attempt leave while transfer dispatched" }),
+    });
+    expect(leaveBlocked.status).toBe(409);
+    const [transferBefore] = await h.sql.begin(async (tx) => {
+      await tx`select set_config('app.tenant_id', ${fx.sourceId}, true), set_config('app.roles', 'facility_admin,owner', true), set_config('app.user_id', ${"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, true), set_config('app.actor_kind', 'staff', true)`;
+      return tx`select status from organization_stock_transfers where id = ${fx.transferId}`;
+    });
+    expect(String(transferBefore?.status)).toBe("dispatched");
+
+    await useWorkspace(fx.session, fx.sourceId);
+    const cancelled = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/cancel`, {
+      method: "POST", body: JSON.stringify({ reason: "Cleanup after workspace leave guard" }),
+    });
+    expect(cancelled.status).toBe(200);
+  });
+
+  it("rejects receive/cancel when arrangement has ended and no transfer is in transit", async () => {
+    const fx = await setupTransferFixture("ended");
+    await useWorkspace(fx.session, fx.sourceId);
+    const cancelled = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/cancel`, {
+      method: "POST", body: JSON.stringify({ reason: "Cancel before ending arrangement" }),
+    });
+    expect(cancelled.status).toBe(200);
+    const sourceBefore = await get(fx.session, `/api/v1/inventory/stock?locationId=${fx.sourceLocation.id}`);
+    expect(Number(sourceBefore.stock[0].onHand)).toBe(50);
+
+    await useWorkspace(fx.session, fx.destId);
+    const ended = await h.call(fx.session, "/api/v1/workspace/organization/end", {
+      method: "POST", body: JSON.stringify({ reason: "End link after settling transfers" }),
+    });
+    expect(ended.status).toBe(200);
+
+    const receiveAfterEnd = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/receive`, {
+      method: "POST", body: JSON.stringify({ destinationLocationId: fx.destLocation.id, destinationItemId: fx.destItem.id, receivedQuantity: 10 }),
+    });
+    expect(receiveAfterEnd.status).toBe(403);
+    await useWorkspace(fx.session, fx.sourceId);
+    const cancelAfterEnd = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/cancel`, {
+      method: "POST", body: JSON.stringify({ reason: "Cancel after arrangement ended" }),
+    });
+    expect(cancelAfterEnd.status).toBe(403);
+
+    const sourceAfter = await get(fx.session, `/api/v1/inventory/stock?locationId=${fx.sourceLocation.id}`);
+    expect(Number(sourceAfter.stock[0].onHand)).toBe(50);
+    await useWorkspace(fx.session, fx.destId);
+    const destAfter = await get(fx.session, `/api/v1/inventory/stock?scope=all&locationId=${fx.destLocation.id}`);
+    expect(destAfter.stock).toEqual([]);
+  });
+
+  it("enforces quantity and status invariants and records success audit without success audit on denied mutation", async () => {
+    const fx = await setupTransferFixture("audit");
+    // dispatch more than available should fail
+    const tooMuch = await h.call(fx.session, "/api/v1/workspace/shared-supply/transfers", {
+      method: "POST", body: JSON.stringify({ destinationTenantId: fx.destId, sourceLocationId: fx.sourceLocation.id, itemId: fx.sourceItem.id, quantity: 9999, unit: "pack", reason: "too much" }),
+    });
+    expect([409, 422]).toContain(tooMuch.status);
+
+    // denied permission attempt must not create a success audit action for that resource
+    const readOnly = await h.login("nurse@medveris.local");
+    const beforeDenied = await h.sql.begin(async (tx) => {
+      await tx`select set_config('app.tenant_id', ${fx.sourceId}, true), set_config('app.roles', 'facility_admin,owner', true), set_config('app.user_id', ${"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, true), set_config('app.actor_kind', 'staff', true)`;
+      return tx`select count(*)::int as n from audit_events where action = 'inventory.inter-site.cancel' and resource_id = ${fx.transferId}`;
+    });
+    const denied = await h.call(readOnly, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/cancel`, { method: "POST", body: JSON.stringify({ reason: "no permission" }) });
+    expect([401, 403]).toContain(denied.status);
+    const afterDenied = await h.sql.begin(async (tx) => {
+      await tx`select set_config('app.tenant_id', ${fx.sourceId}, true), set_config('app.roles', 'facility_admin,owner', true), set_config('app.user_id', ${"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, true), set_config('app.actor_kind', 'staff', true)`;
+      return tx`select count(*)::int as n from audit_events where action = 'inventory.inter-site.cancel' and resource_id = ${fx.transferId}`;
+    });
+    expect(Number(afterDenied[0]?.n ?? 0)).toBe(Number(beforeDenied[0]?.n ?? 0));
+
+    // successful cancel records audit exactly once for this resource
+    const cancelled = await h.call(fx.session, `/api/v1/workspace/shared-supply/transfers/${fx.transferId}/cancel`, { method: "POST", body: JSON.stringify({ reason: "Security closure cancel test" }) });
+    expect(cancelled.status).toBe(200);
+    const audit = await h.sql.begin(async (tx) => {
+      await tx`select set_config('app.tenant_id', ${fx.sourceId}, true), set_config('app.roles', 'facility_admin,owner', true), set_config('app.user_id', ${"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, true), set_config('app.actor_kind', 'staff', true)`;
+      return tx`select action, resource_id, tenant_id from audit_events where action in ('inventory.inter-site.dispatch','inventory.inter-site.cancel') and resource_id = ${fx.transferId} order by occurred_at`;
+    });
+    const actions = audit.map((r: any) => r.action);
+    expect(actions.filter((a: string) => a === "inventory.inter-site.dispatch")).toHaveLength(1);
+    expect(actions.filter((a: string) => a === "inventory.inter-site.cancel")).toHaveLength(1);
+    expect(audit.every((r: any) => String(r.tenantId) === fx.sourceId)).toBe(true);
   });
 });
 

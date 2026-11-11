@@ -367,10 +367,24 @@ workspaceRoutes.post("/workspace/shared-supply/transfers", async (c) => {
   const tenantId = auth.activeTenant!.id;
   const config = c.get("deps").config;
   const result = await withStaffActor(c, async (tx) => {
-    const [arrangement] = await tx`select app.shared_supply_organization(${tenantId}, ${body.destinationTenantId}) as organization_id`;
-    if (!arrangement?.organizationId) {
+    // Lock both link rows in deterministic tenant-id order and revalidate after lock to serialize against transitions.
+    const firstTenant = tenantId < body.destinationTenantId ? tenantId : body.destinationTenantId;
+    const secondTenant = firstTenant === tenantId ? body.destinationTenantId : tenantId;
+    const locked = await tx`
+      select id, tenant_id, organization_id, status, inventory_mode
+        from organization_links
+       where tenant_id in (${firstTenant}, ${secondTenant}) and status = 'active'
+       order by tenant_id
+       for update`;
+    const sourceLink = locked.find((l) => String(l.tenantId) === tenantId);
+    const destinationLink = locked.find((l) => String(l.tenantId) === body.destinationTenantId);
+    if (!sourceLink || !destinationLink || String(sourceLink.organizationId) !== String(destinationLink.organizationId)) {
       throw new ConflictError("Both sites must be active members of the same organization with shared supply accepted by each site");
     }
+    if (String(sourceLink.inventoryMode) !== "shared-supply" || String(destinationLink.inventoryMode) !== "shared-supply") {
+      throw new ConflictError("Both sites must be active members of the same organization with shared supply accepted by each site");
+    }
+    const organizationId = String(sourceLink.organizationId);
     await locationRow(tx, tenantId, body.sourceLocationId);
     await assertLocationInScope(tx, c, body.sourceLocationId);
     const item = await itemRow(tx, tenantId, body.itemId);
@@ -389,7 +403,7 @@ workspaceRoutes.post("/workspace/shared-supply/transfers", async (c) => {
     await tx`
       insert into organization_stock_transfers (id, organization_id, transfer_number, source_tenant_id, source_location_id, source_item_id,
         destination_tenant_id, item_code, item_name, lot_number, expires_on, quantity, unit, base_quantity, reason, dispatched_by, dispatch_movement_id)
-      values (${id}, ${arrangement.organizationId}, ${number}, ${tenantId}, ${body.sourceLocationId}, ${body.itemId},
+      values (${id}, ${organizationId}, ${number}, ${tenantId}, ${body.sourceLocationId}, ${body.itemId},
         ${body.destinationTenantId}, ${item.itemCode}, ${item.name}, ${lot.lotNumber}, ${lot.expiresOn}, ${body.quantity}, ${body.unit},
         ${Number(movement.baseQuantity)}, ${body.reason}, ${auth.user.id}, ${movement.id})
     `;

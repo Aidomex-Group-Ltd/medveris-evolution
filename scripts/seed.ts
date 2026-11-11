@@ -242,14 +242,18 @@ try {
     `;
     await tx`select set_config('app.platform_roles_bootstrap', 'false', true)`;
 
-    // Billing is RLS-protected, so seed those rows under the platform operator context
-    // that the bootstrap just granted the synthetic reviewer. ACCOUNTS_BILLING tables write path
-    // requires platform_operator credentials rather than a facility role alone.
-    await platformContext(tx, users.reviewer);
+    // Billing/catalogue bootstrap in disposable synthetic environments uses a system actor context
+    // so RLS-protected platform/account records can be created deterministically.
+    await setLocalContext(tx, { actorKind: "system", userId: users.reviewer, platformRole: "platform_operator" });
     await tx`
       insert into billing_accounts (id, kind, name, owner_tenant_id, created_by)
-      values (gen_random_uuid(), 'independent-facility', 'Kampala Clinic Billing', ${tenantA}, ${users.admin}),
-             (gen_random_uuid(), 'independent-facility', 'Entebbe Clinic Billing', ${tenantB}, ${users.admin})
+      values (${hashId("billing-kampala")}::uuid, 'independent-facility', 'Kampala Clinic Billing', ${tenantA}, ${users.admin})
+      on conflict (id) do update set name = excluded.name, status = 'active'
+    `;
+    await tx`
+      insert into billing_accounts (id, kind, name, owner_tenant_id, created_by)
+      values (${hashId("billing-entebbe")}::uuid, 'independent-facility', 'Entebbe Clinic Billing', ${tenantB}, ${users.admin})
+      on conflict (id) do update set name = excluded.name, status = 'active'
     `;
     await tx`
       update tenants set billing_account_id = a.id
@@ -259,13 +263,22 @@ try {
     const trialPlanId = 'c0000000-0000-4000-8000-000000000001';
     await tx`
       insert into subscriptions (id, billing_account_id, plan_id, status, trial_started_at, trial_ends_at, status_reason)
-      select gen_random_uuid(), a.id, ${trialPlanId}, 'trialing', now(), now() + interval '7 days', 'Billing activated for an existing account'
-      from billing_accounts a
+      select ${hashId("sub-kampala-trial")}::uuid, a.id, ${trialPlanId}::uuid, 'trialing', now(), now() + interval '7 days', 'Billing activated for an existing account'
+      from billing_accounts a where a.owner_tenant_id = ${tenantA}
+        and not exists (select 1 from subscriptions s where s.billing_account_id = a.id and s.status <> 'cancelled')
+      union all
+      select ${hashId("sub-entebbe-trial")}::uuid, a.id, ${trialPlanId}::uuid, 'trialing', now(), now() + interval '7 days', 'Billing activated for an existing account'
+      from billing_accounts a where a.owner_tenant_id = ${tenantB}
+        and not exists (select 1 from subscriptions s where s.billing_account_id = a.id and s.status <> 'cancelled')
     `;
     await tx`
       insert into subscription_events (subscription_id, billing_account_id, event, to_status, to_plan_id, actor_kind, detail)
       select s.id, s.billing_account_id, 'trial-started', 'trialing', s.plan_id, 'system', jsonb_build_object('reason', 'billing activated for an existing account')
       from subscriptions s
+      where s.plan_id = ${trialPlanId} and s.status = 'trialing'
+        and not exists (
+          select 1 from subscription_events e where e.subscription_id = s.id and e.event = 'trial-started'
+        )
     `;
     await tx`
       update onboarding_catalogues set status = 'retired', retired_by = ${users.reviewer}, retired_at = now()
@@ -475,7 +488,7 @@ try {
     await tx`
       insert into organizations (id, name, legal_name, registration_ref, country)
       values (${organizationA}, 'Medveris Synthetic Health Group', 'Medveris Synthetic Health Group Ltd', 'SYNTH-ORG-001', 'Uganda')
-      on conflict (id) do update set name = excluded.name
+      on conflict (id) do nothing
     `;
     await tx`update tenants set organization_id = ${organizationA} where id = ${tenantA}`;
     await context(tx, tenantB, users.admin, ["facility_admin"], null);
@@ -586,7 +599,7 @@ try {
       insert into document_templates (id, tenant_id, template_key, name, description, department_id, context, purpose, sensitivity, status, current_version, created_by)
       values (${templateA}, ${tenantA}, 'opd.consultation-note', 'Outpatient consultation note', 'Structured synthetic outpatient note', ${hashId("department-OPD")},
         'clinical', 'Document an outpatient consultation', 'standard', 'published', 1, ${users.admin})
-      on conflict (id) do nothing
+      on conflict (id) do update set name = excluded.name, description = excluded.description, status = 'published', current_version = 1, updated_at = now()
     `;
     await tx`
       insert into document_template_versions (id, template_id, tenant_id, version, fields, author_roles, reviewer_roles,
@@ -604,7 +617,7 @@ try {
       insert into documents (id, tenant_id, template_id, template_version_id, department_id, subject_type, patient_id, encounter_id, title, occurred_at, status, current_version, author_user_id)
       values (${documentA}, ${tenantA}, ${templateA}, ${templateVersionA}, ${hashId("department-OPD")}, 'patient', ${patients.amina}, ${encounterA},
         'Outpatient consultation note', now(), 'draft', 1, ${users.admin})
-      on conflict (id) do nothing
+      on conflict (id) do update set title = excluded.title, status = excluded.status, current_version = excluded.current_version
     `;
     await tx`
       insert into document_versions (id, document_id, tenant_id, version, status, content, content_digest, change_note, author_user_id)

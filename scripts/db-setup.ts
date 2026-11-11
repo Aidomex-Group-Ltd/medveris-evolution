@@ -28,6 +28,13 @@ const roleSpecs = [
     password: null,
     options: "NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS",
   },
+  {
+    // Dedicated NOLOGIN owner for SECURITY DEFINER transfer helpers. Membership/ownership
+    // transfer is granted only for disposable local/dev/test bootstrap or explicit rebuilds.
+    name: "medveris_transfer_guard",
+    password: null,
+    options: "NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS",
+  },
 ];
 
 if (!/^[a-z][a-z0-9_]+$/.test(targetDatabase)) throw new Error("Unsafe database name");
@@ -46,8 +53,18 @@ for (const role of roleSpecs) {
   }
 }
 
-await admin.query("GRANT medveris_exchange TO medveris_migrator");
-console.log("granted medveris_exchange to medveris_migrator for SECURITY DEFINER ownership");
+const isLocalSynthetic = /^medveris_(dev|test)$/.test(targetDatabase);
+if (isLocalSynthetic) {
+  await admin.query("GRANT medveris_exchange TO medveris_migrator");
+  console.log("granted medveris_exchange to medveris_migrator for disposable local/test SECURITY DEFINER ownership");
+  await admin.query("GRANT medveris_transfer_guard TO medveris_migrator");
+  console.log("granted medveris_transfer_guard to medveris_migrator for disposable local/test SECURITY DEFINER ownership");
+} else {
+  for (const privileged of ["medveris_exchange", "medveris_transfer_guard"]) {
+    await admin.query(`REVOKE ${privileged} FROM medveris_migrator`);
+  }
+  console.log(`hosted/non-local target ${targetDatabase}: migrator membership in BYPASSRLS helper-owner roles revoked/not granted (requires DBA-controlled ownership transfer)`);
+}
 
 const db = await admin.query("select 1 from pg_database where datname = $1", [targetDatabase]);
 if (db.rowCount === 0) {
@@ -75,7 +92,7 @@ try {
   await targetAdmin.query("BEGIN");
   await targetAdmin.query("ALTER SCHEMA public OWNER TO medveris_migrator");
   await targetAdmin.query("REVOKE ALL ON SCHEMA public FROM PUBLIC");
-  await targetAdmin.query("GRANT USAGE ON SCHEMA public TO medveris_runtime, medveris_jobs, medveris_exchange");
+  await targetAdmin.query("GRANT USAGE ON SCHEMA public TO medveris_runtime, medveris_jobs, medveris_exchange, medveris_transfer_guard");
   await targetAdmin.query("COMMIT");
   console.log(`schema public in ${targetDatabase} is owned by medveris_migrator`);
 } catch (error) {
