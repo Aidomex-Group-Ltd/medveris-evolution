@@ -582,3 +582,25 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: `base: "./"` affects web asset paths but is compatible with SPA build; `VITE_API_BASE_URL` defaults to same-origin so existing deployments unaffected. Cross-origin native auth requires correct CORS/cookie/CSRF server config in target environments.
 - External dependencies/blockers: Android Studio/Xcode/SDKs for platform generation and store builds; deployed API with compatible session/CORS policy; many REFACTOR phases remain dependent on product decisions, data/config, and external healthcare integrations/licensing.
 - Status: partial (Capacitor project enablement complete in repo; full native platform generation/build and remaining REFACTOR functional scope not fully completable in this environment).
+
+### Execution record: Status rescan & REFACTOR tracker update (continuation)
+- Date: 2026-11-11
+- Scope/files reviewed: `REFACTOR.md`, `docs/refactor/**` (incl. `phase1a/*`), git history/remote, latest production release evidence (`.wrangler/release-evidence/production-2026-11-11T07-47-16-023Z.json`), deployed version state.
+- Changes made: updated `REFACTOR.md` with current status (prod deployed `92da33b/4778062e@100%`), explicit Phase 1A deployed-but-partial assessment, prompt status matrix of unfinished work/blockers, and mandatory incremental execution procedure (select/pre-check/implement/verify/record/commit-push/iterate, block with evidence when infeasible).
+- DB migrations (if any): none.
+- Tests/checks run: read-only analysis; no code behavior changes.
+- Behavioral verification: N/A (documentation/tracking only).
+- Risks/breaking changes/mitigations: none; improves transparency of remaining gaps.
+- External dependencies/blockers: many phases blocked by licensing/partners/credentials, governance/ops/DR/CI, env access, and large-scope implementation (see matrix).
+- Status: completed (tracker update). Overall REFACTOR remains incomplete/partially blocked.
+
+### Execution record: Incremental verification pass (post-rescan, Phase 0.2/1A confidence)
+- Date: 2026-11-11
+- Scope/files reviewed: build/test tooling and Phase 1A-touched surfaces (`packages/authz`, `apps/api/src/lib/{actor,authorization}.ts`, `apps/api/src/routes/workspace.ts`, `tests/unit/authz*.test.ts`, `tests/integration/workspaces.test.ts`).
+- Changes made: none (verification only).
+- DB migrations (if any): none.
+- Tests/checks run: `npm run -s lint` -> exit 0; `npm run -s typecheck` -> exit 0; `npx vitest run tests/unit/authz-phase1a.test.ts` -> 1 file, 16 passed; `npx vitest run tests/unit/authz.test.ts` -> 1 file, 12 passed; `npx vitest run tests/integration/workspaces.test.ts` -> 1 file, 15 passed (local `*_test` env per guard).
+- Behavioral verification: targeted authz contract and workspace/shared-supply route/integration behaviors (incl. UI-safe empty shared-supply view, auth/permission guards, cross-tenant receive denial, RLS isolation assertion where applicable) exercised in tests; does not replace full permission-matrix or full-suite baseline.
+- Risks/breaking changes/mitigations: full repo integration/e2e/smoke and all 1A negative cases remain partially unverified; continue incremental, targeted verification per slice.
+- External dependencies/blockers: full hosted/CI baseline and env-dependent suites.
+- Status: partial (targeted re-verification passed).
