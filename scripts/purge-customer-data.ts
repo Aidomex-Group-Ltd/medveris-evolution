@@ -8,6 +8,8 @@ loadLocalEnv();
 const PRESERVE_TABLES = new Set([
   "api_products",
   "content_sources",
+  "hmis_reporting_rules",
+  "legal_documents",
   "onboarding_catalogues",
   "plan_resource_rules",
   "schema_migrations",
