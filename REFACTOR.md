@@ -881,3 +881,36 @@ Master implementation tracker for incremental refactoring of the existing Medver
 6.6 **Final program deliverables:** consolidated architecture summary, file/migration inventory, test/verification results, security assessment, Cloudflare config, access/admin instructions, deployment/rollback/recovery.
 
 **Program note:** Phases 3–6 include areas dependent on existing capabilities, environment configuration, licensed terminology content, partner/PACS systems, and operational governance; such constraints will be implemented where feasible and explicitly documented (not claimed complete) per phase reports.
+
+## 2026-11-12 — Phase 1 implementation (authentication interface simplification) — pending review/approval
+
+### Scope delivered
+- Added unified auth experience in `apps/web/src/pages/AuthPage.tsx`: single streamlined container with exclusive role toggle **Patient | Healthcare Provider** and mode toggle **Sign in | Sign up** (`?role=`/`?mode=` state, defaults patient/signin).
+- **Sign in:** reused existing `useAuth().login` / `loginMfa`, MFA challenge flow (app/email/recovery/dev-code via `/auth/totp/dev` and `/auth/login/mfa/email`), password recovery link, and post-login destination logic (preserving staff multi-facility and patient portal routing, `safeReturnPath`).
+- **Patient sign up:** existing patient registration fields/legal acceptance and `POST /auth/register/patient` flow (terms/privacy fetch, success state with public ID/verification delivery).
+- **Provider sign up:** reuses existing `WorkspaceSignup` component/paths within provider view (no duplicate interface, no privilege escalation path added); provider sign-in shows staff/invitation guidance.
+- **Routing/compatibility:** `apps/web/src/App.tsx` now serves `AuthPage` at `/login`, adds `/auth` -> `/login`, and replaces `/register` with `RegisterRedirect` preserving query params/state and mapping legacy `type=facility|patient` (and existing `as`/`type` handling in `AuthPage`) to canonical `role`/`mode`. `/login` remains canonical to avoid breaking existing links/bookmarks/emails/in-app redirects.
+- **Copy/layout:** removed duplicated landing-style value/feature marketing blocks from auth container; kept concise security/access cues (MFA/verified account guidance, policy note, help link). Added single-column responsive auth styles in `apps/web/src/styles.css` (`.mv-auth--single`, toggle/legend/foot classes).
+- **Landing CTA alignment:** `apps/web/src/pages/landing/LandingPage.tsx` routes updated to canonical unified entry (`signIn` patient/signin, facility/provider sign-up).
+
+### Files changed
+- Added: `apps/web/src/pages/AuthPage.tsx`
+- Modified: `apps/web/src/App.tsx`, `apps/web/src/pages/landing/LandingPage.tsx`, `apps/web/src/styles.css`
+- Unchanged legacy files retained for compatibility/reference (not routed): `apps/web/src/pages/LoginPage.tsx`, `apps/web/src/pages/RegisterPage.tsx`
+- No backend/API/DB/schema/migration/authz changes.
+
+### Preservation notes / decisions
+- Existing secured flows left intact and separate as required: `/forgot-password`, `/reset-password`, `/verify-email`, `/mfa-setup`, `/accept-invitation`, `FacilityStaffPage`, `RootGate`, `ProtectedRoute`.
+- `WorkspaceSignup` and all backend auth/registration/onboarding endpoints reused as-is; provider sign-up does not expose platform/operator self-assignment.
+- Many existing internal links still target `/login` or `/register?type=...`; unified route + redirect preserve behavior without mass churn in this slice.
+
+### Verification
+- `npm run typecheck` — pass.
+- `npm run lint` — pass.
+- `npx vitest run tests/unit/authz.test.ts tests/unit/authz-matrix.test.ts` — pass (2 files, 42 tests). No web/auth UI test suite executed in this pass (none identified as directly covering this new container).
+
+### Issues / follow-ups (not blocking this report)
+- Legacy `LoginPage.tsx`/`RegisterPage.tsx` can be removed or reduced after confidence period if desired (currently unrouted).
+- Optional cleanup: migrate scattered `/login?as=staff` and `/register?type=*` links to canonical `role/mode` params for consistency.
+- Manual responsive/a11y smoke recommended (mobile/tablet/desktop, keyboard/focus, screen-reader labels for toggles) and end-to-end auth regression in staging for patient/provider sign-in+MFA, patient signup, provider/workspace signup, recovery, verify, invitation flows.
+- Phase 2 not started; **approval required before Phase 2 work**.

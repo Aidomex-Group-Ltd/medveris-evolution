@@ -231,3 +231,48 @@ details > summary:hover { text-decoration: underline; }
     width: 100%;
   }
 }
+
+/* Phase 1: unified auth container */
+.mv-auth--single {
+  display: grid;
+  place-items: center;
+  grid-template-columns: 1fr;
+  padding: 24px 16px;
+  background: linear-gradient(180deg, var(--mv-bg) 0%, #eef4f1 100%);
+}
+.mv-auth__single {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 16px;
+}
+.mv-auth__single-head {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.mv-auth__toggles {
+  display: grid;
+  gap: 12px;
+}
+.mv-auth__toggle-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.mv-auth__legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--mv-text-muted);
+  margin-bottom: 6px;
+  padding: 0;
+}
+.mv-auth__foot {
+  text-align: center;
+}
+@media (min-width: 700px) {
+  .mv-auth__toggles {
+    grid-template-columns: 1fr 1fr;
+    align-items: end;
+  }
+}

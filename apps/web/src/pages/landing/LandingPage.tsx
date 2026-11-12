@@ -4,8 +4,8 @@ import { COMPANY, whatsappLink } from "../../content/company";
 import "./landing.css";
 
 const ROUTES = {
-  signIn: "/login",
-  facilitySignUp: "/register?type=facility",
+  signIn: "/login?role=patient&mode=signin",
+  facilitySignUp: "/login?role=provider&mode=signup",
   patientPortal: "/portal",
   about: "/about",
   pricing: "/pricing",

@@ -1,11 +1,11 @@
 import { lazy, Suspense, type ComponentType } from "react";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { EmptyState, LoadingState, PageHeader } from "@medveris/ui";
 import { AppShell } from "./components/AppShell";
 import { RootGate } from "./pages/landing/RootGate";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { LoginPage } from "./pages/LoginPage";
+import { AuthPage } from "./pages/AuthPage";
 import { CASHIER_ROLES, INVENTORY_ROLES, PROCUREMENT_ROLES, VISIT_ROLES } from "./lib/roles";
 
 function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K): ComponentType {
@@ -25,7 +25,6 @@ function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>
   };
 }
 
-const RegisterPage = lazyPage(() => import("./pages/RegisterPage"), "RegisterPage");
 const ForgotPasswordPage = lazyPage(() => import("./pages/ForgotPasswordPage"), "ForgotPasswordPage");
 const ResetPasswordPage = lazyPage(() => import("./pages/ResetPasswordPage"), "ResetPasswordPage");
 const VerifyEmailPage = lazyPage(() => import("./pages/VerifyEmailPage"), "VerifyEmailPage");
@@ -106,6 +105,22 @@ const SubscriptionPage = lazyPage(() => import("./pages/SubscriptionPage"), "Sub
 const PlatformBillingPage = lazyPage(() => import("./pages/PlatformBillingPage"), "PlatformBillingPage");
 const PlatformObservabilityPage = lazyPage(() => import("./pages/PlatformObservabilityPage"), "PlatformObservabilityPage");
 
+function RegisterRedirect() {
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const next = new URLSearchParams(params);
+  const type = next.get("type");
+  if (type === "facility") {
+    next.set("role", "provider");
+    next.set("mode", "signup");
+  } else {
+    next.set("role", "patient");
+    next.set("mode", "signup");
+  }
+  next.delete("type");
+  return <Navigate to={`/login?${next.toString()}`} replace state={location.state} />;
+}
+
 function NotFoundPage() {
   return (
     <div className="mv-stack">
@@ -118,7 +133,8 @@ function NotFoundPage() {
 export function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login" element={<AuthPage />} />
+      <Route path="/auth" element={<Navigate to="/login" replace />} />
       {/* Public information pages; they never open a workspace. */}
       <Route path="/about" element={<AboutPage />} />
       <Route path="/pricing" element={<PricingPage />} />
@@ -126,7 +142,7 @@ export function App() {
       <Route path="/contacts" element={<ContactsPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/register" element={<RegisterRedirect />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
