@@ -13,8 +13,10 @@ import {
   matrixEntriesForPermission,
   matrixEntriesForRouteFile,
   matrixUnresolvedActions,
+  permissionsForRoles,
   MatrixDeniedError,
   type MatrixEntry,
+  type Permission,
   type PolicyActor,
   type ResourceContext,
 } from "@medveris/authz";
@@ -252,5 +254,51 @@ describe("approved gap-mapping reuse slice (2026-11-12)", () => {
 
     const receptionist: PolicyActor = { ...actor, roles: ["receptionist"] };
     expect(decideAction(receptionist, "inventory.asset.read", { kind: "dashboard", tenantId: "t1" }).allowed).toBe(false);
+  });
+});
+
+describe("approved inventory gap mappings (NEW, 2026-11-12)", () => {
+  const expectations: readonly [string, readonly string[]][] = [
+    ["inventory.adjustment.read", ["GET /inventory/adjustments"]],
+    ["inventory.count.read", ["GET /inventory/counts"]],
+    ["inventory.item.read", ["GET /inventory/items"]],
+    ["inventory.location.read", ["GET /inventory/locations"]],
+    ["inventory.policy.read", ["GET /inventory/policies"]],
+    ["inventory.recall.read", ["GET /inventory/recalls"]],
+    ["inventory.requisition.read", ["GET /inventory/requisitions", "GET /inventory/requisitions/:id"]],
+    ["inventory.requisition.manage", ["POST /inventory/requisitions"]],
+    ["inventory.requisition.submit", ["POST /inventory/requisitions/:id/submit"]],
+    ["inventory.transfer.read", ["GET /inventory/transfers", "GET /inventory/transfers/:id"]],
+    ["inventory.movement.reverse.manage", ["POST /inventory/movements/:id/reverse"]],
+    ["inventory.reservation.manage", ["POST /inventory/reservations"]],
+    ["inventory.reservation.release.manage", ["POST /inventory/reservations/:id/release"]],
+  ];
+
+  it("binds each approved new inventory route to its new permission", () => {
+    for (const [key, patterns] of expectations) {
+      const entry = getMatrixEntry(key);
+      expect(entry, key).toBeDefined();
+      expect(entry?.permission, key).toBe(key);
+      expect(entry?.status, key).toBe("canonical");
+      for (const pattern of patterns) expect(entry?.routePatterns, key).toContain(pattern);
+    }
+  });
+
+  it("grants the approved candidate roles and not unrelated roles", () => {
+    for (const role of ["pharmacist", "ward_manager", "facility_admin", "cssd", "biomedical"] as const) {
+      const granted = permissionsForRoles([role]);
+      for (const [key] of expectations) expect(granted.has(key as Permission), `${role}:${key}`).toBe(true);
+    }
+    const receptionist = permissionsForRoles(["receptionist"]);
+    expect(receptionist.has("inventory.item.read")).toBe(false);
+    expect(receptionist.has("inventory.reservation.manage")).toBe(false);
+  });
+
+  it("allows an approved read for a biomedical user and denies reception", () => {
+    const biomedical: PolicyActor = { ...actor, roles: ["biomedical"] };
+    expect(decideAction(biomedical, "inventory.item.read", { kind: "dashboard", tenantId: "t1" }).allowed).toBe(true);
+
+    const receptionist: PolicyActor = { ...actor, roles: ["receptionist"] };
+    expect(decideAction(receptionist, "inventory.item.read", { kind: "dashboard", tenantId: "t1" }).allowed).toBe(false);
   });
 });

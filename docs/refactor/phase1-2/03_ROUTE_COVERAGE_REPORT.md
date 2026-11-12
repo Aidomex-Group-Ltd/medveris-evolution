@@ -7,25 +7,25 @@
 
 | Category | Routes | Share of inventory |
 |---|---|---|
-| Matrix-covered | 344 | 48.4% |
+| Matrix-covered | 359 | 50.5% |
 | Exempt (non-permission) | 36 | 5.1% |
 | Overlap (both) | 1 | 0.1% |
-| **Total covered** | **379** | **53.3%** |
-| **Uncovered (gaps)** | **332** | **46.7%** |
+| **Total covered** | **394** | **55.4%** |
+| **Uncovered (gaps)** | **317** | **44.6%** |
 | Total inventory | 711 | 100.0% |
 
-Total covered = matrix ∪ exemptions = 379 unique routes; uncovered + covered = inventory.
+Total covered = matrix ∪ exemptions = 394 unique routes; uncovered + covered = inventory.
 
-> **Post-approval adoption (2026-11-12):** the 24 reuse-approved routes were bound in the matrix.
-> Stage 3 baseline was 320 matrix-covered / 355 covered / 356 gaps. The per-router table below is
-> updated for `inventory.ts`, `radiology.ts`, `organizations.ts` and `onboarding.ts`; all other
-> rows are unchanged from the baseline report.
+> **Post-approval adoption (2026-11-12):** the 24 reuse-approved routes were bound, then the
+> inventory NEW slice bound the remaining 15 inventory routes. Stage 3 baseline was 320
+> matrix-covered / 355 covered / 356 gaps. The per-router table below is updated for `inventory.ts`
+> (now 51/51), `radiology.ts`, `organizations.ts` and `onboarding.ts`; all other rows are unchanged.
 
 ## 2. Coverage by Router
 
 | Router | Total | Matrix | Exempt | Overlap | Uncovered | Covered % |
 |---|---|---|---|---|---|---|
-| `inventory.ts` | 51 | 36 | 0 | 0 | 15 | 70.6% |
+| `inventory.ts` | 51 | 51 | 0 | 0 | 0 | 100.0% |
 | `maternity.ts` | 20 | 3 | 0 | 0 | 17 | 15.0% |
 | `operations.ts` | 22 | 5 | 0 | 0 | 17 | 22.7% |
 | `fhir/router.ts` | 17 | 0 | 0 | 0 | 17 | 0.0% |

@@ -3,6 +3,11 @@
 **Date:** 2026-11-12  
 **Status:** APPROVED for adoption (owner sign-off 2026-11-12). The 346 permission mappings (24 reuse + 322 new) below are authoritative; the 10 exemption candidates remain unverified and must not be exempted until their controls are confirmed. Adoption proceeds in slices; approval of a mapping does not itself grant a permission or change runtime enforcement.
 
+**Adoption log:**
+- 2026-11-12 — reuse slice: 24 routes bound in the matrix (inventory, radiology, organizations, onboarding).
+- 2026-11-12 — inventory NEW slice: 15 routes bound; 13 new permissions added to the catalog and granted to the approved candidate roles. Inventory is 30/30 covered.
+- Remaining: 307 NEW routes across the other domains; 10 exemption candidates.
+
 ## How to read this
 
 - Covers the 356 API routes that currently have neither a matrix action nor a declared exemption.

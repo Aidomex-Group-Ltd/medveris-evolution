@@ -8,19 +8,19 @@
 
 | Metric | Value |
 |---|---|
-| Matrix actions | 130 |
-| Matrix route patterns | 349 |
-| Matrix patterns matched to a real route | 349 |
-| Unique routes claimed by the matrix | 344 |
+| Matrix actions | 143 |
+| Matrix route patterns | 364 |
+| Matrix patterns matched to a real route | 364 |
+| Unique routes claimed by the matrix | 359 |
 | Non-permission endpoint patterns | 36 |
 | Non-permission patterns matched | 36 |
 | Unique routes covered by exemptions | 36 |
-| Total unique routes covered (matrix ∪ exemptions) | 379 |
+| Total unique routes covered (matrix ∪ exemptions) | 394 |
 | Inventory routes | 711 |
-| Uncovered inventory routes (gaps) | 332 |
+| Uncovered inventory routes (gaps) | 317 |
 | Stale matrix patterns | 0 |
 
-**Post-approval adoption (2026-11-12):** after owner approval of the gap mappings, the 24 routes that reuse an existing permission were bound in the matrix (5 new action entries; patterns appended to 3 existing actions). Totals above reflect that slice; the Stage 3 baseline was 125 actions / 325 patterns / 320 matrix routes / 356 gaps.
+**Post-approval adoption (2026-11-12):** after owner approval of the gap mappings, the 24 reuse routes were bound (5 new action entries) and then the inventory NEW slice was adopted (13 new permissions, 13 new action entries; all 15 remaining inventory routes bound). Totals above reflect both slices; the Stage 3 baseline was 125 actions / 325 patterns / 320 matrix routes / 356 gaps.
 
 ## 2. Corrections Applied
 
@@ -56,14 +56,15 @@ These routes are intentionally bound to more than one action (layered/dual check
 
 ## 4. Uncovered Inventory Routes (Coverage Gaps)
 
-332 inventory routes have neither a matrix action nor a declared non-permission exemption. 
+317 inventory routes have neither a matrix action nor a declared non-permission exemption. 
 These are reported, not auto-bound: assigning permissions to them is an owner-approved security decision and must not be guessed. 
 They are candidates for Stage 5 route adoption or for explicit exemption with justification.
 
 > **Addendum:** the per-router counts and full lists below are the Stage 3 baseline (356 gaps). The
-> 2026-11-12 reuse slice bound 24 routes across `inventory.ts` (-15), `radiology.ts` (-6),
-> `organizations.ts` (-2) and `onboarding.ts` (-1); the remaining 332 gaps are the approved
-> NEW mappings awaiting adoption.
+> The 2026-11-12 reuse slice bound 24 routes across `inventory.ts` (-15), `radiology.ts` (-6),
+> `organizations.ts` (-2) and `onboarding.ts` (-1). The inventory NEW slice then bound the
+> remaining 15 inventory routes (inventory is now 30/30 covered); the remaining 317 gaps are
+> approved NEW mappings awaiting adoption.
 
 | Router | Uncovered |
 |---|---|

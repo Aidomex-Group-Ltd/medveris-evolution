@@ -637,3 +637,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: registry-only adoption in this increment; routes keep their existing inline permission checks, so no behavior change. The 322 NEW mappings are approved but not yet added to `PERMISSIONS` or role bundles; each requires an adoption slice with tests.
 - External dependencies/blockers: adoption of the 322 NEW mappings (catalog + role grants + route wiring per domain) and verification of the 10 exemption candidates remain.
 - Status: partial (approval recorded; reuse slice adopted and verified; NEW mappings and exemption verification pending).
+
+### Execution record: Phase 1.2 inventory NEW slice
+- Date: 2026-11-12
+- Scope/files reviewed: `docs/refactor/phase1-2/05_GAP_PERMISSION_MAPPING_PROPOSAL.md`, `packages/authz/src/permissions.ts`, `packages/authz/src/matrix/actions/inventory.ts`, `tests/unit/authz-matrix.test.ts`.
+- Changes made: adopted the approved NEW mappings for `inventory.ts` (15 routes, 13 unique permissions): added `inventory.{adjustment,count,item,location,policy,recall,requisition,transfer}.read`, `inventory.requisition.{manage,submit}`, `inventory.movement.reverse.manage`, `inventory.reservation.{manage,release.manage}` to the permission catalog, granted them via `inventoryGapRead`/`inventoryGapOperate` to the approved candidate roles (pharmacist, ward_manager, facility_admin, cssd, biomedical), and bound the routes in the matrix. Route handlers keep their existing inline checks; no runtime route rewiring.
+- DB migrations (if any): none.
+- Tests/checks run: `npx vitest run tests/unit/authz-matrix.test.ts tests/unit/authz.test.ts tests/unit/authz-phase1a.test.ts` -> 50/50 passed; `npm run typecheck` -> exit 0; `npm run lint` -> exit 0; route/matrix reconcile -> 143 actions, 364 patterns, all matched, 0 stale, 5 intentional multi-claims.
+- Behavioral verification: tests assert every approved inventory NEW route is bound, the five candidate roles receive all 13 permissions, reception is denied, and a biomedical user can read items while reception cannot. Coverage: 359 matrix routes / 394 covered / 317 gaps; `inventory.ts` is 51/51 covered.
+- Risks/breaking changes/mitigations: additive catalog/role/matrix changes only; no route behavior change. Candidate-role grants are broad by approval and remain subject to contextual policy and RLS.
+- External dependencies/blockers: 307 NEW routes in other domains and 10 exemption candidates remain.
+- Status: partial (inventory domain fully adopted at registry level; runtime rewiring and other domains pending).

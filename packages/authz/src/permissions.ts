@@ -107,6 +107,19 @@ export const PERMISSIONS = [
   "inventory.asset.read",
   "inventory.asset.manage",
   "inventory.report.read",
+  "inventory.adjustment.read",
+  "inventory.count.read",
+  "inventory.item.read",
+  "inventory.location.read",
+  "inventory.policy.read",
+  "inventory.recall.read",
+  "inventory.requisition.read",
+  "inventory.requisition.manage",
+  "inventory.requisition.submit",
+  "inventory.transfer.read",
+  "inventory.movement.reverse.manage",
+  "inventory.reservation.manage",
+  "inventory.reservation.release.manage",
   "inventory.procurement.manage",
   "inventory.procurement.approve",
 
@@ -154,6 +167,25 @@ const inventoryRead: Permission[] = [
   "inventory.stock.read",
   "inventory.asset.read",
   "inventory.report.read",
+];
+
+const inventoryGapRead: Permission[] = [
+  "inventory.adjustment.read",
+  "inventory.count.read",
+  "inventory.item.read",
+  "inventory.location.read",
+  "inventory.policy.read",
+  "inventory.recall.read",
+  "inventory.requisition.read",
+  "inventory.transfer.read",
+];
+
+const inventoryGapOperate: Permission[] = [
+  "inventory.movement.reverse.manage",
+  "inventory.requisition.manage",
+  "inventory.requisition.submit",
+  "inventory.reservation.manage",
+  "inventory.reservation.release.manage",
 ];
 
 const clinicalCore: Permission[] = [
@@ -226,6 +258,8 @@ const adminCore: Permission[] = [
   "inventory.asset.read",
   "inventory.asset.manage",
   "inventory.report.read",
+  ...inventoryGapRead,
+  ...inventoryGapOperate,
   "directory.read",
   "directory.manage",
   "directory.claim",
@@ -306,6 +340,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   diagnostic_practitioner: diagnosticCore,
   pharmacist: [
     ...inventoryRead,
+    ...inventoryGapRead,
+    ...inventoryGapOperate,
     "inventory.catalogue.manage",
     "inventory.stock.receive",
     "inventory.stock.issue",
@@ -335,7 +371,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "radiology.template.manage",
     "radiology.images.view",
   ],
-  ward_manager: [...nursingCore, "ward.bed.manage", "dashboard.operations.read"],
+  ward_manager: [...nursingCore, ...inventoryGapRead, ...inventoryGapOperate, "ward.bed.manage", "dashboard.operations.read"],
   privacy_officer: ["audit.read", "privacy.access.review", "care_team.read", "content.read", "dashboard.administration.read"],
   department_lead: [
     ...clinicalCore,
@@ -412,8 +448,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   housekeeping: [...inventoryRead, "inventory.stock.issue", "inventory.stock.receive", "content.read", "dashboard.support.read"],
   porter: [...inventoryRead, "content.read", "dashboard.support.read"],
   mortuary: [...inventoryRead, "inventory.stock.issue", "content.read", "dashboard.support.read"],
-  cssd: [...inventoryRead, "inventory.stock.receive", "inventory.stock.issue", "inventory.transfer.manage", "inventory.count.manage", "content.read", "dashboard.support.read"],
-  biomedical: [...inventoryRead, "inventory.catalogue.manage", "inventory.stock.receive", "inventory.stock.adjust", "inventory.transfer.manage", "inventory.asset.manage", "content.read", "dashboard.support.read"],
+  cssd: [...inventoryRead, ...inventoryGapRead, ...inventoryGapOperate, "inventory.stock.receive", "inventory.stock.issue", "inventory.transfer.manage", "inventory.count.manage", "content.read", "dashboard.support.read"],
+  biomedical: [...inventoryRead, ...inventoryGapRead, ...inventoryGapOperate, "inventory.catalogue.manage", "inventory.stock.receive", "inventory.stock.adjust", "inventory.transfer.manage", "inventory.asset.manage", "content.read", "dashboard.support.read"],
   it_admin: ["platform.operations.manage", "content.read", "dashboard.support.read"],
   content_editor: [...contentEditorCore, "dashboard.operations.read"],
   content_reviewer: [...contentEditorCore, "content.publish", "content.archive", "dashboard.operations.read"],
