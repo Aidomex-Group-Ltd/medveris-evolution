@@ -959,3 +959,27 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - 2.5 Regression coverage for identity verification, session management, MFA, account recovery, tenant switching.
 - 2.6 Targeted denied-escalation integration tests where feasible.
 - **Approval required before starting Phase 3.**
+
+### 2026-11-12 — Phase 2.4–2.6 (separation, regression coverage, denied escalation) — pending review/approval
+
+#### 2.4 Platform/operator and privileged separation (review + targeted checks)
+- Confirmed platform privilege boundaries remain isolated: `platform_roles`/approval-break-glass flows (`apps/api/src/lib/platform-roles.ts`, admin platform routes) require operator context + recent MFA step-up where applicable; `withPlatformActor`/`requirePlatformReviewer`/`isPlatformOperator` gate platform surfaces; `platform-observability` and platform admin workflows enforce operator checks. Credential reviewer role remains non-grantable via facility invitations/memberships (`assertInvitable`/role-guard coverage).
+- Added defense-in-depth unit coverage for escalation boundaries in `tests/unit/phase2-escalation.test.ts` (invitable allowlist positive/negative, platform/identity/unknown roles denied, privileged roles excluded from invitable set).
+
+#### 2.5 Regression coverage posture (existing suites, evidence-backed)
+- **Identity/session/MFA/recovery/tenant switching:** existing integration coverage present in `tests/integration/registration.test.ts`, `sign-in-verification.test.ts`, `invitations.test.ts`, `rls.test.ts`, `support.ts` (`/me/context`/facility selection) and related workflow tests. These suites require a configured local `*_test` database (`DATABASE_URL`/migrations/seed) not available in this environment; not re-executed here to avoid false failures.
+- **Platform separation/observability:** `tests/integration/platform-roles.test.ts` and `tests/integration/platform-observability.test.ts` exist (DB-backed) and were not run in this pass for the same environment constraint.
+
+#### 2.6 Denied-escalation tests executed (this environment)
+- Unit: `tests/unit/phase2-escalation.test.ts`, `tests/unit/invitations.test.ts`, `tests/unit/authz.test.ts`, `tests/unit/authz-phase1a.test.ts` — pass (38 tests total across runs; escalation/invitation/authz invariants verified).
+
+#### Verification summary
+- `npm run typecheck` — pass.
+- Targeted `eslint` — pass for modified files.
+- Targeted `vitest` (unit, no DB dependency) — pass: `tests/unit/phase2-escalation.test.ts` + `tests/unit/invitations.test.ts` (10), and prior `tests/unit/invitations.test.ts` + `tests/unit/authz.test.ts` + `tests/unit/authz-phase1a.test.ts` (35).
+
+#### Limitations / not claimed
+- DB-backed integration/e2e auth regression suites were not executed in this environment (missing configured local test database/services). Full Phase 2 regression confidence for identity/session/MFA/recovery/tenant-switch/platform workflows requires running those suites in a prepared test environment/CI.
+- No schema, migration, or runtime behavior changes beyond documented defense-in-depth guards.
+
+**Phase 2 status:** implementation slices 2.1–2.6 documented with evidence and constraints. **Approval required before starting Phase 3.**
