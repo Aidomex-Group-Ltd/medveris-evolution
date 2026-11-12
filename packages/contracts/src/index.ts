@@ -411,6 +411,10 @@ export const emergencyOverrideSchema = z.object({
   totpCode: z.string().trim().regex(/^\d{6}$/),
 });
 
+export const emergencyOverrideRevokeSchema = z.object({
+  reason: z.string().trim().min(5).max(2000),
+});
+
 export const credentialSchema = z.object({
   subjectType: z.enum(["practitioner", "facility"]),
   subjectUserId: uuidSchema.optional().nullable(),

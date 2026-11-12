@@ -71,7 +71,10 @@ const RESTRICTED_FINANCE_CONTINUITY_ALLOWLIST: RegExp[] = [
   /^\/api\/v1\/finance\/claims$/,
 ];
 
-function isAllowlistedWhileRestricted(method: string, path: string): boolean {
+/** Internal: exported for policy-classification unit tests only; not part of the public API. */
+export const POLICY_TABLES = { RESTRICTED_ROUTES, RESTRICTED_MUTATION_ALLOWLIST, RESTRICTED_FINANCE_CONTINUITY_ALLOWLIST } as const;
+
+export function isAllowlistedWhileRestricted(method: string, path: string): boolean {
   if (RESTRICTED_MUTATION_ALLOWLIST.some((pattern) => pattern.test(path))) return true;
   if (path.startsWith("/api/v1/finance")) {
     return method === "POST" && RESTRICTED_FINANCE_CONTINUITY_ALLOWLIST.some((pattern) => pattern.test(path));

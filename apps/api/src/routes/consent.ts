@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import {
   createGrantSchema,
   emergencyOverrideSchema,
+  emergencyOverrideRevokeSchema,
   publicPatientIdSchema,
   revokeGrantSchema,
   uuidSchema,
@@ -253,6 +254,51 @@ consentRoutes.post("/patients/:patientId/emergency-overrides", async (c) => {
     return { id, expiresAt, reviewDueAt };
   });
   return c.json({ ok: true, override: { id: record.id, expiresAt: record.expiresAt, reviewStatus: "pending" } }, 201);
+});
+
+consentRoutes.post("/emergency-overrides/:id/revoke", async (c) => {
+  requireStaff(c);
+  const auth = c.get("auth")!;
+  const a = actor(c);
+  const deps = c.get("deps");
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, emergencyOverrideRevokeSchema);
+  // Requester (owner of the override) may revoke their own access at any time;
+  // governance (facility_admin/auditor) may revoke any override in the tenant.
+  if (!canUseEmergencyOverride(a) && !canAudit(a)) {
+    throw new ForbiddenError("Emergency override revocation requires the requesting clinical role or governance review access");
+  }
+  const governance = canAudit(a);
+  await withStaffActor(c, async (tx) => {
+    const rows = await tx`
+      update emergency_overrides set revoked_at = now(), revoked_by = ${auth.user.id}, revoked_reason = ${body.reason}
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id} and revoked_at is null
+         and (user_id = ${auth.user.id} or ${governance})
+       returning id, patient_id
+    `;
+    if (!rows[0]) throw new NotFoundError("Active emergency override not found");
+    await writeAudit(tx, deps.config, {
+      tenantId: auth.activeTenant!.id,
+      actorKind: "staff",
+      actorUserId: auth.user.id,
+      actorRoles: auth.activeTenant!.roles,
+      action: "emergency.override.revoke",
+      subjectPatientId: String(rows[0].patientId),
+      resourceType: "EmergencyOverride",
+      resourceId: id,
+      overrideId: id,
+      ...auditMeta(c),
+      metadata: { reason: body.reason, byGovernance: governance },
+    });
+    await writeOutbox(tx, {
+      tenantId: auth.activeTenant!.id,
+      eventType: "emergency.override.revoked",
+      aggregateId: id,
+      payload: { overrideId: id, patientId: String(rows[0].patientId) },
+      idempotencyKey: `override-revoked-${id}`,
+    });
+  });
+  return c.json({ ok: true });
 });
 
 consentRoutes.get("/emergency-overrides", async (c) => {
