@@ -15,6 +15,52 @@ export const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Roles that are not facility staff roles and can never be granted through an invitation. */
 export const NON_INVITABLE_ROLES: ReadonlySet<string> = new Set(["patient", "proxy", "credential_reviewer"]);
 
+/**
+ * Positive allowlist for roles that may be granted through facility invitations/membership admin flows.
+ * Defense-in-depth: only explicit facility/workspace roles are invitable; platform roles live outside
+ * facility memberships and patient/proxy identities are never staff-invited.
+ */
+export const INVITABLE_FACILITY_ROLES: ReadonlySet<string> = new Set([
+  "receptionist",
+  "nurse",
+  "midwife",
+  "clinician",
+  "specialist_clinician",
+  "diagnostic_practitioner",
+  "department_lead",
+  "facility_admin",
+  "finance",
+  "auditor",
+  "pharmacist",
+  "laboratory",
+  "radiology",
+  "radiographer",
+  "radiologist",
+  "lab_validator",
+  "ward_manager",
+  "privacy_officer",
+  "public_health",
+  "hr",
+  "records",
+  "theatre",
+  "housekeeping",
+  "porter",
+  "mortuary",
+  "cssd",
+  "biomedical",
+  "quality",
+  "it_admin",
+  "research",
+  "content_editor",
+  "content_reviewer",
+  "opportunity_moderator",
+  "owner",
+  "department_admin",
+  "unit_lead",
+  "staff",
+  "report_viewer",
+]);
+
 export type InvitationStatus = "pending" | "accepted" | "revoked" | "declined" | "expired" | "facility_unavailable" | "inviter_unauthorized";
 
 export interface InvitationRow {
@@ -422,7 +468,7 @@ export function invitationEmail(input: { origin: string; facilityName: string; t
 }
 
 export function assertInvitable(roles: string[]): string | null {
-  const refused = roles.filter((role) => NON_INVITABLE_ROLES.has(role));
+  const refused = roles.filter((role) => !INVITABLE_FACILITY_ROLES.has(role) || NON_INVITABLE_ROLES.has(role));
   return refused.length ? `${refused.join(", ")} cannot be granted through a facility invitation` : null;
 }
 

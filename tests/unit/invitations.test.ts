@@ -44,6 +44,7 @@ describe("invitation email and roles", () => {
   it("refuses roles that are not facility staff roles", () => {
     expect(assertInvitable(["nurse", "facility_admin"])).toBeNull();
     expect(assertInvitable(["nurse", "patient", "credential_reviewer"])).toBe("patient, credential_reviewer cannot be granted through a facility invitation");
+    expect(assertInvitable(["nurse", "platform_operator"])).toBe("platform_operator cannot be granted through a facility invitation");
   });
 });
 

@@ -914,3 +914,32 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Optional cleanup: migrate scattered `/login?as=staff` and `/register?type=*` links to canonical `role/mode` params for consistency.
 - Manual responsive/a11y smoke recommended (mobile/tablet/desktop, keyboard/focus, screen-reader labels for toggles) and end-to-end auth regression in staging for patient/provider sign-in+MFA, patient signup, provider/workspace signup, recovery, verify, invitation flows.
 - Phase 2 not started; **approval required before Phase 2 work**.
+
+## 2026-11-12 — Phase 2.1/2.2 (auth logic & role-based access, initial hardening) — pending review/approval
+
+### 2.1 Backend audit (read-only findings)
+- **Registration/onboarding:** `POST /auth/register/patient|facility|workspace` and `POST /auth/invitations/register` accept no user-supplied facility/platform roles. `register/workspace` computes owner roles server-side (`OWNER_ROLES` / `unitOwnerRoles` for service category) and passes to `createWorkspace`; contracts (`registerWorkspaceSchema`, `workspaceOwnerSchema`, legal acceptance) contain no privileged role fields. Join path validates join code/organization server-side and creates pending link (no organization admin privilege granted to requester).
+- **Invitations/memberships:** invitation token resolves server-stored invitation row (facility, roles, scope, inviter); `acceptInvitation` applies stored roles only. Admin invitation creation/update enforce manager authority (`facility_admin` or scoped `department_admin`), `checkedScope`, delegable-role limits, `assertInvitable`, and seat/capacity checks; membership update blocks `credential_reviewer` and enforces scope/owner/department constraints.
+- **Platform separation:** platform access managed via `platform_roles` table and approval/break-glass flows (`apps/api/src/lib/platform-roles.ts`, admin platform routes) with MFA step-up/eligibility controls; runtime gates (`withPlatformActor`, `requirePlatformReviewer`, `requirePlatformOperator`, middleware platform role scoping) separate from facility memberships. No registration/invitation path grants platform roles.
+- **Session/tenant resolution:** `loadAuthContext` derives memberships, approved role grants, patient linkage, and platform roles from DB; active tenant must be an active membership (or single-membership default). `POST /me/context` requires membership ownership. CSRF enforced for state-changing protected routes with explicit auth-entry/read-only exemptions in middleware.
+- **MFA/access controls:** staff/facility context requires MFA enrollment/verification; password reset revokes sessions; TOTP/email/recovery challenge handling and rate limits present.
+
+### 2.2 Defense-in-depth changes applied
+- `apps/api/src/services/invitations.ts`: added explicit positive allowlist `INVITABLE_FACILITY_ROLES` for facility/workspace membership roles and tightened `assertInvitable` to reject any role not in that allowlist (or in non-invitable set). Prevents accidental acceptance of unknown/privileged values (e.g. `platform_operator`) through invitation/membership admin paths.
+- `apps/api/src/services/workspaces.ts`: added `assertWorkspaceGrantableRoles` guard in `createWorkspace` to reject `patient`/`proxy`/`credential_reviewer` if ever passed as owner/membership roles (server-side invariant).
+- `tests/unit/invitations.test.ts`: extended refusal coverage to include `platform_operator`.
+
+### Files changed (this slice)
+- Modified: `apps/api/src/services/invitations.ts`, `apps/api/src/services/workspaces.ts`, `tests/unit/invitations.test.ts`, `REFACTOR.md`
+
+### Verification
+- `npm run typecheck` — pass.
+- `npx eslint apps/api/src/services/invitations.ts apps/api/src/services/workspaces.ts tests/unit/invitations.test.ts` — pass.
+- `npx vitest run tests/unit/invitations.test.ts tests/unit/authz.test.ts` — pass (19 tests).
+
+### Remaining Phase 2 work (pending approval/prioritization)
+- 2.3 Deeper protected-resource authorization consistency review across touched/auth-adjacent flows and any gaps found.
+- 2.4 Additional separation/regression checks for platform operators and privileged admin data paths.
+- 2.5 Regression coverage for identity verification, session management, MFA, account recovery, tenant switching.
+- 2.6 Targeted integration/API tests for denied escalation paths where feasible.
+- **Approval required before starting Phase 3.**

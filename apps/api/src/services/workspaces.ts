@@ -89,6 +89,13 @@ export interface CreatedWorkspace {
  * transaction scoped to the new workspace as its owner. The parent organization is optional; a link is
  * created separately so its approval and history visibility stay explicit.
  */
+const NON_WORKSPACE_ROLES: ReadonlySet<string> = new Set(["patient", "proxy", "credential_reviewer"]);
+
+function assertWorkspaceGrantableRoles(roles: readonly string[]): void {
+  const refused = roles.filter((role) => NON_WORKSPACE_ROLES.has(role));
+  if (refused.length) throw new Error(`Roles ${refused.join(", ")} cannot be granted to a workspace membership`);
+}
+
 export async function createWorkspace(tx: Tx, config: AppConfig, input: {
   details: WorkspaceDetails;
   ownerUserId: string;
@@ -100,6 +107,7 @@ export async function createWorkspace(tx: Tx, config: AppConfig, input: {
 }): Promise<CreatedWorkspace> {
   const { details } = input;
   const ownerRoles = [...new Set<Role>([...OWNER_ROLES, ...(input.ownerRoles ?? [])])];
+  assertWorkspaceGrantableRoles(ownerRoles);
   const category = serviceCategory(details.serviceCategory);
   const level = levelFrom(details);
   const modules = details.modules ?? recommendModules(details.serviceCategory, level).modules;
