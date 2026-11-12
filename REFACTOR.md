@@ -947,3 +947,15 @@ Master implementation tracker for incremental refactoring of the existing Medver
 ### 2026-11-12 — Phase 2.2 follow-up
 - `apps/api/src/routes/admin.ts` (`PATCH /memberships/:id`): now applies `assertInvitable(body.roles)` (positive facility-role allowlist) on membership role updates, matching invitation creation and blocking non-facility/privileged/identity roles at the API boundary while preserving existing manager/scope/owner/department/session-revocation controls.
 - Verification: `npm run typecheck`, `npx eslint apps/api/src/routes/admin.ts`, `npx vitest run tests/unit/invitations.test.ts tests/unit/authz.test.ts` passed.
+
+### 2026-11-12 — Phase 2.3 (authorization consistency, targeted)
+- Reviewed protected auth-adjacent/admin flows: facility invitation create/revoke, membership update/remove, tenant context switch, and in-tenant role-grant request endpoints.
+- `apps/api/src/routes/admin.ts`: `PATCH /memberships/:id` now applies `assertInvitable(body.roles)` (defense-in-depth allowlist) in addition to existing manager/scope/owner/department rules and role-change session revocation.
+- `apps/api/src/routes/content.ts` (`POST /admin/role-grants`): rejects non-facility/privileged/identity roles via `assertInvitable([body.role])` before creating requested grants; existing permission (`role_grant.request`), active-member check, department validation, SoD/approval controls, and audit trail remain.
+- Verification: `npm run typecheck`, targeted `eslint`, `npx vitest run tests/unit/invitations.test.ts tests/unit/authz.test.ts tests/unit/authz-phase1a.test.ts` passed (35 tests).
+
+### Remaining Phase 2 work (pending approval/prioritization)
+- 2.4 Additional separation/regression checks for platform operators and privileged admin data paths.
+- 2.5 Regression coverage for identity verification, session management, MFA, account recovery, tenant switching.
+- 2.6 Targeted denied-escalation integration tests where feasible.
+- **Approval required before starting Phase 3.**

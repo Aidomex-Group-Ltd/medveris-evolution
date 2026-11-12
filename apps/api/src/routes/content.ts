@@ -17,6 +17,7 @@ import {
   uuidSchema,
 } from "@medveris/contracts";
 import { permissionsForRoles, type Permission } from "@medveris/authz";
+import { assertInvitable } from "../services/invitations.js";
 import { isPlatformOperator, requireAuth, requireStaff, withActor, withPlatformActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { ensureMatch, parseJson } from "../lib/http.js";
@@ -887,6 +888,8 @@ contentRoutes.post("/admin/role-grants", async (c) => {
   requirePermission(c, "role_grant.request");
   const auth = c.get("auth")!;
   const body = await parseJson(c, roleGrantRequestSchema);
+  const refused = assertInvitable([body.role]);
+  if (refused) throw new ValidationError(refused);
   const id = crypto.randomUUID();
   await withActor(c, async (tx) => {
     const member = await tx`
