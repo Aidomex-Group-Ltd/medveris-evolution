@@ -48,6 +48,7 @@ export const RATE_LIMIT_POLICIES = {
   "upload": { limit: 20, windowSeconds: 3600, distributed: true, failureMode: "local-strict" },
   "device.ingest": { limit: 120, windowSeconds: 60, distributed: true, failureMode: "local" },
   "integration.token": { limit: 20, windowSeconds: 60, distributed: true, failureMode: "local-strict", progressive: { cooldownSeconds: 60, maxCooldownSeconds: 900 } },
+  "terminology.probe": { limit: 5, windowSeconds: 300, distributed: true, failureMode: "local-strict" },
   "integration.request": { limit: 120, windowSeconds: 60, distributed: true, failureMode: "local" },
   "realtime.connect": { limit: 10, windowSeconds: 60, distributed: true, failureMode: "local-strict" },
   "pacs.search": { limit: 60, windowSeconds: 60, distributed: true, failureMode: "local-strict" },

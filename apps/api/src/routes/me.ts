@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { switchTenantSchema, uuidSchema } from "@medveris/contracts";
 import { withContext } from "@medveris/db";
-import { withActor, requireAuth, requirePatient } from "../auth/middleware.js";
-import { auditMeta, parseJson } from "../lib/http.js";
+import { withActor, requireAuth, requirePatient, setSessionCookie } from "../auth/middleware.js";
+import { createSession } from "../auth/session.js";
+import { auditMeta, parseJson, requestMeta } from "../lib/http.js";
 import { writeAudit } from "../lib/audit.js";
 import { NotFoundError } from "../lib/errors.js";
 import { legalAcceptanceStatus } from "../lib/legal.js";
@@ -62,13 +63,22 @@ meRoutes.get("/me/facilities", async (c) => {
 
 meRoutes.post("/me/context", async (c) => {
   const auth = requireAuth(c);
+  const deps = c.get("deps");
   const body = await parseJson(c, switchTenantSchema);
   const membership = auth.memberships.find((m) => m.tenantId === body.tenantId);
   if (!membership) throw new NotFoundError("Facility membership not found");
-  await c.get("deps").sql`update sessions set active_tenant_id = ${body.tenantId}, last_seen_at = now() where id = ${auth.session.id}`;
-  await c.get("deps").sql`update users set last_active_tenant_id = ${body.tenantId} where id = ${auth.user.id}`;
+  // Privilege context changes on a tenant switch, so the session token is rotated: the old
+  // session is revoked, a new token + CSRF token are issued, and the client receives the new
+  // CSRF token to use for subsequent requests.
+  const rotated = await createSession(deps.sql, deps.config, auth.user.id, {
+    mfaVerified: auth.mfaVerified,
+    activeTenantId: body.tenantId,
+    ...requestMeta(c),
+  });
+  await deps.sql`update sessions set revoked_at = now(), revoked_reason = 'context-switch' where id = ${auth.session.id}`;
+  await deps.sql`update users set last_active_tenant_id = ${body.tenantId} where id = ${auth.user.id}`;
   await withActor(c, async (tx) => {
-    await writeAudit(tx, c.get("deps").config, {
+    await writeAudit(tx, deps.config, {
       tenantId: body.tenantId,
       actorKind: "staff",
       actorUserId: auth.user.id,
@@ -78,7 +88,8 @@ meRoutes.post("/me/context", async (c) => {
       metadata: { fromTenantId: auth.activeTenant?.id ?? null, toTenantId: body.tenantId },
     });
   });
-  return c.json({ ok: true, activeTenant: { id: membership.tenantId, name: membership.tenantName, roles: membership.roles, workspace: membership.workspace ?? null } });
+  setSessionCookie(c, rotated);
+  return c.json({ ok: true, csrfToken: rotated.csrfToken, activeTenant: { id: membership.tenantId, name: membership.tenantName, roles: membership.roles, workspace: membership.workspace ?? null } });
 });
 
 meRoutes.get("/me/sessions", async (c) => {

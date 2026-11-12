@@ -151,6 +151,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
     c.header("referrer-policy", "no-referrer");
     c.header("strict-transport-security", "max-age=31536000");
     c.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
+    c.header("content-security-policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
   });
 
   app.use("*", httpCachePolicy());
@@ -177,7 +178,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.use(
     "*",
     bodyLimit({
-      maxSize: Math.max(deps.config.maxUploadBytes, 2 * 1024 * 1024) + 64 * 1024,
+      maxSize: Math.ceil(Math.max(deps.config.maxUploadBytes, 2 * 1024 * 1024) * (4 / 3)) + 64 * 1024,
       onError: (c) => {
         if (isFhirPath(c.req.path)) {
           return fhirResponse(c, operationOutcome("error", "too-costly", "Request body exceeds the configured size limit"), 413);
@@ -310,7 +311,12 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
       }
       return c.json(nativeErrorBody(c, error), error.status as 400);
     }
-    console.error(JSON.stringify({ event: "unhandled_error", correlationId: correlation, path: routeShape(c.req.path), message: (error as Error).message, stack: deps.config.appEnv === "production" ? undefined : (error as Error).stack }));
+    console.error(JSON.stringify({
+      event: "unhandled_error",
+      correlationId: correlation,
+      path: routeShape(c.req.path),
+      ...(deps.config.appEnv === "production" ? {} : { message: (error as Error).message, stack: (error as Error).stack }),
+    }));
     if (isFhirPath(c.req.path)) {
       return fhirResponse(c, operationOutcome("error", "exception", "An unexpected error occurred"), 500);
     }

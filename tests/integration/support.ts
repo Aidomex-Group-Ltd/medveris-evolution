@@ -41,9 +41,11 @@ export async function chooseFacility(app: { fetch(request: Request): Response | 
     const body = (await switched.clone().json().catch(() => ({}))) as any;
     throw new Error(`chooseFacility(${tenantId}, ${facilitySlug}) failed: ${switched.status} ${JSON.stringify(body)}`);
   }
-  // Defer body reads until after the auth route has settled to avoid a race with the new auth rewrite.
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await switched.clone().text();
+  // Tenant switch rotates the session token and CSRF token; keep the harness session current.
+  const body = (await switched.clone().json().catch(() => ({}))) as any;
+  const rotatedCookie = (switched.headers.getSetCookie?.() ?? []).find((value) => value.startsWith("mv_session="));
+  if (rotatedCookie) session.cookie = rotatedCookie.split(";")[0]!;
+  if (typeof body?.csrfToken === "string") session.csrf = body.csrfToken;
 }
 
 export interface HarnessOptions {
@@ -128,13 +130,26 @@ export function createHarness(label: string, options: HarnessOptions = {}) {
     return session;
   }
 
+  /** Tenant switch rotates the session token and CSRF token; absorb the rotation into the harness session. */
+  function absorbSessionRotation(session: Session, response: Response, body: unknown): void {
+    const rotatedCookie = (response.headers.getSetCookie?.() ?? []).find((value) => value.startsWith("mv_session="));
+    if (rotatedCookie) session.cookie = rotatedCookie.split(";")[0]!;
+    const csrf = (body as { csrfToken?: unknown } | null)?.csrfToken;
+    if (typeof csrf === "string") session.csrf = csrf;
+  }
+
   async function call(session: Session, path: string, init: RequestInit & { idempotencyKey?: string } = {}): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set("cookie", session.cookie);
     if (["POST", "PUT", "PATCH", "DELETE"].includes(init.method ?? "GET")) headers.set("x-medveris-csrf", session.csrf);
     if (init.body) headers.set("content-type", "application/json");
     if (init.idempotencyKey) headers.set("idempotency-key", init.idempotencyKey);
-    return app.fetch(new Request(`http://localhost${path}`, { ...init, headers }));
+    const response = await app.fetch(new Request(`http://localhost${path}`, { ...init, headers }));
+    if (session && path === "/api/v1/me/context") {
+      const body = (await response.clone().json().catch(() => null)) as unknown;
+      absorbSessionRotation(session, response, body);
+    }
+    return response;
   }
 
   async function expectOk(response: Response, status = 200): Promise<any> {

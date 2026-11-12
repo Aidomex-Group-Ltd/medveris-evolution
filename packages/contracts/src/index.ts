@@ -452,7 +452,7 @@ export const facilityCredentialDecisionSchema = z.object({
 export const uploadSchema = z.object({
   filename: z.string().trim().min(1).max(255),
   declaredType: z.string().trim().min(3).max(120),
-  dataBase64: z.string().min(1),
+  dataBase64: z.string().min(1).max(7 * 1024 * 1024),
   patientId: uuidSchema.optional(),
 });
 

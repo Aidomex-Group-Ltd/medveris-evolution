@@ -48,12 +48,21 @@ export function authMiddleware(deps: AppBaseDeps): MiddlewareHandler<AppEnv> {
       // A state-changing request must echo the token issued with the session; omitting the header is a
       // CSRF attempt, not an exemption. There are no path exceptions.
       const supplied = c.req.header(requestDeps.config.csrfHeader) ?? "";
-      if (supplied !== auth.session.csrfToken) {
+      if (!(await csrfTokenMatches(supplied, auth.session.csrfToken))) {
         throw new ForbiddenError("CSRF validation failed");
       }
     }
     await next();
   };
+}
+
+async function csrfTokenMatches(supplied: string, expected: string): Promise<boolean> {
+  const digest = async (value: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
+  const a = await digest(supplied);
+  const b = await digest(expected);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
+  return diff === 0;
 }
 
 function isCsrfProtected(path: string): boolean {

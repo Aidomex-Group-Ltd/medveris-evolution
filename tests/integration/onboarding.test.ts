@@ -76,7 +76,14 @@ async function call(session: Session, path: string, init: RequestInit = {}): Pro
   headers.set("cookie", session.cookie);
   if (["POST", "PUT", "PATCH", "DELETE"].includes(init.method ?? "GET")) headers.set("x-medveris-csrf", session.csrf);
   if (init.body) headers.set("content-type", "application/json");
-  return app.fetch(new Request(`http://localhost${path}`, { ...init, headers }));
+  const response = await app.fetch(new Request(`http://localhost${path}`, { ...init, headers }));
+  if (path === "/api/v1/me/context") {
+    const rotated = (response.headers.getSetCookie?.() ?? []).find((value) => value.startsWith("mv_session="));
+    if (rotated) session.cookie = rotated.split(";")[0]!;
+    const body = (await response.clone().json().catch(() => null)) as { csrfToken?: string } | null;
+    if (body?.csrfToken) session.csrf = body.csrfToken;
+  }
+  return response;
 }
 
 async function expectOk(response: Response, status = 200): Promise<any> {

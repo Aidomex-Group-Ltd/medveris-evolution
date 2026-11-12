@@ -41,6 +41,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Runtime dependency audit (advisory)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
       - run: npm run db:setup
       - run: npm run db:migrate
       - run: npm run db:seed

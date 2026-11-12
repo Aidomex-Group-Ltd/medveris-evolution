@@ -34,8 +34,8 @@ export const TENANT_ACTIONS: readonly MatrixEntry[] = [
     tenantBound: true,
     rls: true,
     requirements: ["tenant", "membership", "mfa"],
-    status: "legacy",
-    notes: "Route currently requires staff; workspace-profile permission is the intended canonical boundary and needs confirmation.",
+    status: "canonical",
+    notes: "Runtime enforces canManageTenant (facility owner/admin, the workspace.profile.manage grant) on POST and DELETE.",
   },
   {
     key: "workspace.resource.read",

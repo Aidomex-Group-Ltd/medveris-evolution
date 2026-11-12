@@ -81,7 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const switchTenant = useCallback(async (tenantId: string) => {
-    await api("/me/context", { method: "POST", body: { tenantId } });
+    const result = await api<{ csrfToken?: string }>("/me/context", { method: "POST", body: { tenantId } });
+    if (result.csrfToken) setCsrfToken(result.csrfToken);
     await refresh();
   }, [refresh]);
 

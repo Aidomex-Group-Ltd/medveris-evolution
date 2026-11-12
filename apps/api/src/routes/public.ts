@@ -4,6 +4,7 @@ import { loadVerifications } from "../integrations/verification.js";
 import { loadAiStatus } from "../integrations/ollama.js";
 import { UNAVAILABLE_LABEL } from "../terminology/unavailable.js";
 import { createTerminology } from "../terminology/index.js";
+import { enforceRateLimit, requestAddress } from "../lib/rate-limit.js";
 import type { AppEnv } from "../types.js";
 
 export const publicRoutes = new Hono<AppEnv>();
@@ -62,6 +63,7 @@ publicRoutes.get("/public/config", async (c) => {
  * It is fetch-only: no patient data, no clinical coding, no value set expansion.
  */
 publicRoutes.post("/public/terminology/status", async (c) => {
+  await enforceRateLimit(c, "terminology.probe", requestAddress(c));
   const config = c.get("deps").config;
   if (config.terminologyMode !== "production" || !config.terminologyProviderUrl) {
     return c.json({ ok: false, error: "A production terminology provider is not configured for this environment" }, 409);

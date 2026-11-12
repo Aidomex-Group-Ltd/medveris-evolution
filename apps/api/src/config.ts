@@ -273,11 +273,13 @@ export interface UploadScanConfig {
 }
 
 function uploadScanConfig(env: EnvLike, appEnv: string): UploadScanConfig {
-  // There is no feature flag for scanning, and before this mode existed only the local signature
-  // check ran, so an unset UPLOAD_SCAN_MODE stays `off` rather than silently demanding clamd.
+  // There is no scanner implementation behind UPLOAD_SCAN_MODE: the only upload checks that run
+  // are the local signature/metadata checks in the upload handlers. Honoring a configured scan
+  // mode that does nothing would masquerade as protection, so any non-`off` value refuses to boot
+  // until a real scanner (e.g. clamd) is wired into the upload path.
   const mode = modeVar(env, "UPLOAD_SCAN_MODE", "off");
   const clamdAddress = (env.CLAMD_ADDRESS ?? "").trim() || (LOCAL_ONLY_ENVIRONMENTS.has(appEnv) ? "127.0.0.1:3310" : "");
-  if (mode === "live" && !clamdAddress) throw new Error("UPLOAD_SCAN_MODE=live requires CLAMD_ADDRESS (host:port of clamd)");
+  if (mode !== "off") throw new Error("UPLOAD_SCAN_MODE is not supported yet: no malware scanner is wired into the upload path. Leave UPLOAD_SCAN_MODE=off; uploads receive signature and metadata checks only.");
   if (clamdAddress && !/^[a-zA-Z0-9._-]+(:\d{1,5})?$/.test(clamdAddress)) throw new Error("CLAMD_ADDRESS must be host or host:port");
   return { mode, clamdAddress, timeoutMs: Math.max(1_000, Math.min(integer(env.UPLOAD_SCAN_TIMEOUT_MS, 10_000), 60_000)) };
 }
