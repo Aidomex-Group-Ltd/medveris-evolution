@@ -302,3 +302,71 @@ describe("approved inventory gap mappings (NEW, 2026-11-12)", () => {
     expect(decideAction(receptionist, "inventory.item.read", { kind: "dashboard", tenantId: "t1" }).allowed).toBe(false);
   });
 });
+
+describe("approved small-domain gap mappings (2026-11-12)", () => {
+  const expectations: readonly [string, readonly string[]][] = [
+    ["clinical.case.read", ["GET /emergency/cases", "GET /emergency/cases/:id"]],
+    ["clinical.case.observation.manage", ["POST /emergency/cases/:id/observations"]],
+    ["clinical.session.read", ["GET /telehealth/sessions", "GET /telehealth/sessions/:id"]],
+    ["clinical.session.participant.read", ["GET /telehealth/sessions/:id/participants"]],
+    ["clinical.session.consent.manage", ["POST /telehealth/sessions/:id/consent"]],
+    ["clinical.draft.update", ["PUT /entries/:id/draft"]],
+    ["document.resource.read", ["GET /document-templates", "GET /document-templates/:id", "GET /documents", "GET /documents/:id"]],
+    ["ai.job.read", ["GET /ai/jobs", "GET /ai/jobs/:id"]],
+    ["devices.resource.read", ["GET /device-alerts", "GET /devices"]],
+    ["organization.resource.read", ["GET /logo"]],
+    ["billing.subscription_checkout.quote.read", ["GET /billing/subscription-checkout/quote"]],
+    ["billing.subscription_renewal.read", ["GET /billing/subscription-renewal"]],
+    ["billing.subscription_checkout.cancel.manage", ["POST /billing/subscription-checkout/:id/cancel"]],
+    ["inventory.purchase_order.read", ["GET /procurement/purchase-orders", "GET /procurement/purchase-orders/:id"]],
+    ["inventory.supplier.read", ["GET /procurement/suppliers"]],
+    ["inventory.purchase_order.receive", ["POST /procurement/purchase-orders/:id/receive"]],
+    ["inventory.supplier.status.manage", ["POST /procurement/suppliers/:id/status"]],
+    ["platform.observability.api_metric.read", ["GET /platform/observability/api-metrics"]],
+    ["platform.observability.integration.read", ["GET /platform/observability/integrations"]],
+    ["platform.observability.log.read", ["GET /platform/observability/logs"]],
+    ["platform.observability.trace.read", ["GET /platform/observability/traces"]],
+    ["platform.observability.worker.read", ["GET /platform/observability/workers"]],
+  ];
+
+  it("binds each approved small-domain route", () => {
+    for (const [key, patterns] of expectations) {
+      const entry = getMatrixEntry(key);
+      expect(entry, key).toBeDefined();
+      expect(entry?.permission, key).toBe(key);
+      for (const pattern of patterns) expect(entry?.routePatterns, key).toContain(pattern);
+    }
+  });
+
+  it("grants the approved candidate roles", () => {
+    const clinician = permissionsForRoles(["clinician"]);
+    expect(clinician.has("clinical.case.read")).toBe(true);
+    expect(clinician.has("document.resource.read")).toBe(true);
+    expect(clinician.has("ai.job.read")).toBe(true);
+
+    const biomedical = permissionsForRoles(["biomedical"]);
+    expect(biomedical.has("devices.resource.read")).toBe(true);
+    expect(biomedical.has("inventory.purchase_order.receive")).toBe(true);
+
+    const admin = permissionsForRoles(["facility_admin"]);
+    expect(admin.has("billing.subscription_checkout.cancel.manage")).toBe(true);
+    expect(admin.has("organization.resource.read")).toBe(true);
+
+    const itAdmin = permissionsForRoles(["it_admin"]);
+    expect(itAdmin.has("platform.observability.trace.read")).toBe(true);
+
+    const receptionist = permissionsForRoles(["receptionist"]);
+    expect(receptionist.has("clinical.case.read")).toBe(false);
+    expect(receptionist.has("platform.observability.trace.read")).toBe(false);
+  });
+
+  it("requires a platform operator grant for observability reads", () => {
+    const actorWithoutGrant: PolicyActor = { ...actor, roles: ["it_admin"] };
+    const denied = decideAction(actorWithoutGrant, "platform.observability.log.read", { kind: "dashboard" });
+    expect(denied.allowed).toBe(false);
+    expect(denied.reason).toBe("platform-role-required");
+
+    const operator: PolicyActor = { ...actorWithoutGrant, platformRoles: ["platform_operator"] };
+    expect(decideAction(operator, "platform.observability.log.read", { kind: "dashboard" }).allowed).toBe(true);
+  });
+});

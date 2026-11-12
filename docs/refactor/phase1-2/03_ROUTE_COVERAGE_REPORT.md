@@ -7,90 +7,90 @@
 
 | Category | Routes | Share of inventory |
 |---|---|---|
-| Matrix-covered | 359 | 50.5% |
+| Matrix-covered | 389 | 54.7% |
 | Exempt (non-permission) | 36 | 5.1% |
 | Overlap (both) | 1 | 0.1% |
-| **Total covered** | **394** | **55.4%** |
-| **Uncovered (gaps)** | **317** | **44.6%** |
+| **Total covered** | **424** | **59.6%** |
+| **Uncovered (gaps)** | **287** | **40.4%** |
 | Total inventory | 711 | 100.0% |
 
-Total covered = matrix ∪ exemptions = 394 unique routes; uncovered + covered = inventory.
+Total covered = matrix ∪ exemptions = 424 unique routes; uncovered + covered = inventory.
 
-> **Post-approval adoption (2026-11-12):** the 24 reuse-approved routes were bound, then the
-> inventory NEW slice bound the remaining 15 inventory routes. Stage 3 baseline was 320
-> matrix-covered / 355 covered / 356 gaps. The per-router table below is updated for `inventory.ts`
-> (now 51/51), `radiology.ts`, `organizations.ts` and `onboarding.ts`; all other rows are unchanged.
+> **Post-approval adoption (2026-11-12):** the 24 reuse routes were bound, then the inventory NEW
+> slice (15 routes) and the small-domain batch (30 routes: emergency, telehealth, documents, AI,
+> devices, facility logo, subscription checkout, procurement, platform observability, clinical
+> draft) were adopted. Stage 3 baseline was 320 matrix-covered / 355 covered / 356 gaps.
 
 ## 2. Coverage by Router
 
 | Router | Total | Matrix | Exempt | Overlap | Uncovered | Covered % |
 |---|---|---|---|---|---|---|
-| `inventory.ts` | 51 | 51 | 0 | 0 | 0 | 100.0% |
-| `maternity.ts` | 20 | 3 | 0 | 0 | 17 | 15.0% |
 | `operations.ts` | 22 | 5 | 0 | 0 | 17 | 22.7% |
+| `maternity.ts` | 20 | 3 | 0 | 0 | 17 | 15.0% |
 | `fhir/router.ts` | 17 | 0 | 0 | 0 | 17 | 0.0% |
 | `content.ts` | 39 | 23 | 0 | 0 | 16 | 59.0% |
 | `inpatient.ts` | 27 | 12 | 0 | 0 | 15 | 44.4% |
 | `organization.ts` | 25 | 10 | 0 | 0 | 15 | 40.0% |
-| `radiology.ts` | 27 | 18 | 0 | 0 | 9 | 66.7% |
 | `terminology/router.ts` | 15 | 0 | 0 | 0 | 15 | 0.0% |
 | `diagnostics.ts` | 23 | 9 | 0 | 0 | 14 | 39.1% |
 | `directory.ts` | 23 | 12 | 0 | 0 | 11 | 52.2% |
-| `workflow.ts` | 11 | 0 | 0 | 0 | 11 | 0.0% |
 | `workforce-reference.ts` | 17 | 6 | 0 | 0 | 11 | 35.3% |
+| `workflow.ts` | 11 | 0 | 0 | 0 | 11 | 0.0% |
 | `admin.ts` | 20 | 10 | 0 | 0 | 10 | 50.0% |
 | `billing.ts` | 19 | 9 | 0 | 0 | 10 | 47.4% |
-| `ehmis.ts` | 19 | 10 | 0 | 0 | 9 | 52.6% |
+| `radiology.ts` | 27 | 18 | 0 | 0 | 9 | 66.7% |
 | `finance.ts` | 26 | 17 | 0 | 0 | 9 | 65.4% |
+| `ehmis.ts` | 19 | 10 | 0 | 0 | 9 | 52.6% |
 | `theatre.ts` | 13 | 4 | 0 | 0 | 9 | 30.8% |
 | `auth.ts` | 21 | 0 | 13 | 0 | 8 | 61.9% |
-| `pharmacy-pos.ts` | 12 | 4 | 0 | 0 | 8 | 33.3% |
 | `reception.ts` | 19 | 11 | 0 | 0 | 8 | 57.9% |
-| `credentials.ts` | 10 | 3 | 0 | 0 | 7 | 30.0% |
+| `pharmacy-pos.ts` | 12 | 4 | 0 | 0 | 8 | 33.3% |
 | `pharmacy.ts` | 11 | 4 | 0 | 0 | 7 | 36.4% |
+| `credentials.ts` | 10 | 3 | 0 | 0 | 7 | 30.0% |
+| `workspace.ts` | 15 | 9 | 0 | 0 | 6 | 60.0% |
 | `integrations.ts` | 14 | 8 | 0 | 0 | 6 | 57.1% |
-| `organizations.ts` | 13 | 9 | 0 | 0 | 4 | 69.2% |
 | `programmes.ts` | 13 | 7 | 0 | 0 | 6 | 53.8% |
 | `promotions.ts` | 12 | 6 | 0 | 0 | 6 | 50.0% |
-| `workspace.ts` | 15 | 9 | 0 | 0 | 6 | 60.0% |
 | `onboarding.ts` | 19 | 15 | 0 | 0 | 4 | 78.9% |
-| `platform-observability.ts` | 8 | 3 | 0 | 0 | 5 | 37.5% |
-| `procurement.ts` | 8 | 3 | 0 | 0 | 5 | 37.5% |
-| `documents.ts` | 13 | 9 | 0 | 0 | 4 | 69.2% |
-| `telehealth.ts` | 7 | 3 | 0 | 0 | 4 | 42.9% |
-| `emergency.ts` | 6 | 3 | 0 | 0 | 3 | 50.0% |
-| `subscription-checkout.ts` | 6 | 3 | 0 | 0 | 3 | 50.0% |
-| `ai.ts` | 3 | 1 | 0 | 0 | 2 | 33.3% |
-| `clinical.ts` | 18 | 16 | 0 | 0 | 2 | 88.9% |
-| `devices.ts` | 7 | 5 | 0 | 0 | 2 | 71.4% |
+| `organizations.ts` | 13 | 9 | 0 | 0 | 4 | 69.2% |
 | `payment-callbacks.ts` | 5 | 0 | 3 | 0 | 2 | 60.0% |
-| `facility-logo.ts` | 3 | 2 | 0 | 0 | 1 | 66.7% |
-| `care.ts` | 7 | 7 | 0 | 0 | 0 | 100.0% |
-| `consent.ts` | 8 | 8 | 0 | 0 | 0 | 100.0% |
-| `data-exchange.ts` | 6 | 6 | 0 | 0 | 0 | 100.0% |
-| `legal.ts` | 4 | 0 | 4 | 0 | 0 | 100.0% |
+| `clinical.ts` | 18 | 17 | 0 | 0 | 1 | 94.4% |
+| `inventory.ts` | 51 | 51 | 0 | 0 | 0 | 100.0% |
+| `documents.ts` | 13 | 13 | 0 | 0 | 0 | 100.0% |
 | `me.ts` | 10 | 6 | 5 | 1 | 0 | 100.0% |
-| `notifications.ts` | 2 | 0 | 2 | 0 | 0 | 100.0% |
-| `ops.ts` | 2 | 1 | 1 | 0 | 0 | 100.0% |
+| `consent.ts` | 8 | 8 | 0 | 0 | 0 | 100.0% |
+| `platform-observability.ts` | 8 | 8 | 0 | 0 | 0 | 100.0% |
+| `procurement.ts` | 8 | 8 | 0 | 0 | 0 | 100.0% |
+| `care.ts` | 7 | 7 | 0 | 0 | 0 | 100.0% |
+| `devices.ts` | 7 | 7 | 0 | 0 | 0 | 100.0% |
+| `telehealth.ts` | 7 | 7 | 0 | 0 | 0 | 100.0% |
+| `data-exchange.ts` | 6 | 6 | 0 | 0 | 0 | 100.0% |
+| `emergency.ts` | 6 | 6 | 0 | 0 | 0 | 100.0% |
 | `patient-merge.ts` | 6 | 6 | 0 | 0 | 0 | 100.0% |
 | `public.ts` | 6 | 0 | 6 | 0 | 0 | 100.0% |
+| `subscription-checkout.ts` | 6 | 6 | 0 | 0 | 0 | 100.0% |
+| `legal.ts` | 4 | 0 | 4 | 0 | 0 | 100.0% |
+| `ai.ts` | 3 | 3 | 0 | 0 | 0 | 100.0% |
+| `facility-logo.ts` | 3 | 3 | 0 | 0 | 0 | 100.0% |
+| `notifications.ts` | 2 | 0 | 2 | 0 | 0 | 100.0% |
+| `ops.ts` | 2 | 1 | 1 | 0 | 0 | 100.0% |
 | `realtime.ts` | 2 | 0 | 2 | 0 | 0 | 100.0% |
 | `reports.ts` | 2 | 2 | 0 | 0 | 0 | 100.0% |
 
 ## 3. Largest Gaps
 
-Routers with the most uncovered routes should be prioritised for Stage 5 adoption:
+Routers with the most uncovered routes should be prioritised for adoption:
 
-- `inventory.ts`: 30 uncovered of 51
-- `maternity.ts`: 17 uncovered of 20
 - `operations.ts`: 17 uncovered of 22
+- `maternity.ts`: 17 uncovered of 20
 - `fhir/router.ts`: 17 uncovered of 17
 - `content.ts`: 16 uncovered of 39
 - `inpatient.ts`: 15 uncovered of 27
 - `organization.ts`: 15 uncovered of 25
-- `radiology.ts`: 15 uncovered of 27
 - `terminology/router.ts`: 15 uncovered of 15
 - `diagnostics.ts`: 14 uncovered of 23
+- `directory.ts`: 11 uncovered of 23
+- `workforce-reference.ts`: 11 uncovered of 17
 
 ## 4. Definitions
 

@@ -648,3 +648,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: additive catalog/role/matrix changes only; no route behavior change. Candidate-role grants are broad by approval and remain subject to contextual policy and RLS.
 - External dependencies/blockers: 307 NEW routes in other domains and 10 exemption candidates remain.
 - Status: partial (inventory domain fully adopted at registry level; runtime rewiring and other domains pending).
+
+### Execution record: Phase 1.2 small-domain gap slice
+- Date: 2026-11-12
+- Scope/files reviewed: `docs/refactor/phase1-2/05_GAP_PERMISSION_MAPPING_PROPOSAL.md`, `packages/authz/src/permissions.ts`, `packages/authz/src/matrix/actions/{clinical,operations,organization,billing,inventory,platform}.ts`, `tests/unit/authz-matrix.test.ts`.
+- Changes made: adopted 30 approved routes across nine small domains. Added 22 permissions to the catalog and granted them via capability groups to the approved candidate roles: clinical (emergency case/session/consent/draft), document read, AI job read, devices read, organization resource read, subscription checkout quote/renewal/cancel, procurement purchase-order/supplier read+receive+status, and five platform-observability reads (platform-operator role required). Bound all routes in the matrix; route handlers keep their existing inline checks, no runtime route rewiring.
+- DB migrations (if any): none.
+- Tests/checks run: `npx vitest run tests/unit/authz-matrix.test.ts tests/unit/authz.test.ts tests/unit/authz-phase1a.test.ts` -> 53/53 passed; `npm run typecheck` -> exit 0; `npm run lint` -> exit 0; route/matrix reconcile -> 165 actions, 394 patterns, all matched, 0 stale, 5 intentional multi-claims.
+- Behavioral verification: tests assert every adopted route is bound, candidate roles receive the grants, reception is denied, and observability reads require a platform-operator grant. Coverage: 389 matrix routes / 424 covered / 287 gaps; `inventory.ts` remains 51/51 covered, and emergency/telehealth/documents/AI/devices/facility-logo/subscription-checkout/platform-observability are 100% matrix-covered.
+- Risks/breaking changes/mitigations: additive catalog/role/matrix changes only; no route behavior change. Candidate-role grants are broad by approval and remain subject to contextual policy and RLS.
+- External dependencies/blockers: 277 NEW routes in other domains and 10 exemption candidates remain.
+- Status: partial (nine small domains adopted at registry level; larger domains, runtime rewiring and deployment pending).

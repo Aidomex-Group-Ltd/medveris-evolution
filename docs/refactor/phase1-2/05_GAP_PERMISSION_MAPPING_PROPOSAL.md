@@ -5,8 +5,9 @@
 
 **Adoption log:**
 - 2026-11-12 — reuse slice: 24 routes bound in the matrix (inventory, radiology, organizations, onboarding).
-- 2026-11-12 — inventory NEW slice: 15 routes bound; 13 new permissions added to the catalog and granted to the approved candidate roles. Inventory is 30/30 covered.
-- Remaining: 307 NEW routes across the other domains; 10 exemption candidates.
+- 2026-11-12 — inventory NEW slice: 15 routes bound; 13 new permissions added to the catalog and granted to the approved candidate roles. Inventory is 51/51 covered.
+- 2026-11-12 — small-domain batch: 30 routes bound (`emergency.ts`, `telehealth.ts`, `documents.ts`, `ai.ts`, `devices.ts`, `facility-logo.ts`, `subscription-checkout.ts`, `inventory.ts` procurement, `platform-observability.ts`, plus the `clinical.ts` draft route); 22 new permissions added and granted to the approved candidate roles.
+- Remaining: 277 NEW routes across the other domains; 10 exemption candidates.
 
 ## How to read this
 

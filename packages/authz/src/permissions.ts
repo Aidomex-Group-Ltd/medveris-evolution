@@ -145,6 +145,29 @@ export const PERMISSIONS = [
   "audit.read",
   "platform.operations.manage",
   "reports.run",
+
+  "clinical.case.read",
+  "clinical.case.observation.manage",
+  "clinical.session.read",
+  "clinical.session.participant.read",
+  "clinical.session.consent.manage",
+  "clinical.draft.update",
+  "document.resource.read",
+  "ai.job.read",
+  "devices.resource.read",
+  "organization.resource.read",
+  "billing.subscription_checkout.quote.read",
+  "billing.subscription_renewal.read",
+  "billing.subscription_checkout.cancel.manage",
+  "inventory.purchase_order.read",
+  "inventory.purchase_order.receive",
+  "inventory.supplier.read",
+  "inventory.supplier.status.manage",
+  "platform.observability.api_metric.read",
+  "platform.observability.integration.read",
+  "platform.observability.log.read",
+  "platform.observability.trace.read",
+  "platform.observability.worker.read",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -186,6 +209,45 @@ const inventoryGapOperate: Permission[] = [
   "inventory.requisition.submit",
   "inventory.reservation.manage",
   "inventory.reservation.release.manage",
+];
+
+const procurementGapRead: Permission[] = [
+  "inventory.purchase_order.read",
+  "inventory.supplier.read",
+];
+
+const procurementGapOperate: Permission[] = [
+  "inventory.purchase_order.receive",
+  "inventory.supplier.status.manage",
+];
+
+const clinicalGapCore: Permission[] = [
+  "clinical.case.read",
+  "clinical.case.observation.manage",
+  "clinical.session.read",
+  "clinical.session.participant.read",
+  "clinical.session.consent.manage",
+  "clinical.draft.update",
+];
+
+const documentReadCore: Permission[] = ["document.resource.read"];
+
+const aiReadCore: Permission[] = ["ai.job.read"];
+
+const devicesReadCore: Permission[] = ["devices.resource.read"];
+
+const billingCheckoutCore: Permission[] = [
+  "billing.subscription_checkout.quote.read",
+  "billing.subscription_renewal.read",
+  "billing.subscription_checkout.cancel.manage",
+];
+
+const platformObservabilityRead: Permission[] = [
+  "platform.observability.api_metric.read",
+  "platform.observability.integration.read",
+  "platform.observability.log.read",
+  "platform.observability.trace.read",
+  "platform.observability.worker.read",
 ];
 
 const clinicalCore: Permission[] = [
@@ -260,6 +322,13 @@ const adminCore: Permission[] = [
   "inventory.report.read",
   ...inventoryGapRead,
   ...inventoryGapOperate,
+  ...procurementGapRead,
+  ...procurementGapOperate,
+  ...documentReadCore,
+  ...aiReadCore,
+  ...devicesReadCore,
+  ...billingCheckoutCore,
+  "organization.resource.read",
   "directory.read",
   "directory.manage",
   "directory.claim",
@@ -324,11 +393,14 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "content.read",
     "dashboard.operations.read",
   ],
-  nurse: [...nursingCore, "radiology.images.view"],
-  midwife: [...nursingCore, "clinical.note.sign"],
-  clinician: [...clinicalCore, "clinical.note.sign", "clinical.note.amend", "clinical.note.error", "clinical.note.void", "clinical.note.archive", "emergency.access.activate", "diagnostic.result.validate", "radiology.images.view"],
+  nurse: [...nursingCore, ...clinicalGapCore, ...documentReadCore, "radiology.images.view"],
+  midwife: [...nursingCore, ...clinicalGapCore, ...documentReadCore, "clinical.note.sign"],
+  clinician: [...clinicalCore, ...clinicalGapCore, ...documentReadCore, ...aiReadCore, "clinical.note.sign", "clinical.note.amend", "clinical.note.error", "clinical.note.void", "clinical.note.archive", "emergency.access.activate", "diagnostic.result.validate", "radiology.images.view"],
   specialist_clinician: [
     ...clinicalCore,
+    ...clinicalGapCore,
+    ...documentReadCore,
+    ...aiReadCore,
     "clinical.note.sign",
     "clinical.note.amend",
     "clinical.note.error",
@@ -342,6 +414,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     ...inventoryRead,
     ...inventoryGapRead,
     ...inventoryGapOperate,
+    ...procurementGapRead,
+    ...procurementGapOperate,
     "inventory.catalogue.manage",
     "inventory.stock.receive",
     "inventory.stock.issue",
@@ -371,7 +445,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "radiology.template.manage",
     "radiology.images.view",
   ],
-  ward_manager: [...nursingCore, ...inventoryGapRead, ...inventoryGapOperate, "ward.bed.manage", "dashboard.operations.read"],
+  ward_manager: [...nursingCore, ...inventoryGapRead, ...inventoryGapOperate, ...procurementGapRead, ...procurementGapOperate, "ward.bed.manage", "dashboard.operations.read"],
   privacy_officer: ["audit.read", "privacy.access.review", "care_team.read", "content.read", "dashboard.administration.read"],
   department_lead: [
     ...clinicalCore,
@@ -397,6 +471,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "onboarding.affiliation.review",
     "onboarding.credential.review",
     "role_grant.request",
+    "organization.resource.read",
     "care_team.read",
     "content.read",
     "dashboard.administration.read",
@@ -448,9 +523,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   housekeeping: [...inventoryRead, "inventory.stock.issue", "inventory.stock.receive", "content.read", "dashboard.support.read"],
   porter: [...inventoryRead, "content.read", "dashboard.support.read"],
   mortuary: [...inventoryRead, "inventory.stock.issue", "content.read", "dashboard.support.read"],
-  cssd: [...inventoryRead, ...inventoryGapRead, ...inventoryGapOperate, "inventory.stock.receive", "inventory.stock.issue", "inventory.transfer.manage", "inventory.count.manage", "content.read", "dashboard.support.read"],
-  biomedical: [...inventoryRead, ...inventoryGapRead, ...inventoryGapOperate, "inventory.catalogue.manage", "inventory.stock.receive", "inventory.stock.adjust", "inventory.transfer.manage", "inventory.asset.manage", "content.read", "dashboard.support.read"],
-  it_admin: ["platform.operations.manage", "content.read", "dashboard.support.read"],
+  cssd: [...inventoryRead, ...inventoryGapRead, ...inventoryGapOperate, ...procurementGapRead, ...procurementGapOperate, "inventory.stock.receive", "inventory.stock.issue", "inventory.transfer.manage", "inventory.count.manage", "content.read", "dashboard.support.read"],
+  biomedical: [...inventoryRead, ...inventoryGapRead, ...inventoryGapOperate, ...procurementGapRead, ...procurementGapOperate, ...devicesReadCore, "inventory.catalogue.manage", "inventory.stock.receive", "inventory.stock.adjust", "inventory.transfer.manage", "inventory.asset.manage", "content.read", "dashboard.support.read"],
+  it_admin: ["platform.operations.manage", ...platformObservabilityRead, "content.read", "dashboard.support.read"],
   content_editor: [...contentEditorCore, "dashboard.operations.read"],
   content_reviewer: [...contentEditorCore, "content.publish", "content.archive", "dashboard.operations.read"],
   opportunity_moderator: [
