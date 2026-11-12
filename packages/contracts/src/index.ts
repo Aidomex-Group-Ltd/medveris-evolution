@@ -3235,3 +3235,37 @@ export const immunizationDueSummarySchema = z.object({
     overdueDays: z.number().int().nullable(),
   })),
 });
+
+export const supportTicketCategory = z.enum(["availability", "integrity", "confidentiality", "clinical-sync", "auth", "infrastructure", "other"]);
+export const supportTicketSeverity = z.enum(["sev1", "sev2", "sev3", "sev4"]);
+export const supportTicketStatus = z.enum(["open", "in_progress", "resolved", "closed"]);
+
+export const supportTicketCreateSchema = z.object({
+  title: z.string().trim().min(8).max(200),
+  summary: z.string().trim().min(20).max(4000),
+  category: supportTicketCategory,
+  severity: supportTicketSeverity,
+  source: z.enum(["manual", "alert", "anomaly", "dead-letter"]).default("manual"),
+  externalRef: z.string().trim().max(200).optional(),
+});
+
+export const supportTicketNoteSchema = z.object({
+  note: z.string().trim().min(2).max(4000),
+});
+
+export const supportTicketAssignSchema = z.object({
+  assigneeUserId: uuidSchema,
+});
+
+export const supportTicketSeveritySchema = z.object({
+  severity: supportTicketSeverity,
+  note: z.string().trim().min(2).max(2000).optional(),
+});
+
+export const supportTicketResolveSchema = z.object({
+  resolution: z.string().trim().min(5).max(4000),
+});
+
+export const supportTicketCloseSchema = z.object({
+  note: z.string().trim().min(2).max(2000).optional(),
+});

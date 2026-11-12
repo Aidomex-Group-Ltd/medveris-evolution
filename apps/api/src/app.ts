@@ -53,6 +53,7 @@ import { reportRoutes } from "./routes/reports.js";
 import { realtimeRoutes } from "./routes/realtime.js";
 import { opsRoutes } from "./routes/ops.js";
 import { platformObservabilityRoutes } from "./routes/platform-observability.js";
+import { supportCenterRoutes } from "./routes/support-center.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 import { organizationsRoutes } from "./routes/organizations.js";
 import { procurementRoutes } from "./routes/procurement.js";
@@ -244,6 +245,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", realtimeRoutes);
   app.route("/api/v1", opsRoutes);
   app.route("/api/v1", platformObservabilityRoutes);
+  app.route("/api/v1", supportCenterRoutes);
 
   app.notFound((c) => {
     if (isFhirPath(c.req.path)) {

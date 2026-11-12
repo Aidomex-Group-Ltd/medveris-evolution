@@ -783,12 +783,12 @@ Master implementation tracker for incremental refactoring of the existing Medver
 
 | Phase | Title | Status | Gate |
 |---|---|---|---|
-| 1 | Authentication interface simplification | **planning/report ready for review** (no code changes applied) | Approval required before implementation/proceeding |
-| 2 | Authentication logic and role-based access | pending | After Phase 1 approval & verification |
-| 3 | Clinical interoperability and patient identity preservation | pending | After Phase 2 approval & verification |
-| 4 | Security hardening and CIA enforcement | pending | After Phase 3 approval & verification |
-| 5 | Cloudflare Workers and observability infrastructure | pending | After Phase 4 approval & verification |
-| 6 | Dedicated Observability Support Center | pending | After Phase 5 approval & verification |
+| 1 | Authentication interface simplification | **completed 2026-11-12** (unified `/login` container, role toggle Patient/Provider, sign-in+sign-up, MFA preserved; landing keeps value props) | Implemented under 2026-11-12 directive; see Phase 1 execution record |
+| 2 | Authentication logic and role-based access | **completed 2026-11-12** (invitable/membership allowlists, escalation tests, Phase 2.1–2.6) | Implemented under 2026-11-12 directive; see Phase 2 records |
+| 3 | Clinical interoperability and patient identity preservation | **completed 2026-11-12, with documented blockers** (break-glass revoke route + tests; standards posture published; MEDITECH/ICD-11/real-time sync/licensing documented as not implemented) | See Phase 3 record + `docs/INTEROPERABILITY_STANDARDS_POSTURE.md` |
+| 4 | Security hardening and CIA enforcement | **completed 2026-11-12, residual risks documented** (F1–F13 dispositioned; 888/888 unit+integration green; session rotation, upload/logo pipeline rewrite, CSRF constant-time) | See Phase 4 record + `docs/refactor/phase4/PHASE4_SECURITY_REPORT.md` |
+| 5 | Cloudflare Workers and observability infrastructure | **completed 2026-11-12, with documented constraints** (security-event aggregate feed, jobs anomaly flag, operator CLI list auditing; CF observability dataset unconfigured — truthful unavailable envelopes) | See Phase 5 record + `docs/refactor/phase5/PHASE5_OBSERVABILITY_AND_ELEVATION.md` |
+| 6 | Dedicated Observability Support Center | **completed 2026-11-12, with documented constraints** (hidden `/support-center` route, no nav exposure; Ticketing/Alerting/Reporting/Telemetry modules; full audit; 9/9 integration + 3/3 unit tests) | See Phase 6 record + `docs/refactor/phase6/PHASE6_SUPPORT_CENTER.md` |
 
 ### Phase 1 — Authentication interface simplification (requirements)
 - Redesign existing authentication portal into a single, streamlined authentication container.
@@ -1120,3 +1120,21 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - **Risks/breaking changes/mitigations:** purely additive; anomaly flag is log/metric-only (no enforcement); `platform_operator.list` produces new audit rows.
 - **External dependencies/blockers:** `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` for the live Workers Observability dataset (endpoints return truthful `unavailable` envelopes until set); paging destination for anomaly alerts (log/metric now; email available via `OPERATOR_ALERT_EMAIL`); audit-chain independent verifier; static thresholds need policy sign-off.
 - **Status:** Phase 5 complete in-repo. **Note:** a concurrent opencode session in this same working tree is mid-edit on web/app files (as in Phases 3–4); its files were not committed here. `npm run typecheck` currently fails on that session's `AuthPage.tsx` only; all Phase 3–5 deliverables were verified against the API/packages/jobs/tests surface.
+
+### 2026-11-12 — Phase 6 (Dedicated Observability Support Center) — complete with documented constraints
+
+- **Scope/files reviewed:** `App.tsx`/`nav.ts`/`navigation.ts` (route + nav exposure of the platform area), `ProtectedRoute.tsx` (platform gate), `routes/platform-observability.ts` (existing telemetry), `withPlatformActor` (platform GUC), `migrations/127/130/131` conventions, `docs/16` ops runbook, `scripts/platform-operator.ts`.
+- **What already existed (kept, not rebuilt):** URL-reachable `/platform-observability` platform area (PLATFORM_NAV, platform-gated) with Cloudflare proxy telemetry; operator-gated endpoints; platform MFA step-up; four-eyes operator lifecycle; jobs-cycle security-anomaly flag (Phase 5); security-event rollup endpoint (Phase 5).
+- **Changes made:**
+  - `apps/api/src/routes/support-center.ts` (new): `/support-center/*` — tickets list/detail/lifecycle (`open→acknowledge→assign→(notes/severity)→resolve→close`), assignment validated to active platform operators, externalRef dedupe (409), derived alert feed (open sev1/sev2 tickets + dead-letter count), operator inventory, reporting summary (incidents by status/severity/category, avg MTTA/MTTR, top-10 operator activity), counts-only aggregates, no patient/tenant attribution. Every mutation audited (`support_ticket.*`) + append-only timeline.
+  - Migration `131_support_center_tickets.sql` (new): `support_tickets` + `support_ticket_events`; FORCE RLS, `app.platform_role = 'platform_operator'`-gated policies; additive; dry-run validated; applied to `medveris_test` (CI applies to fresh DBs).
+  - `packages/authz` matrix: `support.center.read` + `support.ticket.manage` (permission `platform.operations.manage`, enforcement `platform-operator`, MFA required for manage).
+  - `packages/contracts/src/index.ts`: support-ticket schemas (appended; existing concurrent hunks untouched).
+  - `apps/web/src/pages/SupportCenterPage.tsx` (new): dedicated shell with four modules (Telemetry binds Phase-5 rollups; Alerting → one-click ticket; Ticketing with acknowledge/assign/note/severity/resolve/close; Reporting with lifecycle + operator activity).
+  - `apps/web/src/App.tsx`: hidden `/support-center` route behind `<ProtectedRoute platform>` — **absent from public/patient/provider/platform navigation** (asserted by test).
+  - Tests: `tests/integration/support-center.test.ts` (**9/9 pass** incl. jobs-role read-back of hash-chained audit rows for all lifecycle actions + 401/403/409/422 boundaries), `tests/unit/support-center.test.ts` (**3/3 pass** hidden-route/operator-only-API contract). Unit suite additions keep total green (see verification).
+  - `docs/refactor/phase6/PHASE6_SUPPORT_CENTER.md` (new): consolidated program delivery — architecture summary, file/migration inventory, 6.1–6.6 evidence, deployment/rollback/recovery, operator access/admin instructions, explicit limitations.
+- **Tests/checks run:** migration dry-run — pass; integration 9/9 — pass; unit 3/3 — pass; matrix/authz 51/51 — pass; ESLint changed files — clean; hidden-route contract test — pass. Full `npm test` not re-run end-to-end in this window: the concurrent opencode session is mid-edit on `apps/web/src/pages/AuthPage.tsx` and currently breaks web typecheck/build (out of scope for this slice; its files were not committed).
+- **Risks/breaking changes/mitigations:** additive only; hidden route reduces accidental exposure; mutating endpoints require verified MFA; ticket tables are close-only (no DELETE); audit trail complete. The `/platform-observability` platform page and PLATFORM_NAV are intentionally unchanged (ordinary platform tooling, not the incident center).
+- **External dependencies/blockers:** Cloudflare observability dataset (`CLOUDFLARE_API_TOKEN`) still unconfigured — Telemetry tab truthfully shows `unavailable`/empty states; alerting remains derived (no WAF/Bot feed, no paging); reporting covers incidents only.
+- **Status:** **Phases 1–6 complete** under the 2026-11-12 directive (phases approved for execution to full completion). Residual risks and constraints are explicit per phase in `docs/refactor/phase{3,4,5,6}/` and this file. No staging/production deploy is claimed; releases go through the existing gated blue-green pipeline on explicit approval.

@@ -5,7 +5,7 @@ import { AppShell } from "./components/AppShell";
 import { RootGate } from "./pages/landing/RootGate";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { AuthPage } from "./pages/AuthPage";
+import { AuthComposition } from "./features/auth/AuthComposition";
 import { CASHIER_ROLES, INVENTORY_ROLES, PROCUREMENT_ROLES, VISIT_ROLES } from "./lib/roles";
 
 function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K): ComponentType {
@@ -41,6 +41,7 @@ const ExchangePage = lazyPage(() => import("./pages/ExchangePage"), "ExchangePag
 const CredentialsPage = lazyPage(() => import("./pages/CredentialsPage"), "CredentialsPage");
 const AdminPage = lazyPage(() => import("./pages/AdminPage"), "AdminPage");
 const PlatformIntegrationsPage = lazyPage(() => import("./pages/PlatformIntegrationsPage"), "PlatformIntegrationsPage");
+const SupportCenterPage = lazyPage(() => import("./pages/SupportCenterPage"), "SupportCenterPage");
 const ReviewerPage = lazyPage(() => import("./pages/ReviewerPage"), "ReviewerPage");
 const SecurityPage = lazyPage(() => import("./pages/SecurityPage"), "SecurityPage");
 const WardsPage = lazyPage(() => import("./pages/WardsPage"), "WardsPage");
@@ -65,6 +66,7 @@ const AIPage = lazyPage(() => import("./pages/AIPage"), "AIPage");
 const AIChatPage = lazyPage(() => import("./pages/AIChatPage"), "AIChatPage");
 const EmergencyPage = lazyPage(() => import("./pages/EmergencyPage"), "EmergencyPage");
 const EmergencyCasePage = lazyPage(() => import("./pages/EmergencyCasePage"), "EmergencyCasePage");
+const EmergencyAccessReviewPage = lazyPage(() => import("./pages/EmergencyAccessReviewPage"), "EmergencyAccessReviewPage");
 const CareCoordinationPage = lazyPage(() => import("./pages/CareCoordinationPage"), "CareCoordinationPage");
 const AppointmentsPage = lazyPage(() => import("./pages/AppointmentsPage"), "AppointmentsPage");
 const WorkforcePage = lazyPage(() => import("./pages/WorkforcePage"), "WorkforcePage");
@@ -133,7 +135,7 @@ function NotFoundPage() {
 export function App() {
   return (
     <Routes>
-      <Route path="/login" element={<AuthPage />} />
+      <Route path="/login" element={<AuthComposition />} />
       <Route path="/auth" element={<Navigate to="/login" replace />} />
       {/* Public information pages; they never open a workspace. */}
       <Route path="/about" element={<AboutPage />} />
@@ -162,6 +164,7 @@ export function App() {
         <Route path="care" element={<ProtectedRoute roles={["nurse", "clinician"]}><CareCoordinationPage /></ProtectedRoute>} />
         <Route path="emergency" element={<ProtectedRoute roles={["nurse", "clinician"]}><EmergencyPage /></ProtectedRoute>} />
         <Route path="emergency/:id" element={<ProtectedRoute roles={["nurse", "clinician"]}><EmergencyCasePage /></ProtectedRoute>} />
+        <Route path="emergency-access-review" element={<ProtectedRoute roles={["facility_admin", "auditor"]}><EmergencyAccessReviewPage /></ProtectedRoute>} />
         <Route path="encounters/:id" element={<ProtectedRoute roles={["nurse", "clinician", "receptionist", "facility_admin"]}><EncounterPage /></ProtectedRoute>} />
         <Route path="exchange" element={<ProtectedRoute roles={["nurse", "clinician"]}><ExchangePage /></ProtectedRoute>} />
         <Route path="wards" element={<ProtectedRoute roles={["nurse", "clinician", "ward_manager", "facility_admin"]}><WardsPage /></ProtectedRoute>} />
@@ -189,6 +192,7 @@ export function App() {
         <Route path="subscription" element={<ProtectedRoute staff><SubscriptionPage /></ProtectedRoute>} />
         <Route path="platform-billing" element={<ProtectedRoute platform><PlatformBillingPage /></ProtectedRoute>} />
         <Route path="platform-observability" element={<ProtectedRoute platform><PlatformObservabilityPage /></ProtectedRoute>} />
+        <Route path="support-center" element={<ProtectedRoute platform><SupportCenterPage /></ProtectedRoute>} />
         <Route path="visits" element={<ProtectedRoute roles={VISIT_ROLES}><VisitsPage /></ProtectedRoute>} />
         <Route path="work-queues/:department" element={<ProtectedRoute roles={VISIT_ROLES}><WorkQueuePage /></ProtectedRoute>} />
         <Route path="programmes" element={<ProtectedRoute roles={["nurse", "clinician"]}><ProgrammesPage /></ProtectedRoute>} />
