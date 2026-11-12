@@ -943,3 +943,7 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - 2.5 Regression coverage for identity verification, session management, MFA, account recovery, tenant switching.
 - 2.6 Targeted integration/API tests for denied escalation paths where feasible.
 - **Approval required before starting Phase 3.**
+
+### 2026-11-12 — Phase 2.2 follow-up
+- `apps/api/src/routes/admin.ts` (`PATCH /memberships/:id`): now applies `assertInvitable(body.roles)` (positive facility-role allowlist) on membership role updates, matching invitation creation and blocking non-facility/privileged/identity roles at the API boundary while preserving existing manager/scope/owner/department/session-revocation controls.
+- Verification: `npm run typecheck`, `npx eslint apps/api/src/routes/admin.ts`, `npx vitest run tests/unit/invitations.test.ts tests/unit/authz.test.ts` passed.

@@ -230,7 +230,8 @@ adminRoutes.patch("/memberships/:id", async (c) => {
   const id = uuidSchema.parse(c.req.param("id"));
   const body = await parseJson(c, updateMembershipSchema);
   if (body.roles.length === 0) throw new ValidationError("At least one role is required");
-  if (body.roles.includes("credential_reviewer")) throw new ValidationError("Credential reviewer is a platform role");
+  const refused = assertInvitable(body.roles);
+  if (refused) throw new ValidationError(refused);
   const tenantId = auth.activeTenant!.id;
   const updated = await withStaffActor(c, async (tx) => {
     const [target] = await tx`
