@@ -9,18 +9,25 @@ services:
       ORTHANC_JSON: |
         {
           "Name": "Medveris Sandbox Orthanc",
-          "AuthenticationEnabled": false,
+          "AuthenticationEnabled": true,
+          "BasicAuthentication": {
+            "medveris": "synthetic-pacs-password"
+          },
           "DicomWeb": {
-            "Enable": true
+            "Enable": true,
+            "EnableBasicAuthentication": true
           }
         }
-
+    volumes:
+      - orthanc-data:/data
   ollama:
     image: ollama/ollama
     ports:
       - "11434:11434"
-
   hapi-fhir:
-    image: hapiproject/hapi:latest
+    image: hapiproject/hapi:v8.12.0-2
     ports:
       - "8080:8080"
+
+volumes:
+  orthanc-data:
