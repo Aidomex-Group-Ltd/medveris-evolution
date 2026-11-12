@@ -7,27 +7,32 @@
 
 | Category | Routes | Share of inventory |
 |---|---|---|
-| Matrix-covered | 320 | 45.0% |
+| Matrix-covered | 344 | 48.4% |
 | Exempt (non-permission) | 36 | 5.1% |
 | Overlap (both) | 1 | 0.1% |
-| **Total covered** | **355** | **49.9%** |
-| **Uncovered (gaps)** | **356** | **50.1%** |
+| **Total covered** | **379** | **53.3%** |
+| **Uncovered (gaps)** | **332** | **46.7%** |
 | Total inventory | 711 | 100.0% |
 
-Total covered = matrix ∪ exemptions = 355 unique routes; uncovered + covered = inventory.
+Total covered = matrix ∪ exemptions = 379 unique routes; uncovered + covered = inventory.
+
+> **Post-approval adoption (2026-11-12):** the 24 reuse-approved routes were bound in the matrix.
+> Stage 3 baseline was 320 matrix-covered / 355 covered / 356 gaps. The per-router table below is
+> updated for `inventory.ts`, `radiology.ts`, `organizations.ts` and `onboarding.ts`; all other
+> rows are unchanged from the baseline report.
 
 ## 2. Coverage by Router
 
 | Router | Total | Matrix | Exempt | Overlap | Uncovered | Covered % |
 |---|---|---|---|---|---|---|
-| `inventory.ts` | 51 | 21 | 0 | 0 | 30 | 41.2% |
+| `inventory.ts` | 51 | 36 | 0 | 0 | 15 | 70.6% |
 | `maternity.ts` | 20 | 3 | 0 | 0 | 17 | 15.0% |
 | `operations.ts` | 22 | 5 | 0 | 0 | 17 | 22.7% |
 | `fhir/router.ts` | 17 | 0 | 0 | 0 | 17 | 0.0% |
 | `content.ts` | 39 | 23 | 0 | 0 | 16 | 59.0% |
 | `inpatient.ts` | 27 | 12 | 0 | 0 | 15 | 44.4% |
 | `organization.ts` | 25 | 10 | 0 | 0 | 15 | 40.0% |
-| `radiology.ts` | 27 | 12 | 0 | 0 | 15 | 44.4% |
+| `radiology.ts` | 27 | 18 | 0 | 0 | 9 | 66.7% |
 | `terminology/router.ts` | 15 | 0 | 0 | 0 | 15 | 0.0% |
 | `diagnostics.ts` | 23 | 9 | 0 | 0 | 14 | 39.1% |
 | `directory.ts` | 23 | 12 | 0 | 0 | 11 | 52.2% |
@@ -44,11 +49,11 @@ Total covered = matrix ∪ exemptions = 355 unique routes; uncovered + covered =
 | `credentials.ts` | 10 | 3 | 0 | 0 | 7 | 30.0% |
 | `pharmacy.ts` | 11 | 4 | 0 | 0 | 7 | 36.4% |
 | `integrations.ts` | 14 | 8 | 0 | 0 | 6 | 57.1% |
-| `organizations.ts` | 13 | 7 | 0 | 0 | 6 | 53.8% |
+| `organizations.ts` | 13 | 9 | 0 | 0 | 4 | 69.2% |
 | `programmes.ts` | 13 | 7 | 0 | 0 | 6 | 53.8% |
 | `promotions.ts` | 12 | 6 | 0 | 0 | 6 | 50.0% |
 | `workspace.ts` | 15 | 9 | 0 | 0 | 6 | 60.0% |
-| `onboarding.ts` | 19 | 14 | 0 | 0 | 5 | 73.7% |
+| `onboarding.ts` | 19 | 15 | 0 | 0 | 4 | 78.9% |
 | `platform-observability.ts` | 8 | 3 | 0 | 0 | 5 | 37.5% |
 | `procurement.ts` | 8 | 3 | 0 | 0 | 5 | 37.5% |
 | `documents.ts` | 13 | 9 | 0 | 0 | 4 | 69.2% |

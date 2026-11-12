@@ -626,3 +626,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: additive structural change behind an unchanged facade; no behavior change. `clinical.ts` is 484 lines but data-only (29 entries) — justified exception to the ~300 LOC guideline.
 - External dependencies/blockers: 356 of 711 API routes are not yet described by the matrix (not auto-bound; owner approval required); route rewiring/adoption and deployment not performed.
 - Status: partial (modularization + inventory + reconciliation + coverage complete and verified; route adoption and deployment pending approval).
+
+### Execution record: Phase 1.2 approval + reuse-slice adoption
+- Date: 2026-11-12
+- Scope/files reviewed: `docs/refactor/phase1-2/05_GAP_PERMISSION_MAPPING_PROPOSAL.md`, `packages/authz/src/matrix/actions/{inventory,radiology,organization,workforce}.ts`, `tests/unit/authz-matrix.test.ts`, route handlers in `apps/api/src/routes/{inventory,radiology,organizations,onboarding}.ts`.
+- Changes made: recorded owner approval of all 346 gap permission mappings (24 reuse + 322 new; 10 exemption candidates remain unverified). Adopted the first slice by binding the 24 reuse-approved routes in the matrix: added `inventory.asset.read`, `inventory.asset.manage`, `inventory.count.manage`, `inventory.report.read` and `organization.link.lifecycle`; appended PACS/critical-communication/image routes to `radiology.study.register`/`radiology.report.draft`/`radiology.images.view`, organization link lifecycle routes, and `GET /onboarding/catalogue/versions`. No permissions added to the catalog and no route runtime enforcement changed by this slice.
+- DB migrations (if any): none.
+- Tests/checks run: `npx vitest run tests/unit/authz-matrix.test.ts tests/unit/authz.test.ts tests/unit/authz-phase1a.test.ts` -> 47/47 passed; `npm run typecheck` -> exit 0; `npm run lint` -> exit 0; route/matrix reconcile -> 130 actions, 349 patterns, all matched, 0 stale, 5 intentional multi-claims.
+- Behavioral verification: new matrix tests assert every approved reuse route is bound to its existing permission, the inventory asset read allows a pharmacist and denies reception, and all existing matrix/policy tests remain green. Coverage moved from 320 matrix routes / 355 covered / 356 gaps to 344 / 379 / 332.
+- Risks/breaking changes/mitigations: registry-only adoption in this increment; routes keep their existing inline permission checks, so no behavior change. The 322 NEW mappings are approved but not yet added to `PERMISSIONS` or role bundles; each requires an adoption slice with tests.
+- External dependencies/blockers: adoption of the 322 NEW mappings (catalog + role grants + route wiring per domain) and verification of the 10 exemption candidates remain.
+- Status: partial (approval recorded; reuse slice adopted and verified; NEW mappings and exemption verification pending).

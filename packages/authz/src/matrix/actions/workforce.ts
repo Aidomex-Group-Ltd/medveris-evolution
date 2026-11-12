@@ -63,7 +63,7 @@ export const WORKFORCE_ACTIONS: readonly MatrixEntry[] = [
     scope: "tenant",
     permission: "onboarding.catalogue.read",
     routeFile: "onboarding.ts",
-    routePatterns: ["GET /onboarding/catalogue", "GET /onboarding/credential-policies", "GET /onboarding/credential-requirements"],
+    routePatterns: ["GET /onboarding/catalogue", "GET /onboarding/catalogue/versions", "GET /onboarding/credential-policies", "GET /onboarding/credential-requirements"],
     enforcement: "session-permission",
     tenantBound: true,
     rls: true,

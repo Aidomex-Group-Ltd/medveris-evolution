@@ -1,15 +1,16 @@
 # Gap Permission-Mapping Proposal — Phase 1.2
 
 **Date:** 2026-11-12  
-**Status:** PROPOSAL ONLY — NOT ENFORCED. Requires owner/security approval before any permission is added to the catalog or bound to a route.
+**Status:** APPROVED for adoption (owner sign-off 2026-11-12). The 346 permission mappings (24 reuse + 322 new) below are authoritative; the 10 exemption candidates remain unverified and must not be exempted until their controls are confirmed. Adoption proceeds in slices; approval of a mapping does not itself grant a permission or change runtime enforcement.
 
 ## How to read this
 
 - Covers the 356 API routes that currently have neither a matrix action nor a declared exemption.
-- **reuse existing**: a permission already in `PERMISSIONS` shares the resource and read/write family; still needs owner confirmation of scope/context.
-- **NEW (owner approval required)**: no existing permission shares the resource; identifier follows `<domain>.<resource>.<verb>`. Do not add until approved.
-- **EXEMPT candidate**: likely public/webhook/authenticated-self flow. Verify and add to `NON_PERMISSION_ENDPOINTS` with controls — never exempt to avoid authorization.
+- **reuse existing**: a permission already in `PERMISSIONS` shares the resource and read/write family; approved for adoption.
+- **NEW (owner approval required)**: no existing permission shares the resource; identifier follows `<domain>.<resource>.<verb>`. Approved for catalog/adoption slice by slice.
+- **EXEMPT candidate**: likely public/webhook/authenticated-self flow. Verify and add to `NON_PERMISSION_ENDPOINTS` with controls — never exempt to avoid authorization. **Not yet approved.**
 - Candidate roles are indicative only; contextual policy, scope and RLS still apply.
+- 322 route mappings use 274 unique new permission identifiers (some routes share a permission).
 
 ## Summary
 

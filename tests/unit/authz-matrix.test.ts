@@ -192,3 +192,65 @@ it("denies unresolved actions even when the actor is privileged", () => {
     expect(decideAction(actor, entry, record).allowed).toBe(true);
   });
 });
+
+describe("approved gap-mapping reuse slice (2026-11-12)", () => {
+  const expectations: readonly [string, string, readonly string[]][] = [
+    ["inventory.asset.read", "inventory.asset.read", ["GET /inventory/assets", "GET /inventory/assets/:id"]],
+    ["inventory.asset.manage", "inventory.asset.manage", ["POST /inventory/assets", "POST /inventory/assets/:id/events"]],
+    ["inventory.count.manage", "inventory.count.manage", ["POST /inventory/counts"]],
+    [
+      "inventory.report.read",
+      "inventory.report.read",
+      [
+        "GET /inventory/reports/asset-downtime",
+        "GET /inventory/reports/consumption",
+        "GET /inventory/reports/count-variance",
+        "GET /inventory/reports/expiry",
+        "GET /inventory/reports/low-stock",
+        "GET /inventory/reports/maintenance-due",
+        "GET /inventory/reports/recall-status",
+        "GET /inventory/reports/requisition-fulfilment",
+        "GET /inventory/reports/transfer-discrepancies",
+        "GET /inventory/reports/valuation",
+      ],
+    ],
+    [
+      "radiology.images.view",
+      "radiology.images.view",
+      [
+        "GET /radiology/images/status",
+        "GET /radiology/studies/:id/images/series/:seriesUid",
+        "GET /radiology/studies/:id/images/series/:seriesUid/instances/:instanceUid/frames/:frame",
+      ],
+    ],
+    ["radiology.report.draft", "radiology.report.draft", ["POST /radiology/reports/:id/critical-communications"]],
+    [
+      "radiology.study.register",
+      "radiology.study.register",
+      ["POST /radiology/studies/:id/pacs-link", "POST /radiology/studies/:id/pacs-unlink"],
+    ],
+    [
+      "organization.link.lifecycle",
+      "organization.link.manage",
+      ["POST /organizations/:id/links/:linkId/end", "POST /organizations/:id/links/:linkId/inventory-mode"],
+    ],
+    ["onboarding.catalogue.read", "onboarding.catalogue.read", ["GET /onboarding/catalogue/versions"]],
+  ];
+
+  it("binds each approved reuse route to its existing permission", () => {
+    for (const [key, permission, patterns] of expectations) {
+      const entry = getMatrixEntry(key);
+      expect(entry, key).toBeDefined();
+      expect(entry?.permission, key).toBe(permission);
+      for (const pattern of patterns) expect(entry?.routePatterns, key).toContain(pattern);
+    }
+  });
+
+  it("allows an inventory asset read for a pharmacist and denies reception", () => {
+    const pharmacist: PolicyActor = { ...actor, roles: ["pharmacist"] };
+    expect(decideAction(pharmacist, "inventory.asset.read", { kind: "dashboard", tenantId: "t1" }).allowed).toBe(true);
+
+    const receptionist: PolicyActor = { ...actor, roles: ["receptionist"] };
+    expect(decideAction(receptionist, "inventory.asset.read", { kind: "dashboard", tenantId: "t1" }).allowed).toBe(false);
+  });
+});
