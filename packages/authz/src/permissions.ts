@@ -168,6 +168,35 @@ export const PERMISSIONS = [
   "platform.observability.log.read",
   "platform.observability.trace.read",
   "platform.observability.worker.read",
+
+  "operations.task.read",
+  "operations.case.read",
+  "operations.bed.read",
+  "operations.asset.read",
+  "operations.cssd_cycle.read",
+  "operations.work_order.read",
+  "operations.task.transition.manage",
+  "operations.case.effect.manage",
+  "operations.case.movement.manage",
+  "operations.case.release.manage",
+  "operations.asset.manage",
+  "operations.cssd_cycle.manage",
+  "operations.cssd_cycle.release.manage",
+  "operations.work_order.transition.manage",
+
+  "content.bookmark.delete",
+  "content.summary.read",
+  "organization.care_team.read",
+  "organization.bookmark.mine.read",
+  "organization.editorial.item.read",
+  "organization.preference.mine.read",
+  "organization.source.read",
+  "organization.patient.read",
+  "organization.specialist.read",
+  "organization.opportunity.withdraw.manage",
+  "organization.bookmark.manage",
+  "organization.report.manage",
+  "organization.preference.mine.update",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -250,6 +279,45 @@ const platformObservabilityRead: Permission[] = [
   "platform.observability.worker.read",
 ];
 
+const operationsRead: Permission[] = [
+  "operations.task.read",
+  "operations.case.read",
+  "operations.bed.read",
+  "operations.asset.read",
+  "operations.cssd_cycle.read",
+  "operations.work_order.read",
+];
+
+const operationsOperate: Permission[] = [
+  "operations.task.transition.manage",
+  "operations.case.effect.manage",
+  "operations.case.movement.manage",
+  "operations.case.release.manage",
+  "operations.asset.manage",
+  "operations.cssd_cycle.manage",
+  "operations.cssd_cycle.release.manage",
+  "operations.work_order.transition.manage",
+];
+
+const contentAppCore: Permission[] = [
+  "content.bookmark.delete",
+  "content.summary.read",
+];
+
+const organizationContentCore: Permission[] = [
+  "organization.care_team.read",
+  "organization.bookmark.mine.read",
+  "organization.editorial.item.read",
+  "organization.preference.mine.read",
+  "organization.source.read",
+  "organization.patient.read",
+  "organization.specialist.read",
+  "organization.opportunity.withdraw.manage",
+  "organization.bookmark.manage",
+  "organization.report.manage",
+  "organization.preference.mine.update",
+];
+
 const clinicalCore: Permission[] = [
   ...inventoryRead,
   "clinical.worklist.read_assigned",
@@ -328,6 +396,9 @@ const adminCore: Permission[] = [
   ...aiReadCore,
   ...devicesReadCore,
   ...billingCheckoutCore,
+  ...operationsRead,
+  ...operationsOperate,
+  ...organizationContentCore,
   "organization.resource.read",
   "directory.read",
   "directory.manage",
@@ -445,7 +516,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "radiology.template.manage",
     "radiology.images.view",
   ],
-  ward_manager: [...nursingCore, ...inventoryGapRead, ...inventoryGapOperate, ...procurementGapRead, ...procurementGapOperate, "ward.bed.manage", "dashboard.operations.read"],
+  ward_manager: [...nursingCore, ...inventoryGapRead, ...inventoryGapOperate, ...procurementGapRead, ...procurementGapOperate, ...operationsRead, ...operationsOperate, "ward.bed.manage", "dashboard.operations.read"],
   privacy_officer: ["audit.read", "privacy.access.review", "care_team.read", "content.read", "dashboard.administration.read"],
   department_lead: [
     ...clinicalCore,
@@ -472,6 +543,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "onboarding.credential.review",
     "role_grant.request",
     "organization.resource.read",
+    ...organizationContentCore,
     "care_team.read",
     "content.read",
     "dashboard.administration.read",
@@ -490,6 +562,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
   quality: [
     ...inventoryRead,
+    ...operationsRead,
+    ...operationsOperate,
     "directory.read",
     "care_team.read",
     "audit.read",
@@ -526,9 +600,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   cssd: [...inventoryRead, ...inventoryGapRead, ...inventoryGapOperate, ...procurementGapRead, ...procurementGapOperate, "inventory.stock.receive", "inventory.stock.issue", "inventory.transfer.manage", "inventory.count.manage", "content.read", "dashboard.support.read"],
   biomedical: [...inventoryRead, ...inventoryGapRead, ...inventoryGapOperate, ...procurementGapRead, ...procurementGapOperate, ...devicesReadCore, "inventory.catalogue.manage", "inventory.stock.receive", "inventory.stock.adjust", "inventory.transfer.manage", "inventory.asset.manage", "content.read", "dashboard.support.read"],
   it_admin: ["platform.operations.manage", ...platformObservabilityRead, "content.read", "dashboard.support.read"],
-  content_editor: [...contentEditorCore, "dashboard.operations.read"],
-  content_reviewer: [...contentEditorCore, "content.publish", "content.archive", "dashboard.operations.read"],
+  content_editor: [...contentEditorCore, ...contentAppCore, "dashboard.operations.read"],
+  content_reviewer: [...contentEditorCore, ...contentAppCore, "content.publish", "content.archive", "dashboard.operations.read"],
   opportunity_moderator: [
+    ...contentAppCore,
     "content.read",
     "content.opportunity.manage",
     "content.opportunity.moderate",

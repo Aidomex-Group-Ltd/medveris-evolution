@@ -659,3 +659,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: additive catalog/role/matrix changes only; no route behavior change. Candidate-role grants are broad by approval and remain subject to contextual policy and RLS.
 - External dependencies/blockers: 277 NEW routes in other domains and 10 exemption candidates remain.
 - Status: partial (nine small domains adopted at registry level; larger domains, runtime rewiring and deployment pending).
+
+### Execution record: Phase 1.2 operations/content gap slice
+- Date: 2026-11-12
+- Scope/files reviewed: `docs/refactor/phase1-2/05_GAP_PERMISSION_MAPPING_PROPOSAL.md`, `packages/authz/src/permissions.ts`, `packages/authz/src/matrix/actions/{operations,content,organization}.ts`, `tests/unit/authz-matrix.test.ts`.
+- Changes made: adopted 33 approved routes: 17 in `operations.ts` (housekeeping, porter, mortuary, technical assets/CSSD/work orders) and 16 in `content.ts` (access summary, bookmarks, editorial items, sources, dashboards, opportunity withdraw/report) plus `GET /opportunities` folded into the existing organization branding read. Added 27 permissions (14 operations, 13 content/organization) with capability groups granted to facility_admin/owner, ward_manager, quality, hr, content_editor, content_reviewer and opportunity_moderator. `POST /technical/assets` is bound to the existing `operations.asset.manage` entry to preserve a unique action key. Registry-only change; no runtime route rewiring.
+- DB migrations (if any): none.
+- Tests/checks run: `npx vitest run tests/unit/authz-matrix.test.ts tests/unit/authz.test.ts tests/unit/authz-phase1a.test.ts` -> 56/56 passed; `npm run typecheck` -> exit 0; `npm run lint` -> exit 0; route/matrix reconcile -> 191 actions, 427 patterns, all matched, 0 stale, 5 intentional multi-claims.
+- Behavioral verification: tests assert every adopted route is bound, candidate roles receive the grants, reception and ward_manager boundaries hold, and a ward manager is authorized for operations reads while reception is denied. Coverage: 422 matrix routes / 457 covered / 254 gaps; `operations.ts` is 22/22 and `content.ts` is 39/39 matrix-covered.
+- Risks/breaking changes/mitigations: additive catalog/role/matrix changes only; no route behavior change. Broad candidate-role grants remain subject to contextual policy and RLS.
+- External dependencies/blockers: 244 NEW routes in other domains and 10 exemption candidates remain.
+- Status: partial (operations/content adopted at registry level; larger domains, runtime rewiring and deployment pending).

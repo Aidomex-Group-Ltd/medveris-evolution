@@ -110,9 +110,9 @@ Unresolved action remains exactly `patient.merge.request` (`permission: null`). 
 Full detail in `01_API_ROUTE_INVENTORY.md`, `02_MATRIX_RECONCILIATION.md`, `03_ROUTE_COVERAGE_REPORT.md`.
 
 **Post-verification adoption (2026-11-12):** after owner approval of the gap mappings, the 24
-reuse routes were bound, then the inventory NEW slice and the small-domain batch were adopted
-(165 actions / 394 patterns; 389 matrix-covered, 424 total covered, 287 gaps; still 0 stale;
-inventory 51/51 covered). The figures above remain the Stage 6 verification baseline. Runtime
+reuse routes were bound, then the inventory NEW slice, the small-domain batch and the
+operations/content batch were adopted (191 actions / 427 patterns; 422 matrix-covered, 457 total
+covered, 254 gaps; still 0 stale; inventory 51/51 covered). The figures above remain the Stage 6 verification baseline. Runtime
 route rewiring is still per-slice and not performed by the registry binding.
 
 ---

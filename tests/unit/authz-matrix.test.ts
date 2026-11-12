@@ -370,3 +370,93 @@ describe("approved small-domain gap mappings (2026-11-12)", () => {
     expect(decideAction(operator, "platform.observability.log.read", { kind: "dashboard" }).allowed).toBe(true);
   });
 });
+
+describe("approved operations/content gap mappings (2026-11-12)", () => {
+  const expectations: readonly [string, readonly string[]][] = [
+    ["operations.task.read", ["GET /housekeeping/tasks", "GET /porter/tasks"]],
+    ["operations.case.read", ["GET /mortuary/cases", "GET /mortuary/cases/:id"]],
+    ["operations.bed.read", ["GET /operations/beds"]],
+    ["operations.asset.read", ["GET /technical/assets"]],
+    ["operations.cssd_cycle.read", ["GET /technical/cssd-cycles"]],
+    ["operations.work_order.read", ["GET /technical/work-orders"]],
+    ["operations.task.transition.manage", ["POST /housekeeping/tasks/:id/transition", "POST /porter/tasks/:id/transition"]],
+    ["operations.case.effect.manage", ["POST /mortuary/cases/:id/effects"]],
+    ["operations.case.movement.manage", ["POST /mortuary/cases/:id/movements"]],
+    ["operations.case.release.manage", ["POST /mortuary/cases/:id/release"]],
+    ["operations.cssd_cycle.manage", ["POST /technical/cssd-cycles"]],
+    ["operations.cssd_cycle.release.manage", ["POST /technical/cssd-cycles/:id/release"]],
+    ["operations.work_order.transition.manage", ["POST /technical/work-orders/:id/transition"]],
+    ["content.bookmark.delete", ["DELETE /content/:id/bookmark"]],
+    ["content.summary.read", ["GET /access/summary"]],
+    ["organization.care_team.read", ["GET /admin/care-team"]],
+    ["organization.bookmark.mine.read", ["GET /content/bookmarks/mine"]],
+    ["organization.editorial.item.read", ["GET /content/editorial/items"]],
+    ["organization.preference.mine.read", ["GET /content/preferences/mine"]],
+    ["organization.source.read", ["GET /content/sources"]],
+    ["organization.patient.read", ["GET /dashboards/patient"]],
+    ["organization.specialist.read", ["GET /dashboards/specialist"]],
+    ["organization.opportunity.withdraw.manage", ["POST /content-feeds/opportunities/:id/withdraw"]],
+    ["organization.bookmark.manage", ["POST /content/:id/bookmark", "POST /opportunities/:id/bookmark"]],
+    ["organization.report.manage", ["POST /content/:id/report", "POST /opportunities/:id/report"]],
+    ["organization.preference.mine.update", ["PUT /content/preferences/mine"]],
+  ];
+
+  it("binds each approved route", () => {
+    for (const [key, patterns] of expectations) {
+      const entry = getMatrixEntry(key);
+      expect(entry, key).toBeDefined();
+      expect(entry?.permission, key).toBe(key);
+      for (const pattern of patterns) expect(entry?.routePatterns, key).toContain(pattern);
+    }
+    expect(getMatrixEntry("operations.asset.manage")?.routePatterns).toContain("POST /technical/assets");
+    expect(getMatrixEntry("organization.resource.read")?.routePatterns).toContain("GET /opportunities");
+  });
+
+  it("grants the approved candidate roles", () => {
+    const admin = permissionsForRoles(["facility_admin"]);
+    expect(admin.has("operations.task.read")).toBe(true);
+    expect(admin.has("operations.work_order.transition.manage")).toBe(true);
+    expect(admin.has("organization.bookmark.manage")).toBe(true);
+
+    const wardManager = permissionsForRoles(["ward_manager"]);
+    expect(wardManager.has("operations.case.read")).toBe(true);
+    expect(wardManager.has("organization.bookmark.manage")).toBe(false);
+
+    const quality = permissionsForRoles(["quality"]);
+    expect(quality.has("operations.cssd_cycle.release.manage")).toBe(true);
+
+    const hr = permissionsForRoles(["hr"]);
+    expect(hr.has("organization.care_team.read")).toBe(true);
+    expect(hr.has("operations.task.read")).toBe(false);
+
+    const editor = permissionsForRoles(["content_editor"]);
+    expect(editor.has("content.bookmark.delete")).toBe(true);
+    expect(editor.has("content.summary.read")).toBe(true);
+
+    const moderator = permissionsForRoles(["opportunity_moderator"]);
+    expect(moderator.has("content.summary.read")).toBe(true);
+
+    const receptionist = permissionsForRoles(["receptionist"]);
+    expect(receptionist.has("operations.task.read")).toBe(false);
+    expect(receptionist.has("content.bookmark.delete")).toBe(false);
+  });
+
+  it("authorizes operations reads for a ward manager and denies reception", () => {
+    const wardManager: PolicyActor = { ...actor, roles: ["ward_manager"] };
+    const allowed = decideAction(wardManager, "operations.task.read", {
+      kind: "organization",
+      tenantId: "t1",
+      departmentId: "d1",
+    });
+    expect(allowed.allowed).toBe(true);
+
+    const receptionist: PolicyActor = { ...actor, roles: ["receptionist"] };
+    expect(
+      decideAction(receptionist, "operations.task.read", {
+        kind: "organization",
+        tenantId: "t1",
+        departmentId: "d1",
+      }).allowed,
+    ).toBe(false);
+  });
+});

@@ -160,7 +160,7 @@ export const ORGANIZATION_ACTIONS: readonly MatrixEntry[] = [
     scope: "organization",
     permission: "organization.resource.read",
     routeFile: "facility-logo.ts",
-    routePatterns: ["GET /logo"],
+    routePatterns: ["GET /logo", "GET /opportunities"],
     enforcement: "session-permission",
     tenantBound: true,
     rls: true,
