@@ -670,3 +670,14 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: additive catalog/role/matrix changes only; no route behavior change. Broad candidate-role grants remain subject to contextual policy and RLS.
 - External dependencies/blockers: 244 NEW routes in other domains and 10 exemption candidates remain.
 - Status: partial (operations/content adopted at registry level; larger domains, runtime rewiring and deployment pending).
+
+### Execution record: Phase 1.2 maternity/inpatient/diagnostics gap slice
+- Date: 2026-11-12
+- Scope/files reviewed: `docs/refactor/phase1-2/05_GAP_PERMISSION_MAPPING_PROPOSAL.md`, `packages/authz/src/permissions.ts`, `packages/authz/src/matrix/actions/{clinical,diagnostics}.ts`, `tests/unit/authz-matrix.test.ts`.
+- Changes made: adopted 46 approved routes: `maternity.ts` (17, maternity episodes/children/newborns/immunizations), `inpatient.ts` (15, admissions/wards/tasks/handoffs) and `diagnostics.ts` (14, diagnostic orders/reporting/critical communications/lab tests/imaging). Added 40 permissions via `maternityInpatientCore` (granted to clinician, nurse, midwife, specialist_clinician) and `diagnosticsGapCore` (granted to laboratory, lab_validator, diagnostic_practitioner) and bound all routes in the matrix. Registry-only; no runtime route rewiring.
+- DB migrations (if any): none.
+- Tests/checks run: `npx vitest run tests/unit/authz-matrix.test.ts tests/unit/authz.test.ts tests/unit/authz-phase1a.test.ts` -> 58/58 passed; `npm run typecheck` -> exit 0; `npm run lint` -> exit 0; route/matrix reconcile -> 231 actions, 473 patterns, all matched, 0 stale, 5 intentional multi-claims.
+- Behavioral verification: tests assert representative routes are bound and clinical/diagnostic candidate roles receive the grants while reception is denied. Coverage: 468 matrix routes / 503 covered / 208 gaps; `maternity.ts`, `inpatient.ts` and `diagnostics.ts` are 100% matrix-covered.
+- Risks/breaking changes/mitigations: additive catalog/role/matrix changes only; no route behavior change. Broad candidate-role grants remain subject to contextual policy and RLS.
+- External dependencies/blockers: 198 NEW routes in other domains and 10 exemption candidates remain.
+- Status: partial (maternity/inpatient/diagnostics adopted at registry level; other domains, runtime rewiring and deployment pending).

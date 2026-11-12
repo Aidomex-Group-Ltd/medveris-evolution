@@ -460,3 +460,47 @@ describe("approved operations/content gap mappings (2026-11-12)", () => {
     ).toBe(false);
   });
 });
+
+describe("approved maternity/inpatient/diagnostics gap mappings (2026-11-12)", () => {
+  const expectations: readonly [string, readonly string[]][] = [
+    ["clinical.episode.read", ["GET /maternity/episodes", "GET /maternity/episodes/:id"]],
+    ["clinical.newborn.status.update", ["PATCH /maternity/newborns/:newbornId/status"]],
+    ["clinical.resource.read", ["GET /admissions/:id"]],
+    ["clinical.resource.manage", ["POST /admissions", "POST /wards"]],
+    ["clinical.bed.manage", ["POST /wards/:id/beds"]],
+    ["diagnostic.resource.read", ["GET /critical-communications", "GET /diagnostic-orders", "GET /diagnostic-orders/:id", "GET /lab-tests"]],
+    ["diagnostic.resource.manage", ["POST /imaging-studies", "POST /lab-tests"]],
+    ["diagnostic.critical_communication.manage", ["POST /lab-results/:id/critical-communications"]],
+  ];
+
+  it("binds representative approved routes", () => {
+    for (const [key, patterns] of expectations) {
+      const entry = getMatrixEntry(key);
+      expect(entry, key).toBeDefined();
+      expect(entry?.permission, key).toBe(key);
+      for (const pattern of patterns) expect(entry?.routePatterns, key).toContain(pattern);
+    }
+  });
+
+  it("grants maternity/inpatient permissions to clinical roles and diagnostics to lab roles", () => {
+    const clinician = permissionsForRoles(["clinician"]);
+    expect(clinician.has("clinical.episode.read")).toBe(true);
+    expect(clinician.has("clinical.bed.manage")).toBe(true);
+    const nurse = permissionsForRoles(["nurse"]);
+    expect(nurse.has("clinical.newborn.patient.manage")).toBe(true);
+    const midwife = permissionsForRoles(["midwife"]);
+    expect(midwife.has("clinical.episode.observation.manage")).toBe(true);
+
+    const lab = permissionsForRoles(["laboratory"]);
+    expect(lab.has("diagnostic.resource.read")).toBe(true);
+    expect(lab.has("diagnostic.critical_communication.manage")).toBe(true);
+    const validator = permissionsForRoles(["lab_validator"]);
+    expect(validator.has("diagnostic.assign.manage")).toBe(true);
+    const diag = permissionsForRoles(["diagnostic_practitioner"]);
+    expect(diag.has("diagnostic.worklist.read")).toBe(true);
+
+    const receptionist = permissionsForRoles(["receptionist"]);
+    expect(receptionist.has("clinical.episode.read")).toBe(false);
+    expect(receptionist.has("diagnostic.resource.read")).toBe(false);
+  });
+});

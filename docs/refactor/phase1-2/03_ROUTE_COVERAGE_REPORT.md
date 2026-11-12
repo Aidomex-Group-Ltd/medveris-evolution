@@ -7,29 +7,26 @@
 
 | Category | Routes | Share of inventory |
 |---|---|---|
-| Matrix-covered | 422 | 59.4% |
+| Matrix-covered | 468 | 65.8% |
 | Exempt (non-permission) | 36 | 5.1% |
 | Overlap (both) | 1 | 0.1% |
-| **Total covered** | **457** | **64.3%** |
-| **Uncovered (gaps)** | **254** | **35.7%** |
+| **Total covered** | **503** | **70.7%** |
+| **Uncovered (gaps)** | **208** | **29.3%** |
 | Total inventory | 711 | 100.0% |
 
-Total covered = matrix ∪ exemptions = 457 unique routes; uncovered + covered = inventory.
+Total covered = matrix ∪ exemptions = 503 unique routes; uncovered + covered = inventory.
 
 > **Post-approval adoption (2026-11-12):** the 24 reuse routes were bound, then the inventory NEW
-> slice (15 routes), the small-domain batch (30 routes) and the operations/content batch (33 routes)
-> were adopted. Stage 3 baseline was 320 matrix-covered / 355 covered / 356 gaps.
+> slice (15), small-domain batch (30), operations/content batch (33) and maternity/inpatient/diagnostics
+> batch (46 routes) were adopted. Stage 3 baseline was 320 matrix-covered / 355 covered / 356 gaps.
 
 ## 2. Coverage by Router
 
 | Router | Total | Matrix | Exempt | Overlap | Uncovered | Covered % |
 |---|---|---|---|---|---|---|
-| `maternity.ts` | 20 | 3 | 0 | 0 | 17 | 15.0% |
 | `fhir/router.ts` | 17 | 0 | 0 | 0 | 17 | 0.0% |
-| `inpatient.ts` | 27 | 12 | 0 | 0 | 15 | 44.4% |
 | `organization.ts` | 25 | 10 | 0 | 0 | 15 | 40.0% |
 | `terminology/router.ts` | 15 | 0 | 0 | 0 | 15 | 0.0% |
-| `diagnostics.ts` | 23 | 9 | 0 | 0 | 14 | 39.1% |
 | `directory.ts` | 23 | 12 | 0 | 0 | 11 | 52.2% |
 | `workforce-reference.ts` | 17 | 6 | 0 | 0 | 11 | 35.3% |
 | `workflow.ts` | 11 | 0 | 0 | 0 | 11 | 0.0% |
@@ -51,10 +48,13 @@ Total covered = matrix ∪ exemptions = 457 unique routes; uncovered + covered =
 | `onboarding.ts` | 19 | 15 | 0 | 0 | 4 | 78.9% |
 | `organizations.ts` | 13 | 9 | 0 | 0 | 4 | 69.2% |
 | `payment-callbacks.ts` | 5 | 0 | 3 | 0 | 2 | 60.0% |
-| `clinical.ts` | 18 | 17 | 0 | 0 | 1 | 94.4% |
 | `inventory.ts` | 51 | 51 | 0 | 0 | 0 | 100.0% |
 | `content.ts` | 39 | 39 | 0 | 0 | 0 | 100.0% |
+| `inpatient.ts` | 27 | 27 | 0 | 0 | 0 | 100.0% |
+| `diagnostics.ts` | 23 | 23 | 0 | 0 | 0 | 100.0% |
 | `operations.ts` | 22 | 22 | 0 | 0 | 0 | 100.0% |
+| `maternity.ts` | 20 | 20 | 0 | 0 | 0 | 100.0% |
+| `clinical.ts` | 18 | 18 | 0 | 0 | 0 | 100.0% |
 | `documents.ts` | 13 | 13 | 0 | 0 | 0 | 100.0% |
 | `me.ts` | 10 | 6 | 5 | 1 | 0 | 100.0% |
 | `consent.ts` | 8 | 8 | 0 | 0 | 0 | 100.0% |
@@ -80,16 +80,16 @@ Total covered = matrix ∪ exemptions = 457 unique routes; uncovered + covered =
 
 Routers with the most uncovered routes should be prioritised for adoption:
 
-- `maternity.ts`: 17 uncovered of 20
 - `fhir/router.ts`: 17 uncovered of 17
-- `inpatient.ts`: 15 uncovered of 27
 - `organization.ts`: 15 uncovered of 25
 - `terminology/router.ts`: 15 uncovered of 15
-- `diagnostics.ts`: 14 uncovered of 23
 - `directory.ts`: 11 uncovered of 23
 - `workforce-reference.ts`: 11 uncovered of 17
 - `workflow.ts`: 11 uncovered of 11
 - `admin.ts`: 10 uncovered of 20
+- `billing.ts`: 10 uncovered of 19
+- `radiology.ts`: 9 uncovered of 27
+- `finance.ts`: 9 uncovered of 26
 
 ## 4. Definitions
 

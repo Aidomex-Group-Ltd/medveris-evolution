@@ -8,19 +8,19 @@
 
 | Metric | Value |
 |---|---|
-| Matrix actions | 191 |
-| Matrix route patterns | 427 |
-| Matrix patterns matched to a real route | 427 |
-| Unique routes claimed by the matrix | 422 |
+| Matrix actions | 231 |
+| Matrix route patterns | 473 |
+| Matrix patterns matched to a real route | 473 |
+| Unique routes claimed by the matrix | 468 |
 | Non-permission endpoint patterns | 36 |
 | Non-permission patterns matched | 36 |
 | Unique routes covered by exemptions | 36 |
-| Total unique routes covered (matrix ∪ exemptions) | 457 |
+| Total unique routes covered (matrix ∪ exemptions) | 503 |
 | Inventory routes | 711 |
-| Uncovered inventory routes (gaps) | 254 |
+| Uncovered inventory routes (gaps) | 208 |
 | Stale matrix patterns | 0 |
 
-**Post-approval adoption (2026-11-12):** after owner approval of the gap mappings, the 24 reuse routes were bound (5 new action entries), the inventory NEW slice was adopted (13 new permissions, 13 new action entries; all 15 remaining inventory routes bound), the small-domain batch was adopted (22 new permissions/action entries; 30 routes across emergency, telehealth, documents, AI, devices, facility logo, subscription checkout, procurement and platform observability, plus the clinical draft route), and the operations/content batch was adopted (27 new permissions/action entries; 33 routes). Totals above reflect all slices; the Stage 3 baseline was 125 actions / 325 patterns / 320 matrix routes / 356 gaps.
+**Post-approval adoption (2026-11-12):** after owner approval of the gap mappings, the 24 reuse routes were bound (5 new action entries), the inventory NEW slice was adopted (13 new permissions, 13 new action entries; all 15 remaining inventory routes bound), the small-domain batch was adopted (22 new permissions/action entries; 30 routes across emergency, telehealth, documents, AI, devices, facility logo, subscription checkout, procurement and platform observability, plus the clinical draft route), the operations/content batch was adopted (27 new permissions/action entries; 33 routes), and the maternity/inpatient/diagnostics batch was adopted (40 new permissions/action entries; 46 routes). Totals above reflect all slices; the Stage 3 baseline was 125 actions / 325 patterns / 320 matrix routes / 356 gaps.
 
 ## 2. Corrections Applied
 
@@ -56,7 +56,7 @@ These routes are intentionally bound to more than one action (layered/dual check
 
 ## 4. Uncovered Inventory Routes (Coverage Gaps)
 
-254 inventory routes have neither a matrix action nor a declared non-permission exemption. 
+208 inventory routes have neither a matrix action nor a declared non-permission exemption. 
 These are reported, not auto-bound: assigning permissions to them is an owner-approved security decision and must not be guessed. 
 They are candidates for Stage 5 route adoption or for explicit exemption with justification.
 
@@ -66,8 +66,8 @@ They are candidates for Stage 5 route adoption or for explicit exemption with ju
 > remaining 15 inventory routes (inventory is 51/51 covered). The small-domain batch added 30 more
 > covered routes (emergency, telehealth, documents, AI, devices, facility logo, subscription
 > checkout, procurement, platform observability, clinical draft). The operations/content batch
-> added 33 more covered routes (operations support services and content/dashboard routes); the
-> remaining 254 gaps are approved NEW mappings awaiting adoption.
+> added 33 more covered routes and the maternity/inpatient/diagnostics batch added 46 more
+> (maternity, inpatient, diagnostics); the remaining 208 gaps are approved NEW mappings awaiting adoption.
 
 | Router | Uncovered |
 |---|---|
