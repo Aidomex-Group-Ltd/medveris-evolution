@@ -30,7 +30,7 @@ export const PLATFORM_ACTIONS: readonly MatrixEntry[] = [
     scope: "platform",
     permission: "platform.operations.manage",
     routeFile: "platform-observability.ts",
-    routePatterns: ["GET /platform/observability/overview", "GET /platform/observability/security", "GET /platform/observability/jobs"],
+    routePatterns: ["GET /platform/observability/overview", "GET /platform/observability/security", "GET /platform/observability/jobs", "GET /platform/observability/security-events"],
     enforcement: "platform-operator",
     tenantBound: false,
     rls: true,

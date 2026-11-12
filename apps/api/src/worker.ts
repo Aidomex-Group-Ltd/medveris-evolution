@@ -290,6 +290,9 @@ export default {
       if (result.grants?.error) {
         console.error(JSON.stringify({ event: "grant_expiry_failed", message: result.grants.error }));
       }
+      if (result.security?.error) {
+        console.error(JSON.stringify({ event: "security_anomaly_failed", message: result.security.error }));
+      }
       console.log(JSON.stringify({
         event: "jobs_cycle",
         processed: result.processed,
@@ -298,6 +301,7 @@ export default {
         reclaimed: result.reclaimed.processing + result.reclaimed.queued,
         checkpoints: result.checkpoints.map((checkpoint) => ({ tenant: checkpoint.tenantId, batch: checkpoint.batchNumber, count: checkpoint.eventCount })),
         grantsRevoked: result.grants?.revoked ?? 0,
+        securityAnomaly: result.security?.flagged ?? false,
       }));
       if (config.contentFeedsEnabled) {
         try {

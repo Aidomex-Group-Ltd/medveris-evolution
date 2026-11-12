@@ -7,6 +7,7 @@ import { handleEvent, relayOutbox, type QueueProducer, type RealtimeSink, type R
 import { runBillingCycle, type BillingCycleResult } from "./billing.js";
 import { maybeExpireStaleGrants, type GrantExpiryResult } from "./grants.js";
 import { maybePurgeExpiredExports, type ExportPurgeResult } from "./exports.js";
+import { maybeFlagSecurityAnomaly, type SecurityAnomalyResult } from "./security.js";
 
 export interface JobsCycleResult {
   processed: number;
@@ -23,6 +24,8 @@ export interface JobsCycleResult {
   grantsError: string | null;
   exports: ExportPurgeResult | null;
   exportsError: string | null;
+  security: SecurityAnomalyResult | null;
+  securityError: string | null;
 }
 
 /** Subscription lifecycle work is daily or hourly in nature; running it every few minutes is enough. */
@@ -132,10 +135,15 @@ export async function runJobsCycle(
   const notifications = await maybeScanNotifications(sql);
   const grants = await maybeRunGrants(sql, signingKey, keyId);
   const exports = await maybeRunExportPurge(sql);
+  const security = await maybeFlagSecurityAnomaly(sql).catch((error: unknown) => {
+    logEvent("error", "security_anomaly_failed", errorFields(error, false));
+    return null;
+  });
+  const securityPart = { security, securityError: security?.error ?? null };
   try {
     const checkpoints = await checkpointAllTenants(sql, signingKey, keyId);
-    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing, ...notifications, ...grants, ...exports };
+    return { processed, relay, reclaimed, backlog, checkpoints, checkpointError: null, ...billing, ...notifications, ...grants, ...exports, ...securityPart };
   } catch (error) {
-    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message, ...billing, ...notifications, ...grants, ...exports };
+    return { processed, relay, reclaimed, backlog, checkpoints: [], checkpointError: (error as Error).message, ...billing, ...notifications, ...grants, ...exports, ...securityPart };
   }
 }

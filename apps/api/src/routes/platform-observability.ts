@@ -147,6 +147,39 @@ platformObservabilityRoutes.get("/platform/observability/traces", async (c) => {
   });
 });
 
+const SPAN_MINUTES: Record<ObservabilitySpan, number> = {
+  "1h": 60,
+  "6h": 360,
+  "24h": 1440,
+  "7d": 10080,
+};
+
+/**
+ * Security-relevant audit rollups over a sliding window: counts only (action, decision, reasonCode),
+ * never identifiers. The SQL function is SECURITY DEFINER, platform_operator-gated and allowlisted.
+ */
+platformObservabilityRoutes.get("/platform/observability/security-events", async (c) => {
+  requireOperator(c);
+  const span = spanParam(c);
+  const rows = await withPlatformActor(c, (tx) => tx`select * from app.security_event_summary(${SPAN_MINUTES[span]})`);
+  const events = rows.map((row) => ({
+    action: String(row.action),
+    decision: row.decision == null ? null : String(row.decision),
+    reasonCode: row.reasonCode == null ? null : String(row.reasonCode),
+    events: Number(row.events),
+  }));
+  const total = events.reduce((sum, row) => sum + row.events, 0);
+  const denied = events.filter((row) => row.decision === "deny").reduce((sum, row) => sum + row.events, 0);
+  return c.json({
+    generatedAt: new Date().toISOString(),
+    source: "app-local",
+    note: "Counts only; no identifiers are returned. WAF/Bot signals remain in the Cloudflare dashboard.",
+    span,
+    totals: { events: total, denied },
+    events,
+  });
+});
+
 /** Outbox backlog and job relay settings from this deployment's database, not Cloudflare. */
 platformObservabilityRoutes.get("/platform/observability/jobs", async (c) => {
   requireOperator(c);

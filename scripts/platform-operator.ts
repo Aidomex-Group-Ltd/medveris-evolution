@@ -14,6 +14,7 @@
 import { createSql, setLocalContext } from "@medveris/db";
 import { loadConfig } from "../apps/api/src/config.js";
 import { assertBreakGlassAllowed, breakGlassGrant, revokePlatformRoleGrant } from "../apps/api/src/lib/platform-roles.js";
+import { writeAudit } from "../apps/api/src/lib/audit.js";
 import { loadLocalEnv, requireEnv } from "./lib.js";
 
 loadLocalEnv();
@@ -43,12 +44,27 @@ const sql = createSql(requireEnv("MIGRATION_DATABASE_URL"), { max: 1 });
 
 try {
   if (command === "list") {
-    const rows = await sql`
-      select user_id, role, granted_at, expires_at, revoked_at
-        from platform_roles
-       where role = 'platform_operator'
-       order by granted_at nulls last
-    `;
+    const rows = await sql.begin(async (tx) => {
+      await setLocalContext(tx, { actorKind: "system" });
+      // Same session flag the grant path uses: platform_roles is FORCE RLS, and a read for
+      // operator review must not be blocked for the operator who lost standing.
+      await tx`select set_config('app.platform_roles_bootstrap', 'true', true)`;
+      const listed = await tx`
+        select user_id, role, granted_at, expires_at, revoked_at
+          from platform_roles
+         where role = 'platform_operator'
+         order by granted_at nulls last
+      `;
+      await writeAudit(tx, config, {
+        actorKind: "system",
+        actorUserId: flag(args, "actor"),
+        action: "platform_operator.list",
+        resourceType: "PlatformRole",
+        resourceId: null,
+        metadata: { command: "list", rows: listed.length },
+      });
+      return listed;
+    });
     console.log(JSON.stringify(rows.map((row) => ({
       userId: row.userId,
       grantedAt: row.grantedAt,
