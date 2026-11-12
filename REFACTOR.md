@@ -705,3 +705,179 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: none; improves accuracy of remaining work.
 - External dependencies/blockers: runtime route rewiring and 1.2+ monolith extraction are feasible but large/risk-sensitive slices; 2.3 generalized dual-approval, 6.x payroll/expenditure/reporting, 7.x unified order routing, 8.x configurable cadres/invitation flows, 9.x terminology/ICD-11/SNOMED/LOINC/DICOMweb completeness, 10.2/10.3 full evidence, and provider/governance/licensing-dependent items remain blocked or require substantial scoped implementation beyond this increment.
 - Status: completed (tracker update). No additional functional implementation performed in this increment to avoid unverified/high-risk changes without a bounded approved slice.
+
+
+---
+
+## Program: Authentication simplification, interoperability, security hardening & observability (2026-11-12)
+
+**Requested scope:** phased refactoring of the existing Medveris platform focusing on authentication simplification, clinical interoperability, security hardening, and operational observability. Improve existing implementation without unnecessarily rebuilding working components or disrupting existing clinical workflows. Patient privacy, clinical data integrity, interoperability, security, and continuity of service take priority over interface changes or architectural experimentation.
+
+**Execution constraints (program-specific):**
+- Inspect existing architecture before modifying anything; preserve working functionality and existing database relationships.
+- Avoid unnecessary dependencies and duplicate services.
+- Implement only one phase at a time; run relevant automated tests and regression checks after each phase.
+- Document modified files, implementation decisions, and test results; report outstanding issues before requesting authorization to proceed.
+- **Do not proceed to the next phase without reviewing and approving the previous phase.**
+- No undocumented backdoors or unauthenticated elevation mechanisms.
+
+### Phase sequence
+
+| Phase | Title | Status | Gate |
+|---|---|---|---|
+| 1 | Authentication interface simplification | **planning/report ready for review** (no code changes applied) | Approval required before implementation/proceeding |
+| 2 | Authentication logic and role-based access | pending | After Phase 1 approval & verification |
+| 3 | Clinical interoperability and patient identity preservation | pending | After Phase 2 approval & verification |
+| 4 | Security hardening and CIA enforcement | pending | After Phase 3 approval & verification |
+| 5 | Cloudflare Workers and observability infrastructure | pending | After Phase 4 approval & verification |
+| 6 | Dedicated Observability Support Center | pending | After Phase 5 approval & verification |
+
+### Phase 1 — Authentication interface simplification (requirements)
+- Redesign existing authentication portal into a single, streamlined authentication container.
+- Remove redundant explanatory text and duplicated platform descriptions from authentication pages; retain platform value propositions, security information, and broader product explanations on the existing landing page.
+- Introduce a toggle switch allowing users to select exclusively between **Patient** and **Healthcare Provider** views.
+- Dynamically adapt registration and sign-in forms according to the selected role.
+- Maintain Sign In and Sign Up functionality within the same container.
+- Preserve password recovery, validation, accessibility, and existing authentication mechanisms.
+- Ensure responsive behavior across desktop and mobile devices.
+- **No duplicated authentication interfaces.**
+
+### Phase 2 — Authentication logic and role-based access (requirements)
+- Preserve existing authentication infrastructure while strengthening RBAC.
+- Maintain separate patient and healthcare provider registration workflows; validate account roles on backend.
+- Prevent unauthorized privilege escalation.
+- Preserve existing identity verification, session management, and account recovery.
+- Keep platform operators and privileged administrators separate from ordinary healthcare accounts.
+- Ensure all protected resources enforce server-side authorization.
+
+### Phase 3 — Clinical interoperability and patient identity (requirements)
+- Maintain existing MEDITECH interoperability framework and associated clinical workflows.
+- Preserve: Master Patient Index (MPI) and patient identity reconciliation; automated consent management and consent revocation; emergency break-glass access (justification, time limitations, audit trails, post-access review); real-time clinical data synchronization; appropriate handling of synchronization failures and conflicting records.
+- Maintain interoperability with applicable standards: HL7 FHIR, ICD-11, LOINC, DICOMweb, SNOMED CT (within existing/licensed/implemented capabilities; gaps/dependencies must be documented, not falsely claimed).
+- Do not compromise patient identity integrity or existing clinical data relationships.
+
+### Phase 4 — Security hardening (requirements)
+- Enforce Confidentiality, Integrity, and Availability (CIA) throughout the platform.
+- Protect sensitive patient information in transit and at rest; enforce least-privilege access.
+- Mitigate SQL injection, NoSQL injection, XSS, CSRF, command injection, and other applicable attack vectors.
+- Validate API inputs and enforce backend authorization.
+- Maintain reliable audit trails for clinical, administrative, and privileged operations.
+- Implement appropriate rate limiting, abuse prevention, backup, and recovery mechanisms.
+- Protect credentials, secrets, and privileged configuration.
+
+### Phase 5 — Cloudflare Workers and observability (requirements)
+- Integrate Cloudflare Workers into observability and security architecture.
+- Establish secure telemetry and event collection; monitor authentication anomalies and suspicious API activity.
+- Implement real-time security event processing and intrusion detection where supported.
+- Introduce automated alerting and incident prioritization; monitor infrastructure and application health.
+- Protect telemetry against unauthorized access or modification; ensure observability failures do not interrupt core clinical operations.
+- Implement secure terminal-based platform operator elevation with: strong operator authentication, MFA where applicable, time-limited privilege elevation, explicit authorization and justification, comprehensive command/activity auditing, automatic privilege revocation. No undocumented backdoors or unauthenticated elevation mechanisms.
+
+### Phase 6 — Dedicated Observability Support Center (requirements)
+- Maintain a dedicated, hidden Observability Support Center accessible only through its specifically configured URL (not in ordinary public navigation, patient dashboards, or healthcare provider dashboards).
+- Access independently protected through authentication, MFA, and server-side role-based authorization.
+- Modules: **Telemetry** (app/infra health, API/auth/security events, clinical sync status), **Alerting** (intrusion/suspicious auth/infra failures/critical security), **Ticketing** (incident creation/classification/severity/assignment/investigation/resolution/closure), **Reporting** (security, availability, performance, incident summaries, operator activity/audit).
+- Every operational module protected by backend authorization; all operator activities auditable.
+
+### Final deliverables (upon completion)
+- Architectural change summary; modified and newly created files; database migration details.
+- Authentication and authorization test results; clinical interoperability verification; security assessment.
+- Cloudflare observability configuration; Support Center access and operator administration instructions.
+- Deployment, rollback, and recovery instructions.
+
+### Phase 1 — Read-only implementation report (2026-11-12, for review)
+
+**Status:** inspection complete; **no Phase 1 code changes applied** pending review/approval.
+
+#### Current-state findings (relevant files inspected)
+- **Routes/shell:** `apps/web/src/App.tsx` — public routes include `/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/mfa-setup`, `/accept-invitation`; landing at `/` via `RootGate` → `LandingPage` for unauthenticated.
+- **Auth UI:** `apps/web/src/pages/LoginPage.tsx` (custom `mv-auth` two-column intro+panel, tabs general/staff, password→MFA challenge flow including email code/recovery/dev code, synthetic demo accounts card, links to register/forgot/about/help/contacts). `apps/web/src/pages/RegisterPage.tsx` (same split layout, patient form vs facility/workspace via `WorkspaceSignup`; legal acceptance fetch; duplicated intro copy/value props). `apps/web/src/components/AuthFrame.tsx` used by recovery-related flows (two-column frame). `apps/web/src/components/WorkspaceSignup.tsx` large multi-path provider signup (independent/organization/join, legal, account, review) embedded in register.
+- **Landing:** `apps/web/src/pages/landing/LandingPage.tsx` + `landing.css` — hero/value props/benefits/levels/footer, CTAs to sign in and facility signup.
+- **Auth client/state:** `apps/web/src/lib/auth.tsx` (`login`, `loginMfa`, refresh `/me`, logout, tenant switch, CSRF handling). `apps/web/src/lib/api.ts` (CSRF, credentials, `VITE_API_BASE_URL`).
+- **Backend auth:** `apps/api/src/routes/auth.ts` — endpoints for register patient/facility/workspace, org search/join-code lookup, login, login MFA (TOTP/email/recovery), MFA enroll, verify-email/resend, forgot/reset password, invitations (status/register/accept/decline), dev TOTP helper (guarded), rate limiting/audit/legal acceptance/session cookies. Separate workflows preserved; server-side session/tenant/MFA enforcement present.
+- **Authz/RBAC/guards:** `apps/web/src/components/ProtectedRoute.tsx`, `apps/web/src/lib/nav.ts`, `packages/authz/*`, API middleware/matrix (711 routes covered at registry level; handlers largely inline). Platform/operator and tenant roles separated in model.
+- **Styles/responsive:** shared `mv-auth*` classes in web styles/components; pages are responsive in parts but layouts/copy duplicated across login/register.
+
+#### Gaps vs Phase 1 requirements
+- **Not a single streamlined container:** sign-in and sign-up are separate pages/routes (`/login`, `/register`) with duplicated two-column intros, repeated brand/value/security text.
+- **No exclusive Patient/Healthcare Provider toggle adapting forms:** login has general/staff tabs; register splits by `?type=patient|facility`; no unified role toggle driving both sign-in and sign-up views in one container.
+- **Redundant explanatory text on auth pages:** feature lists, security/value copy repeated in login/register intros; should move/remain on landing page.
+- **Risk of duplication:** facility/workspace/provider onboarding (`WorkspaceSignup`) is complex and must remain functional; naïve consolidation could regress workflows.
+
+#### Proposed implementation approach (Phase 1, pending approval)
+1. **Single auth container/route:** consolidate into one primary authentication experience (e.g. `/auth` or reuse `/login` as canonical) rendering one streamlined card/container with two orthogonal controls: **mode** `Sign in | Sign up` and **role view toggle** `Patient | Healthcare Provider` (exclusive). Redirect legacy `/login`, `/register` query variants to the unified container preserving intent/return paths; keep deep links (e.g. invitation acceptance, password reset, verify email) on their dedicated flow pages but visually consistent and non-duplicative where possible.
+2. **Dynamic forms by role:**
+   - *Patient*: sign-in = existing email/password + MFA flow; sign-up = existing patient registration fields/legal acceptance calling existing `/auth/register/patient`.
+   - *Healthcare Provider*: sign-in = existing staff/general sign-in semantics (preserve facility-staff context handling and invitation-based onboarding entry points, not public self-escalation); sign-up = existing provider/facility/workspace registration paths (`/auth/register/facility` and/or workspace flows) surfaced appropriately without duplicating interfaces. Keep platform operators/privileged admins out of ordinary provider signup.
+3. **Simplify auth-page copy:** remove duplicated platform descriptions/value propositions from auth container; keep concise trust/security/access cues necessary for auth (e.g. MFA/verified assignment note) and retain full value props on landing page. Reuse `AuthFrame` or a simplified shared shell to avoid parallel implementations.
+4. **Preserve mechanisms:** reuse existing `useAuth().login/loginMfa`, API calls, validation, password recovery links (`/forgot-password`), MFA/email/recovery/dev-code behavior, legal acceptance, CSRF/session handling, accessibility labels/roles, and responsive layout.
+5. **Decomposition:** extract small focused components/hooks if needed (e.g. auth role toggle, sign-in form, patient/provider sign-up panels) to keep files maintainable without behavior change.
+
+#### Files likely in scope (subject to implementation inspection)
+- `apps/web/src/App.tsx` (routes/redirects), `apps/web/src/pages/LoginPage.tsx`, `apps/web/src/pages/RegisterPage.tsx`, `apps/web/src/components/AuthFrame.tsx`, possibly new `apps/web/src/pages/AuthPage.tsx` or `components/auth/*`, `apps/web/src/components/WorkspaceSignup.tsx` (integration/reuse, minimal changes), `apps/web/src/pages/landing/*` (only if copy must be retained/moved), `apps/web/src/styles.css` / auth-related styles, `apps/web/src/lib/navigation.ts` or route helpers.
+- **No backend/API/DB changes planned for Phase 1** unless a defect is discovered (would be documented and separately justified).
+
+#### Risks / decisions needing review
+- **Provider "sign up" meaning:** current system has patient self-registration, legacy facility registration, and richer workspace signup (independent/org/join). A single toggle-driven form must not hide or break these paths; proposed to present provider signup as a clear choice within the provider view reusing existing flows/components.
+- **Facility staff sign-in distinction:** existing "Facility staff sign-in" tab vs general; must preserve correct post-login destination and verified-assignment semantics.
+- **Legacy URLs/bookmarks/emails:** redirects from `/login` and `/register` must preserve query params (`as`, `type`, `from`/return path) to avoid breaking invitations and navigation.
+- **No duplicate interfaces:** password reset/verify/MFA-setup/invitation acceptance are separate secured flows by necessity; keep them consistent but not presented as alternate sign-in/sign-up portals.
+
+#### Verification plan (Phase 1, on approval)
+- Targeted manual/viewport checks (mobile/tablet/desktop) for toggle states, sign-in, sign-up, MFA, recovery links, redirects, accessibility (labels, focus, keyboard).
+- Automated: `npm run typecheck`, `npm run lint`, relevant web/unit tests, and auth-related integration tests as environment allows; add/update tests for unified auth container behavior where practical.
+- Regression focus: patient login/register, provider login, password recovery, email verification, MFA challenge paths, invitation acceptance links.
+
+### Full work plan — piece-by-piece tasks (Phases 1–6)
+
+#### Phase 1 — Authentication interface simplification
+1.1 **Inventory & mapping (read-only, done):** confirm all auth entry points, query params, redirects, and components (`/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/mfa-setup`, `/accept-invitation`, `RootGate`, landing CTAs).
+1.2 **UX/state design:** define unified state model `{ role: 'patient'|'provider', mode: 'signin'|'signup' }`, URL param mapping, and canonical route.
+1.3 **Shared streamlined container:** implement/refactor a single auth container component with exclusive role toggle and sign-in/sign-up switch; remove duplicated intro/value-prop blocks from auth views.
+1.4 **Patient flows:** wire patient sign-in (password + MFA) and patient sign-up (existing fields/legal/endpoint) into container.
+1.5 **Provider flows:** wire provider sign-in and provider sign-up (reuse `WorkspaceSignup`/facility registration paths as appropriate) into container without privilege escalation or duplicate UI.
+1.6 **Routing & compatibility:** update `App.tsx` routes/redirects; preserve return paths and legacy params.
+1.7 **Recovery/accessibility/responsive pass:** ensure forgot/reset/verify/MFA links and flows preserved; a11y (labels, toggle semantics, focus) and responsive stacking/full-width behavior.
+1.8 **Verification & report:** run checks/tests, document files/decisions/results/issues, request approval before Phase 2.
+
+#### Phase 2 — Authentication logic and role-based access
+2.1 **Backend audit:** review `apps/api/src/routes/auth.ts`, session/tenant resolution, invitation/onboarding, and registration endpoints for role validation and privilege boundaries.
+2.2 **Role validation hardening:** ensure registration/login paths cannot self-assign elevated/platform roles; validate and constrain role-bearing inputs server-side.
+2.3 **Authorization consistency:** verify protected resources enforce server-side authorization (align with existing authz/matrix/middleware); close gaps found in touched auth flows.
+2.4 **Separation guarantees:** confirm platform operators/privileged administrators remain separate from ordinary healthcare accounts in data paths and APIs.
+2.5 **Preservation checks:** regression-test identity verification, session management, MFA, account recovery, tenant switching.
+2.6 **Tests & report:** add/update unit/integration tests for role validation and denied escalation; document results.
+
+#### Phase 3 — Clinical interoperability and patient identity preservation
+3.1 **Architecture inventory:** map MPI/identity reconciliation, consent grant/revoke, break-glass, clinical sync, and conflict handling code paths (`consent`, `data-exchange`, `fhir`, `terminology`, DICOM, sync/jobs/services).
+3.2 **MPI & identity integrity:** verify reconciliation/linking rules and prevent regressions in patient identity relationships.
+3.3 **Consent & break-glass:** validate automated consent management/revocation and emergency break-glass controls (justification, time limits, audit trails, post-access review) remain enforced.
+3.4 **Sync & conflict handling:** review real-time sync/failure/conflict behavior; harden handling where safe and evidence-backed.
+3.5 **Standards posture:** document current support/limits for HL7 FHIR, ICD-11, LOINC, DICOMweb, SNOMED CT; implement only safe, non-breaking improvements within existing/licensed capabilities.
+3.6 **Verification & report:** interoperability-focused tests/checks and documented gaps/dependencies.
+
+#### Phase 4 — Security hardening and CIA enforcement
+4.1 **Threat-surface review:** inputs, authz boundaries, file/upload/export paths, logging/error surfaces, secrets/config handling.
+4.2 **Input validation & injection defenses:** confirm parameterized queries/ORM usage, validate/sanitize inputs, mitigate XSS/CSRF/command-injection vectors per framework capabilities.
+4.3 **Data protection:** review PHI/secrets in transit/at rest assumptions, storage, and response/log redaction.
+4.4 **Abuse resistance & resilience:** rate limiting, lockout/progressive controls, audit completeness for clinical/admin/privileged ops, backup/recovery mechanism documentation/checks.
+4.5 **Least privilege:** tighten access where gaps found without breaking authorized workflows.
+4.6 **Assessment, tests & report:** targeted security tests and documented residual risks.
+
+#### Phase 5 — Cloudflare Workers and observability infrastructure
+5.1 **Current-state review:** `wrangler.jsonc`, `apps/api/src/worker.ts`, observability modules/routes (`lib/observability`, `observability/*`, `routes/platform-observability.ts`), logging/audit/metrics hooks.
+5.2 **Secure telemetry pipeline:** structured, privacy-safe event collection (auth anomalies, suspicious API activity, health signals) with access controls.
+5.3 **Detection & alerting:** implement/support anomaly detection, real-time processing where feasible on Workers/DOs/Queues, automated alerting and incident prioritization with failure isolation (observability must not break core clinical ops).
+5.4 **Terminal platform-operator elevation:** design/implement secure, audited, time-limited elevation flow (strong auth, MFA, explicit authorization/justification, command/activity auditing, automatic revocation) using existing platform-role model; no backdoors.
+5.5 **Config & protection:** protect telemetry storage/access; document required bindings/secrets/permissions.
+5.6 **Verification & report:** tests for authz/auditing/failure isolation and configuration evidence.
+
+#### Phase 6 — Dedicated Observability Support Center
+6.1 **Access model & routing:** hidden, URL-only route (not in public/patient/provider nav) with independent auth/MFA and server-side RBAC (platform/operator/support roles as defined).
+6.2 **Backend modules/APIs:** Telemetry, Alerting, Ticketing, Reporting endpoints/data models with strict authorization and full operator audit trails (additive schema/migrations only if needed, with rollback/compat notes).
+6.3 **Frontend center:** dedicated UI shell and four modules bound to authorized APIs; no exposure in ordinary dashboards/navigation.
+6.4 **Operational integrity:** incident lifecycle (create/classify/severity/assign/investigate/resolve/close), report generation, operator activity views.
+6.5 **Verification & report:** RBAC/negative tests, audit verification, hidden-route/access checks.
+6.6 **Final program deliverables:** consolidated architecture summary, file/migration inventory, test/verification results, security assessment, Cloudflare config, access/admin instructions, deployment/rollback/recovery.
+
+**Program note:** Phases 3–6 include areas dependent on existing capabilities, environment configuration, licensed terminology content, partner/PACS systems, and operational governance; such constraints will be implemented where feasible and explicitly documented (not claimed complete) per phase reports.
