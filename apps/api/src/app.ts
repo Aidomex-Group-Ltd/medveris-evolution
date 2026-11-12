@@ -37,6 +37,7 @@ import { aiRoutes } from "./routes/ai.js";
 import { emergencyRoutes } from "./routes/emergency.js";
 import { careRoutes } from "./routes/care.js";
 import { organizationRoutes } from "./routes/organization.js";
+import { erpnextRoutes } from "./routes/erpnext.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { documentRoutes } from "./routes/documents.js";
 import { maternityRoutes } from "./routes/maternity.js";
@@ -222,6 +223,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", careRoutes);
   app.route("/api/v1", workforceReferenceRoutes);
   app.route("/api/v1", organizationRoutes);
+  app.route("/api/v1", erpnextRoutes);
   app.route("/api/v1", workspaceRoutes);
   app.route("/api/v1", organizationsRoutes);
   app.route("/api/v1", procurementRoutes);

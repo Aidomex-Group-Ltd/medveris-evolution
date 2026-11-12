@@ -44,6 +44,13 @@ function modeVar(env: EnvLike, name: string, fallback: IntegrationMode = "live")
   return raw;
 }
 
+/** ERPNEXT_MODE must be off or live; there is no Medveris ERPNext simulator. */
+function erpnextMode(mode: string | undefined): IntegrationMode {
+  const raw = (mode ?? "").trim() || "off";
+  if (raw !== "off" && raw !== "live") throw new Error("ERPNEXT_MODE must be off or live");
+  return raw as IntegrationMode;
+}
+
 /** YO_MODE=disabled is off, YO_MODE=mock is the local mock gateway (sandbox); Yo!'s own sandbox and production endpoints are real provider connections. */
 function yoIntegrationMode(mode: string): IntegrationMode {
   if (mode === "disabled") return "off";
@@ -131,6 +138,7 @@ export interface AppConfig {
   aiModel: AiModelConfig;
   /** PACS connection; problems are reported through the integration registry, never at startup. */
   dicomweb: DicomwebConfig;
+  erpnext: ErpnextConfig;
   /** Deployment-level gate for the facility-scoped eHMIS/DHIS2 connector. */
   ehmis: EhmisConfig;
   /** Yo! Payments mobile money collections for point-of-sale bills. */
@@ -395,8 +403,25 @@ function paymentsConfig(env: EnvLike, appEnv: string): PaymentsConfig {
     },
   };
 }
+/**
+ * ERPNext/Frappe HRMS integration (Stage 4). Server-side only. `off` means nothing was requested;
+ * `live` talks to a real ERPNext site (local deployment in dev, licensed instance in hosting).
+ * There is deliberately no `sandbox`: the only supported targets are a real ERPNext API.
+ * Credentials are read from env at boot and are never logged, exported, or returned to clients.
+ */
+export interface ErpnextConfig {
+  /** ERPNext site root, without trailing slash, e.g. http://127.0.0.1:8069. */
+  baseUrl: string | null;
+  /** Frappe API token pair of the dedicated service account ("key:secret"). */
+  apiKey: string | null;
+  apiSecret: string | null;
+  timeoutMs: number;
+  /** ERPNext Company record this Medveris tenant maps to (set after mapping is approved). */
+  company: string | null;
+}
 
 export interface DicomwebConfig {
+
   /** DICOMweb service root (QIDO-RS and WADO-RS), without a trailing slash. */
   baseUrl: string | null;
   auth: "none" | "basic" | "bearer";
@@ -702,6 +727,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     },
     features: {
       dicomweb: bool(env.FEATURE_DICOMWEB, false),
+      erpnext: bool(env.FEATURE_ERPNEXT, false),
       lab: bool(env.FEATURE_LAB, false),
       pharmacy: bool(env.FEATURE_PHARMACY, false),
       telemedicine: bool(env.FEATURE_TELEMEDICINE, false),
@@ -715,6 +741,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     },
     modes: {
       dicomweb: modeVar(env, "DICOMWEB_MODE"),
+      erpnext: erpnextMode(env.ERPNEXT_MODE),
       lab: modeVar(env, "LAB_MODE"),
       pharmacy: modeVar(env, "PHARMACY_MODE"),
       telemedicine: modeVar(env, "TELEMEDICINE_MODE"),
@@ -770,6 +797,13 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
       apiKey: env.FX_API_KEY?.trim() || null,
       lockMinutes: Math.max(1, Math.min(integer(env.FX_LOCK_MINUTES, 15), 60)),
       timeoutMs: Math.max(1_000, Math.min(integer(env.FX_TIMEOUT_MS, 8_000), 30_000)),
+    },
+    erpnext: {
+      baseUrl: (env.ERPNEXT_BASE_URL ?? "").trim().replace(/\/+$/, "") || null,
+      apiKey: env.ERPNEXT_API_KEY?.trim() || null,
+      apiSecret: env.ERPNEXT_API_SECRET || null,
+      timeoutMs: Math.max(1_000, Math.min(integer(env.ERPNEXT_TIMEOUT_MS, 10_000), 30_000)),
+      company: env.ERPNEXT_COMPANY?.trim() || null,
     },
     dicomweb: {
       baseUrl: (env.DICOMWEB_BASE_URL ?? "").trim().replace(/\/+$/, "") || null,
