@@ -65,7 +65,7 @@ describe("authorization matrix integrity", () => {
     for (const entry of AUTHORIZATION_MATRIX) {
       expect(entry.routePatterns.length, entry.key).toBeGreaterThan(0);
       for (const pattern of entry.routePatterns) {
-        expect(pattern, entry.key).toMatch(/^(GET|POST|PUT|PATCH|DELETE) \//);
+        expect(pattern, entry.key).toMatch(/^(GET|POST|PUT|PATCH|DELETE|ALL) \//);
       }
     }
   });

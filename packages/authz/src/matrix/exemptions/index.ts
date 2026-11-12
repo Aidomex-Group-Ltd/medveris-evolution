@@ -34,21 +34,21 @@ export const NON_PERMISSION_ENDPOINTS: readonly NonPermissionEndpoint[] = [
   },
   {
     routeFile: "payment-callbacks.ts",
-    routePatterns: ["POST /public/payments/livepay/webhook", "POST /public/payments/yo/notifications", "POST /public/payments/yo/subscriptions"],
+    routePatterns: ["POST /public/payments/livepay/webhook", "POST /public/payments/yo/notifications", "POST /public/payments/yo/subscriptions", "POST /public/payments/yo/failures", "POST /public/payments/yo/subscriptions/failures"],
     kind: "webhook",
     controls: ["signature-verification", "provider-reference-tenant-resolution", "idempotency", "rate-limit"],
   },
   {
     routeFile: "auth.ts",
-    routePatterns: ["POST /auth/login", "POST /auth/login/mfa", "POST /auth/register/patient", "POST /auth/register/workspace", "POST /auth/forgot-password", "POST /auth/reset-password", "POST /auth/verify-email", "POST /auth/invitations/register", "POST /auth/invitations/accept"],
+    routePatterns: ["POST /auth/login", "POST /auth/login/mfa", "POST /auth/register/patient", "POST /auth/register/workspace", "POST /auth/register/facility", "POST /auth/forgot-password", "POST /auth/reset-password", "POST /auth/verify-email", "POST /auth/login/mfa/email", "POST /auth/invitations/register", "POST /auth/invitations/accept", "POST /auth/invitations/status", "POST /auth/invitations/decline", "GET /auth/organizations/search", "POST /auth/join-codes/lookup"],
     kind: "flow-token",
-    controls: ["rate-limit", "token-verification", "csrf-exemption-by-design", "server-side-tenant-resolution"],
+    controls: ["rate-limit", "token-verification", "csrf-exemption-by-design", "server-side-tenant-resolution", "minimal-disclosure"],
   },
   {
     routeFile: "auth.ts",
-    routePatterns: ["GET /auth/session", "POST /auth/logout", "POST /auth/mfa/enroll/start", "POST /auth/mfa/enroll/verify"],
+    routePatterns: ["GET /auth/session", "POST /auth/logout", "POST /auth/mfa/enroll/start", "POST /auth/mfa/enroll/verify", "POST /auth/verify-email/resend", "GET /auth/totp/dev"],
     kind: "authenticated-self",
-    controls: ["requireAuth", "self-scope", "session-revocation"],
+    controls: ["requireAuth", "self-scope", "session-revocation", "dev-only-guard"],
   },
   {
     routeFile: "me.ts",

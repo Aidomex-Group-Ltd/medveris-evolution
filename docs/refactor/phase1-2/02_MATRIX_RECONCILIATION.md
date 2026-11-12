@@ -56,20 +56,10 @@ These routes are intentionally bound to more than one action (layered/dual check
 
 ## 4. Uncovered Inventory Routes (Coverage Gaps)
 
-208 inventory routes have neither a matrix action nor a declared non-permission exemption. 
-These are reported, not auto-bound: assigning permissions to them is an owner-approved security decision and must not be guessed. 
-They are candidates for Stage 5 route adoption or for explicit exemption with justification.
+0 inventory routes remain uncovered. The final adoption batch and the verified exemptions closed the
+remaining 208 gaps (see §1). The per-router table below is retained as the Stage 3 baseline record.
 
-> **Addendum:** the per-router counts and full lists below are the Stage 3 baseline (356 gaps). The
-> 2026-11-12 reuse slice bound 24 routes across `inventory.ts` (-15), `radiology.ts` (-6),
-> `organizations.ts` (-2) and `onboarding.ts` (-1). The inventory NEW slice then bound the
-> remaining 15 inventory routes (inventory is 51/51 covered). The small-domain batch added 30 more
-> covered routes (emergency, telehealth, documents, AI, devices, facility logo, subscription
-> checkout, procurement, platform observability, clinical draft). The operations/content batch
-> added 33 more covered routes and the maternity/inpatient/diagnostics batch added 46 more
-> (maternity, inpatient, diagnostics); the remaining 208 gaps are approved NEW mappings awaiting adoption.
-
-| Router | Uncovered |
+| Router | Uncovered (baseline, closed) |
 |---|---|
 | `inventory.ts` | 30 |
 | `fhir/router.ts` | 17 |
