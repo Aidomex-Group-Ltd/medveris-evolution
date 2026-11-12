@@ -1,0 +1,55 @@
+import type { MatrixEntry } from "../types/index.js";
+
+/**
+ * pharmacy domain protected actions.
+ */
+export const PHARMACY_ACTIONS: readonly MatrixEntry[] = [
+  {
+    key: "medication.dispense",
+    domain: "pharmacy",
+    resource: "dispense",
+    verb: "execute",
+    description: "Dispense medication and manage pharmacy sales.",
+    scope: "tenant",
+    permission: "medication.dispense",
+    routeFile: "pharmacy.ts",
+    routePatterns: ["POST /dispenses", "POST /pharmacy/sales"],
+    enforcement: "policy",
+    tenantBound: true,
+    rls: true,
+    requirements: ["tenant", "membership", "mfa", "engagement", "department-scope"],
+    status: "canonical",
+  },
+  {
+    key: "medication.administration.record",
+    domain: "pharmacy",
+    resource: "medication-administration",
+    verb: "create",
+    description: "Record medication administration.",
+    scope: "tenant",
+    permission: "medication.administration.record",
+    routeFile: "pharmacy.ts",
+    routePatterns: ["POST /medication-administrations"],
+    enforcement: "policy",
+    tenantBound: true,
+    rls: true,
+    requirements: ["tenant", "membership", "mfa", "engagement", "care-relationship"],
+    status: "canonical",
+  },
+  {
+    key: "pharmacy.prescription.manage",
+    domain: "pharmacy",
+    resource: "prescription",
+    verb: "manage",
+    description: "Create, review or cancel prescriptions and medication orders.",
+    scope: "care-team",
+    permission: "clinical.order.create",
+    routeFile: "pharmacy.ts",
+    routePatterns: ["POST /medication-orders", "POST /medication-orders/:id/review", "POST /pharmacy/prescriptions", "POST /pharmacy/prescriptions/:id/cancel"],
+    enforcement: "policy",
+    tenantBound: true,
+    rls: true,
+    requirements: ["tenant", "membership", "mfa", "engagement", "care-relationship"],
+    status: "canonical",
+  },
+];

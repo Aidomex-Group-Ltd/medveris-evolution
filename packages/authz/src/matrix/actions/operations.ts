@@ -1,0 +1,57 @@
+import type { MatrixEntry } from "../types/index.js";
+
+/**
+ * operations domain protected actions.
+ */
+export const OPERATIONS_ACTIONS: readonly MatrixEntry[] = [
+  {
+    key: "operations.asset.manage",
+    domain: "operations",
+    resource: "operational-asset",
+    verb: "manage",
+    description: "Manage housekeeping, porter, mortuary and technical-service tasks/assets.",
+    scope: "tenant",
+    permission: "inventory.asset.manage",
+    routeFile: "operations.ts",
+    routePatterns: ["POST /housekeeping/tasks", "POST /porter/tasks", "POST /mortuary/cases", "POST /technical/work-orders"],
+    enforcement: "role-predicate",
+    tenantBound: true,
+    rls: true,
+    requirements: ["tenant", "membership", "mfa", "department-scope"],
+    status: "legacy",
+    notes: "Support-service role predicates remain authoritative; inventory asset permission is the nearest canonical permission.",
+  },
+  {
+    key: "operations.bed.readiness",
+    domain: "operations",
+    resource: "bed",
+    verb: "update",
+    description: "Record operational bed readiness.",
+    scope: "tenant",
+    permission: "ward.bed.manage",
+    routeFile: "operations.ts",
+    routePatterns: ["POST /operations/beds/:id/readiness"],
+    enforcement: "role-predicate",
+    tenantBound: true,
+    rls: true,
+    requirements: ["tenant", "membership", "mfa", "department-scope"],
+    status: "legacy",
+  },
+  {
+    key: "devices.manage",
+    domain: "operations",
+    resource: "device",
+    verb: "manage",
+    description: "Register devices, assign devices and acknowledge alerts.",
+    scope: "tenant",
+    permission: "inventory.asset.manage",
+    routeFile: "devices.ts",
+    routePatterns: ["POST /devices", "POST /devices/:id/assign", "POST /device-alerts/:id/acknowledge"],
+    enforcement: "role-predicate",
+    tenantBound: true,
+    rls: true,
+    requirements: ["tenant", "membership", "mfa", "department-scope"],
+    status: "legacy",
+    notes: "Device routes use staff/clinical predicates; inventory asset permission is the nearest canonical permission.",
+  },
+];

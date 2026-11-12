@@ -1,0 +1,56 @@
+import type { MatrixEntry } from "../types/index.js";
+
+/**
+ * platform domain protected actions.
+ */
+export const PLATFORM_ACTIONS: readonly MatrixEntry[] = [
+  {
+    key: "platform.operations.manage",
+    domain: "platform",
+    resource: "platform-operator",
+    verb: "manage",
+    description: "Request, approve, deny, cancel or revoke platform operator grants.",
+    scope: "platform",
+    permission: "platform.operations.manage",
+    routeFile: "admin.ts",
+    routePatterns: ["GET /admin/platform-operator/requests", "POST /admin/platform-operator/requests", "POST /admin/platform-operator/requests/:id/approve", "POST /admin/platform-operator/grants/:userId/revoke"],
+    enforcement: "platform-operator",
+    tenantBound: false,
+    rls: true,
+    requirements: ["platform-role", "mfa", "separation-of-duties"],
+    dualAuthorizationCandidate: true,
+    status: "canonical",
+  },
+  {
+    key: "platform.observability.read",
+    domain: "platform",
+    resource: "platform-observability",
+    verb: "read",
+    description: "Read platform observability aggregates.",
+    scope: "platform",
+    permission: "platform.operations.manage",
+    routeFile: "platform-observability.ts",
+    routePatterns: ["GET /platform/observability/overview", "GET /platform/observability/security", "GET /platform/observability/jobs"],
+    enforcement: "platform-operator",
+    tenantBound: false,
+    rls: true,
+    requirements: ["platform-role", "mfa"],
+    status: "canonical",
+  },
+  {
+    key: "platform.operations.status",
+    domain: "platform",
+    resource: "platform-status",
+    verb: "read",
+    description: "Read platform operator status/backlog.",
+    scope: "platform",
+    permission: "platform.operations.manage",
+    routeFile: "ops.ts",
+    routePatterns: ["GET /ops/status"],
+    enforcement: "platform-operator",
+    tenantBound: false,
+    rls: true,
+    requirements: ["platform-role", "mfa"],
+    status: "canonical",
+  },
+];

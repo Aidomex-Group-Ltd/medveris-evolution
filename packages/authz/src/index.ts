@@ -400,3 +400,29 @@ export {
   normalizeRolesForCompatibility,
 } from "./contract.js";
 export type { ActionDefinition, ActionVerb, DelegationBoundary, LegacyRoleCheckMapping, ResourceDomain } from "./contract.js";
+
+export {
+  AUTHORIZATION_MATRIX,
+  AUTHORIZATION_MATRIX_VERSION,
+  NON_PERMISSION_ENDPOINTS,
+  MatrixDeniedError,
+  assertMatrixAuthorized,
+  decideAction,
+  getMatrixEntry,
+  isKnownMatrixAction,
+  isKnownMatrixPermission,
+  matrixDualAuthorizationCandidates,
+  matrixEntriesForDomain,
+  matrixEntriesForPermission,
+  matrixEntriesForRouteFile,
+  matrixUnresolvedActions,
+} from "./matrix.js";
+export type {
+  AuthorizationScope,
+  MatrixDecision,
+  MatrixEnforcement,
+  MatrixEntry,
+  MatrixRequirement,
+  MatrixStatus,
+  NonPermissionEndpoint,
+} from "./matrix.js";

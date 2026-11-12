@@ -12,6 +12,8 @@ export const PERMISSIONS = [
   "patient.proxy.approve",
   "patient.register",
   "patient.lookup.exact",
+  "patient.merge.approve",
+  "patient.merge.request",
 
   "clinical.worklist.read_assigned",
   "clinical.record.read_authorized",
@@ -68,6 +70,7 @@ export const PERMISSIONS = [
   "credential.review",
   "care_team.read",
 
+  "finance.catalog.manage",
   "finance.dashboard.read",
   "finance.payment.record",
 
@@ -82,7 +85,7 @@ export const PERMISSIONS = [
   "content.opportunity.manage",
   "content.opportunity.moderate",
   "content.source.manage",
-
+  "document.template.publish",
   "dashboard.patient.read",
   "dashboard.clinician.read",
   "dashboard.specialist.read",
@@ -128,6 +131,7 @@ export const PERMISSIONS = [
 
   "audit.read",
   "platform.operations.manage",
+  "reports.run",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

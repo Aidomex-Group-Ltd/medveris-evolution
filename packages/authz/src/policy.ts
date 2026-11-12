@@ -18,6 +18,10 @@ export interface PolicyActor {
   membershipActive?: boolean;
   engagementActive?: boolean;
   departmentIds?: string[];
+  /** Organization ids the actor is a member of, when resolved server-side. */
+  organizationIds?: string[];
+  /** Unit id recorded on the actor's membership; null/absent means no unit scope. */
+  unitId?: string | null;
   cadreCodes?: string[];
   specialties?: string[];
   privileges?: string[];
@@ -58,6 +62,8 @@ export interface ResourceContext {
   ownerUserId?: string | null;
   authorUserId?: string | null;
   departmentId?: string | null;
+  unitId?: string | null;
+  organizationId?: string | null;
   requiresCredential?: boolean;
   expiresAt?: Date | null;
   content?: {
@@ -103,7 +109,12 @@ export type PolicyReason =
   | "content-specialty-denied"
   | "content-expired"
   | "self-approval-forbidden"
-  | "separation-of-duties";
+  | "separation-of-duties"
+  | "platform-role-required"
+  | "organization-mismatch"
+  | "unit-mismatch"
+  | "unknown-action"
+  | "unresolved-action";
 
 export interface PolicyDecision {
   allowed: boolean;
