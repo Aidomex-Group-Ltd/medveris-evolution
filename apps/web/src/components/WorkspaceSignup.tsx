@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { defaultLevelStatus, OWNERSHIP_TYPES } from "@medveris/domain";
 import { Button, ErrorState, Field, Input, Notice, Select } from "@medveris/ui";
@@ -112,22 +112,6 @@ export function WorkspaceSignup() {
   const [failure, setFailure] = useState<{ title?: string; message: string; action?: ReactNode } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [created, setCreated] = useState<RegisterResult | null>(null);
-  const [legalVersions, setLegalVersions] = useState<{ terms: string; privacy: string } | null>(null);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    api<{ documents: Array<{ kind: "terms" | "privacy"; version: string }> }>("/public/legal")
-      .then((result) => {
-        if (cancelled) return;
-        const terms = result.documents.find((document) => document.kind === "terms")?.version;
-        const privacy = result.documents.find((document) => document.kind === "privacy")?.version;
-        if (terms && privacy) setLegalVersions({ terms, privacy });
-      })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, []);
 
   const steps = stepsFor(path);
   const step = steps[stepIndex] ?? null;
@@ -218,16 +202,11 @@ export function WorkspaceSignup() {
 
   function payload() {
     const ownerBody = { givenName: owner.givenName.trim(), familyName: owner.familyName.trim(), email: owner.email.trim(), password: owner.password };
-    const legal = legalVersions
-      ? {
-          termsVersion: legalVersions.terms, privacyVersion: legalVersions.privacy,
-          termsAccepted, privacyAcknowledged,
-        }
-      : undefined;
+    const acceptedLegal = true;
     if (path === "organization") {
       const site = SITE_TYPES.find((type) => type.value === organization.siteType)!;
       return {
-        path, owner: ownerBody, legal,
+        path, owner: ownerBody, acceptedLegal,
         organization: { name: organization.name.trim(), kind: organization.kind, ownership: organization.ownership },
         workspace: {
           name: organization.siteName.trim() || organization.name.trim(), workspaceKind: site.workspaceKind, serviceCategory: site.serviceCategory,
@@ -244,11 +223,11 @@ export function WorkspaceSignup() {
     };
     if (path === "join") {
       return {
-        path, owner: ownerBody, workspace, legal, historyVisibility: shareHistory ? "full-history" : "from-link-date",
+        path, owner: ownerBody, workspace, acceptedLegal, historyVisibility: shareHistory ? "full-history" : "from-link-date",
         ...(joinMethod === "code" ? { joinCode: joinCode.trim() } : { organizationId: target?.id }),
       };
     }
-    return { path, owner: ownerBody, workspace, legal };
+    return { path, owner: ownerBody, workspace, acceptedLegal };
   }
 
   /** Sends the user back to the step that can fix the problem, keeping everything they entered. */
@@ -301,14 +280,7 @@ export function WorkspaceSignup() {
         return;
       }
     }
-    if (!legalVersions) {
-      setFailure({ message: "The current Terms and Privacy versions could not be loaded. Check your connection and try again; nothing was created." });
-      return;
-    }
-    if (!termsAccepted || !privacyAcknowledged) {
-      setFailure({ message: "Accept the Terms of Service and acknowledge the Privacy Notice before creating your workspace." });
-      return;
-    }
+
     setBusy("submit");
     setFailure(null);
     try {
@@ -358,11 +330,11 @@ export function WorkspaceSignup() {
             </Select>
           </Field>
           <Field label="Unit name" htmlFor="ws-unit-name" error={errors.unitName} hint="For example, Kisenyi Diagnostic Laboratory.">
-            <Input id="ws-unit-name" value={unit.name} onChange={(event) => setUnit({ ...unit, name: event.target.value })} maxLength={200} autoComplete="organization" />
+            <Input id="ws-unit-name" value={unit.name} onChange={(event) => setUnit({ ...unit, name: event.target.value })} maxLength={200} autoComplete="organization" placeholder="Enter facility name" />
           </Field>
           <div className="mv-form-grid">
-            <Field label="District (optional)" htmlFor="ws-unit-district"><Input id="ws-unit-district" value={unit.district} onChange={(event) => setUnit({ ...unit, district: event.target.value })} maxLength={120} /></Field>
-            <Field label="Town or city (optional)" htmlFor="ws-unit-city"><Input id="ws-unit-city" value={unit.city} onChange={(event) => setUnit({ ...unit, city: event.target.value })} maxLength={120} /></Field>
+            <Field label="District (optional)" htmlFor="ws-unit-district"><Input id="ws-unit-district" value={unit.district} onChange={(event) => setUnit({ ...unit, district: event.target.value })} maxLength={120} placeholder="Enter the district" /></Field>
+            <Field label="Town or city (optional)" htmlFor="ws-unit-city"><Input id="ws-unit-city" value={unit.city} onChange={(event) => setUnit({ ...unit, city: event.target.value })} maxLength={120} placeholder="Enter the city" /></Field>
           </div>
           <Field label="Ownership" htmlFor="ws-unit-ownership">
             <Select id="ws-unit-ownership" value={unit.ownership} onChange={(event) => setUnit({ ...unit, ownership: event.target.value })}>
@@ -398,10 +370,10 @@ export function WorkspaceSignup() {
                 {SITE_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
               </Select>
             </Field>
-            <Field label="District (optional)" htmlFor="ws-org-district"><Input id="ws-org-district" value={organization.district} onChange={(event) => setOrganization({ ...organization, district: event.target.value })} maxLength={120} /></Field>
+            <Field label="District (optional)" htmlFor="ws-org-district"><Input id="ws-org-district" value={organization.district} onChange={(event) => setOrganization({ ...organization, district: event.target.value })} maxLength={120} placeholder="Enter the district" /></Field>
           </div>
           <Field label="Main site name (optional)" htmlFor="ws-site-name" hint="Leave blank to use the organization name.">
-            <Input id="ws-site-name" value={organization.siteName} onChange={(event) => setOrganization({ ...organization, siteName: event.target.value })} maxLength={200} />
+            <Input id="ws-site-name" value={organization.siteName} onChange={(event) => setOrganization({ ...organization, siteName: event.target.value })} maxLength={200} placeholder="Search or enter the site" />
           </Field>
         </div>
       ) : null}
@@ -420,7 +392,7 @@ export function WorkspaceSignup() {
               <div className="mv-row" style={{ alignItems: "flex-end" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Field label="Organization name" htmlFor="ws-org-search" error={errors.query}>
-                    <Input id="ws-org-search" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchOrganizations(); } }} maxLength={120} autoComplete="off" />
+                    <Input id="ws-org-search" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchOrganizations(); } }} maxLength={120} autoComplete="off" placeholder="Search" />
                   </Field>
                 </div>
                 <Button variant="secondary" onClick={() => void searchOrganizations()} disabled={busy === "search"}>{busy === "search" ? "Searching…" : "Search"}</Button>
@@ -467,9 +439,9 @@ export function WorkspaceSignup() {
             <Field label="Given name" htmlFor="ws-given" error={errors.givenName}><Input id="ws-given" autoComplete="given-name" value={owner.givenName} onChange={(event) => setOwner({ ...owner, givenName: event.target.value })} maxLength={120} /></Field>
             <Field label="Family name" htmlFor="ws-family" error={errors.familyName}><Input id="ws-family" autoComplete="family-name" value={owner.familyName} onChange={(event) => setOwner({ ...owner, familyName: event.target.value })} maxLength={120} /></Field>
           </div>
-          <Field label="Email" htmlFor="ws-email" error={errors.email}><Input id="ws-email" type="email" autoComplete="email" inputMode="email" value={owner.email} onChange={(event) => setOwner({ ...owner, email: event.target.value })} /></Field>
+          <Field label="Email" htmlFor="ws-email" error={errors.email}><Input id="ws-email" type="email" autoComplete="email" inputMode="email" value={owner.email} onChange={(event) => setOwner({ ...owner, email: event.target.value })} placeholder="Enter your email address" /></Field>
           <div className="mv-form-grid">
-            <Field label="Password" htmlFor="ws-password" error={errors.password} hint="At least 10 characters."><Input id="ws-password" type="password" autoComplete="new-password" value={owner.password} onChange={(event) => setOwner({ ...owner, password: event.target.value })} /></Field>
+            <Field label="Password" htmlFor="ws-password" error={errors.password} hint="At least 10 characters."><Input id="ws-password" type="password" autoComplete="new-password" value={owner.password} onChange={(event) => setOwner({ ...owner, password: event.target.value })} placeholder="Enter your password" /></Field>
             <Field label="Confirm password" htmlFor="ws-confirm" error={errors.confirm}><Input id="ws-confirm" type="password" autoComplete="new-password" value={owner.confirm} onChange={(event) => setOwner({ ...owner, confirm: event.target.value })} /></Field>
           </div>
         </div>
@@ -499,23 +471,7 @@ export function WorkspaceSignup() {
               Include activity from before approval in the organization's summary reports (counts and amounts only)
             </label>
           ) : null}
-          <div className="mv-stack" style={{ gap: 8 }}>
-            <label className="mv-check">
-              <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
-              <span>
-                I have read and accept the <Link to="/terms" target="_blank" rel="noreferrer">Terms of Service</Link>
-                {legalVersions ? ` (version ${legalVersions.terms})` : ""}.
-              </span>
-            </label>
-            <label className="mv-check">
-              <input type="checkbox" checked={privacyAcknowledged} onChange={(event) => setPrivacyAcknowledged(event.target.checked)} />
-              <span>
-                I have read the <Link to="/privacy" target="_blank" rel="noreferrer">Privacy Notice</Link>
-                {legalVersions ? ` (version ${legalVersions.privacy})` : ""} and understand how personal and health data is handled.
-              </span>
-            </label>
-            <p className="mv-small mv-muted" style={{ margin: 0 }}>Accepting the Terms is separate from marketing, cookie and clinical consent, which are asked for only where they apply.</p>
-          </div>
+          <p className="mv-small mv-muted" style={{ margin: 0 }}>By selecting <strong>{path === "join" ? "Create and request to join" : "Create workspace"}</strong>, you confirm that you have read and agree to our <Link to="/terms" target="_blank" rel="noreferrer">Terms of Service</Link> and acknowledge the <Link to="/privacy" target="_blank" rel="noreferrer">Privacy Notice</Link>.</p>
           <p className="mv-small mv-muted" style={{ margin: 0 }}>Next you will set up two-step verification, then {path === "organization" ? "open your organization's main site" : "go straight to your unit's dashboard"}. Licences and registry numbers can be added later in the workspace profile.</p>
         </div>
       ) : null}
@@ -523,7 +479,7 @@ export function WorkspaceSignup() {
       {steps.length ? (
         <div className="mv-row mv-row--between">
           {stepIndex > 0 ? <Button variant="ghost" onClick={back} disabled={busy === "submit"}>Back</Button> : <span />}
-          <Button type="submit" disabled={busy === "submit" || (step === "review" && (!legalVersions || !termsAccepted || !privacyAcknowledged))}>
+          <Button type="submit" disabled={busy === "submit"}>
             {step === "review" ? (busy === "submit" ? "Creating…" : path === "join" ? "Create and request to join" : "Create workspace")
               : step === "find" && joinMethod === "invitation" ? "Open invitation" : "Continue"}
           </Button>

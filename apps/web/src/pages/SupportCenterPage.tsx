@@ -265,7 +265,7 @@ function TicketDetailDialog({ id, onClose, onChanged }: { id: string; onClose: (
           ) : null}
           {ticket.status === "open" || ticket.status === "in_progress" ? (
             <div className="mv-stack">
-              <Field label="Resolution" htmlFor="resolution"><Textarea id="resolution" value={resolution} onChange={(event) => setResolution(event.target.value)} minLength={5} maxLength={4000} hint="What fixed it and what to watch." /></Field>
+              <Field label="Resolution" htmlFor="resolution" hint="What fixed it and what to watch."><Textarea id="resolution" value={resolution} onChange={(event) => setResolution(event.target.value)} minLength={5} maxLength={4000} /></Field>
               <Button variant="primary" disabled={resolution.trim().length < 5} busy={action.busy === "resolve"} onClick={() => void act("resolve", "resolve", { resolution })}>Resolve</Button>
             </div>
           ) : null}

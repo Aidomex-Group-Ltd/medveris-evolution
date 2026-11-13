@@ -158,7 +158,7 @@ function Admissions() {
             <Field label="Ward type"><Select value={wardType} onChange={(event) => setWardType(event.target.value)}>{WARD_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</Select></Field>
             <Field label="Ward (optional)"><Select value={wardId} onChange={(event) => setWardId(event.target.value)}><option value="">No specific ward</option>{wards.data?.wards.filter((w) => w.wardType === wardType && w.status === "open").map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></Field>
           </div>
-          <Field label="Admission reason" htmlFor="admission-reason"><Textarea id="admission-reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={5} /></Field>
+          <Field label="Admission reason" htmlFor="admission-reason"><Textarea id="admission-reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={5} placeholder="Enter the reason" /></Field>
           <Button type="submit" disabled={action.busy !== null || !patientId || !encounterId || reason.trim().length < 5}>{action.busy === "admit" ? "Admitting…" : "Create admission"}</Button>
         </form>
       </Card>
@@ -219,7 +219,7 @@ function WardConfiguration() {
             <Field label="Ward name" htmlFor="ward-name"><Input id="ward-name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} maxLength={120} /></Field>
             <Field label="Ward type"><Select value={wardType} onChange={(event) => setWardType(event.target.value)}>{WARD_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</Select></Field>
           </div>
-          <Field label="Description" htmlFor="ward-description"><Textarea id="ward-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1000} /></Field>
+          <Field label="Description" htmlFor="ward-description"><Textarea id="ward-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1000} placeholder="Enter a description" /></Field>
           <Button type="submit" disabled={action.busy !== null || name.trim().length < 2}>{action.busy === "ward" ? "Creating…" : "Create ward"}</Button>
         </form>
       </Card>

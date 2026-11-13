@@ -201,7 +201,7 @@ function PaymentForm({ invoiceId, onRecorded }: { invoiceId: string; onRecorded:
           <option value="bank-transfer">Bank transfer</option><option value="card">Card terminal</option><option value="mobile-money">Mobile money</option><option value="cash">Cash</option><option value="other">Other</option>
         </Select></Field>
         <Field label="Outcome" htmlFor="platform-payment-status"><Select id="platform-payment-status" value={status} onChange={(event) => setStatus(event.target.value as "succeeded" | "failed")}><option value="succeeded">Succeeded</option><option value="failed">Failed</option></Select></Field>
-        <Field label="Reference" htmlFor="platform-payment-reference"><Input id="platform-payment-reference" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={200} /></Field>
+        <Field label="Reference" htmlFor="platform-payment-reference"><Input id="platform-payment-reference" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={200} placeholder="Enter reference number" /></Field>
       </div>
       {status === "failed" ? <Field label="Failure reason" htmlFor="platform-payment-failure"><Textarea id="platform-payment-failure" value={failureReason} onChange={(event) => setFailureReason(event.target.value)} maxLength={500} /></Field> : null}
       <div><Button type="submit" disabled={action.busy !== null}>{action.busy ? "Recording…" : "Record payment"}</Button></div>

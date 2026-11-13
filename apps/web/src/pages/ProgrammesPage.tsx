@@ -81,7 +81,7 @@ function Programmes() {
           <form className="mv-stack" onSubmit={create}>
             <Field label="Name" htmlFor="programme-name"><Input id="programme-name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} /></Field>
             <Field label="Type"><Select value={type} onChange={(event) => setType(event.target.value)}>{PROGRAMME_TYPES.map((value) => <option key={value} value={value}>{value}</option>)}</Select></Field>
-            <Field label="Description" htmlFor="programme-description"><Textarea id="programme-description" value={description} onChange={(event) => setDescription(event.target.value)} /></Field>
+            <Field label="Description" htmlFor="programme-description"><Textarea id="programme-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Enter a description" /></Field>
             <Button type="submit" disabled={action.busy !== null || name.trim().length < 2}>{action.busy === "create" ? "Creating…" : "Create programme"}</Button>
           </form>
         </Card>
@@ -91,7 +91,7 @@ function Programmes() {
           <Card title={`Enrol a patient — ${activeProgramme.name}`}>
             <form className="mv-stack" onSubmit={enrol}>
               <PatientPicker value={enrolPatient} onChange={setEnrolPatient} />
-              <Field label="Enrolment notes" htmlFor="enrol-notes"><Textarea id="enrol-notes" value={enrolNotes} onChange={(event) => setEnrolNotes(event.target.value)} maxLength={2000} /></Field>
+              <Field label="Enrolment notes" htmlFor="enrol-notes"><Textarea id="enrol-notes" value={enrolNotes} onChange={(event) => setEnrolNotes(event.target.value)} maxLength={2000} placeholder="Enter your notes" /></Field>
               <Button type="submit" disabled={action.busy !== null || !enrolPatient}>{action.busy === "enrol" ? "Enrolling…" : "Enrol patient"}</Button>
             </form>
           </Card>

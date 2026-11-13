@@ -154,7 +154,7 @@ function Invoices() {
               <Button variant="secondary" onClick={() => setLines((prev) => [...prev, { serviceId: "", description: "", quantity: "1", unitPrice: "" }])}>Add line</Button>
               <Button type="submit" disabled={action.busy !== null || !patientId}>{action.busy === "invoice" ? "Creating…" : "Create invoice"}</Button>
             </div>
-            <Field label="Notes" htmlFor="invoice-notes"><Textarea id="invoice-notes" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} /></Field>
+            <Field label="Notes" htmlFor="invoice-notes"><Textarea id="invoice-notes" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Enter your notes" /></Field>
           </form>
         </Card>
       ) : null}

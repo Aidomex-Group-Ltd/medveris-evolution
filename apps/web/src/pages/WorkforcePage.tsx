@@ -209,7 +209,7 @@ function Onboarding() {
             <div className="mv-form-grid">
               <Field label="Given name" htmlFor="ob-given"><Input id="ob-given" value={givenName} onChange={(event) => setGivenName(event.target.value)} required /></Field>
               <Field label="Family name" htmlFor="ob-family"><Input id="ob-family" value={familyName} onChange={(event) => setFamilyName(event.target.value)} required /></Field>
-              <Field label="Email" htmlFor="ob-email"><Input id="ob-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
+              <Field label="Email" htmlFor="ob-email"><Input id="ob-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Enter your email address" /></Field>
               <Field label="Engagement type"><Select value={engagementType} onChange={(event) => setEngagementType(event.target.value)}>{["employee", "contractor", "student", "intern", "trainee", "volunteer", "locum", "visiting-practitioner"].map((type) => <option key={type} value={type}>{type}</option>)}</Select></Field>
               <Field label="Start date" htmlFor="ob-start"><Input id="ob-start" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required /></Field>
               <Field label="Catalogue title" hint={selection ? `${selection.cadreCode} · ${selection.suggestedSystemRoles.join(", ") || "No suggested system roles"}` : "Search by title, cadre or department. Selecting a title records the path and suggested roles; it grants nothing."}>
@@ -300,7 +300,7 @@ function Onboarding() {
           <form className="mv-stack" onSubmit={decide}>
             <Field label="Onboarding case"><Select value={decisionCaseId} onChange={(event) => setDecisionCaseId(event.target.value)} required><option value="">Select a case…</option>{cases.data?.cases.map((row) => <option key={row.id} value={row.id}>{row.staffRef} — {row.familyName}, {row.givenName} · {row.status}</option>)}</Select></Field>
             <Field label="Decision"><Select value={decision} onChange={(event) => setDecision(event.target.value as typeof decision)}><option value="approve">Approve</option><option value="return">Return for correction</option><option value="reject">Reject</option></Select></Field>
-            <Field label="Reason" htmlFor="ob-reason" hint="At least 10 characters. Recorded in the audit trail."><Textarea id="ob-reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={10} /></Field>
+            <Field label="Reason" htmlFor="ob-reason" hint="At least 10 characters. Recorded in the audit trail."><Textarea id="ob-reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={10} placeholder="Enter the reason" /></Field>
             <Button type="submit" disabled={action.busy !== null || !decisionCaseId || reason.trim().length < 10}>{action.busy === "decision" ? "Recording…" : "Record decision"}</Button>
           </form>
         </Card>
@@ -390,7 +390,7 @@ function Privileges() {
           <form className="mv-stack" onSubmit={decide}>
             <Field label="Pending request"><Select value={grantId} onChange={(event) => setGrantId(event.target.value)} required><option value="">Select request…</option>{grants.data?.grants.filter((row) => row.status === "requested").map((row) => <option key={row.id} value={row.id}>{row.familyName}, {row.givenName} — {row.privilegeName}</option>)}</Select></Field>
             <Field label="Decision"><Select value={decision} onChange={(event) => setDecision(event.target.value as typeof decision)}><option value="approved">Approve</option><option value="rejected">Reject</option></Select></Field>
-            <Field label="Reason" htmlFor="priv-reason" hint="At least 10 characters."><Textarea id="priv-reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={10} /></Field>
+            <Field label="Reason" htmlFor="priv-reason" hint="At least 10 characters."><Textarea id="priv-reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={10} placeholder="Enter the reason" /></Field>
             <Button type="submit" disabled={action.busy !== null || !grantId || reason.trim().length < 10}>{action.busy === "decide" ? "Recording…" : "Record decision"}</Button>
           </form>
         </Card>

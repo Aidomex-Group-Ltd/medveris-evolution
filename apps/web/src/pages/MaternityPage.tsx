@@ -63,7 +63,7 @@ export function MaternityPage() {
               <Field label="Estimated due date" htmlFor="mat-edd"><Input id="mat-edd" type="date" value={estimatedDueDate} onChange={(event) => setEstimatedDueDate(event.target.value)} /></Field>
               <Field label="Risk level"><Select value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)}>{["not-assessed", "low", "moderate", "high"].map((level) => <option key={level} value={level}>{level}</option>)}</Select></Field>
             </div>
-            <Field label="Notes" htmlFor="mat-notes"><Textarea id="mat-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
+            <Field label="Notes" htmlFor="mat-notes"><Textarea id="mat-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Enter your notes" /></Field>
             <Button type="submit" disabled={action.busy !== null || !patientId}>{action.busy === "episode" ? "Opening…" : "Open episode"}</Button>
           </form>
         </Card>
@@ -204,7 +204,7 @@ function EpisodeDetail({ id, onClose, onChanged }: { id: string; onClose: () => 
                   <Field label="Given name" htmlFor="nb-given"><Input id="nb-given" value={newbornGivenName} onChange={(event) => setNewbornGivenName(event.target.value)} required /></Field>
                   <Field label="Family name" htmlFor="nb-family"><Input id="nb-family" value={newbornFamilyName} onChange={(event) => setNewbornFamilyName(event.target.value)} required /></Field>
                   <Field label="Sex"><Select value={sex} onChange={(event) => setSex(event.target.value)}>{["unknown", "female", "male", "other"].map((value) => <option key={value} value={value}>{value}</option>)}</Select></Field>
-                  <Field label="Weight (g)" htmlFor="nb-weight"><Input id="nb-weight" type="number" value={weightG} onChange={(event) => setWeightG(event.target.value)} /></Field>
+                  <Field label="Weight (g)" htmlFor="nb-weight"><Input id="nb-weight" type="number" value={weightG} onChange={(event) => setWeightG(event.target.value)} placeholder="Enter weight" /></Field>
                   <Field label="Apgar 1" htmlFor="nb-ap1"><Input id="nb-ap1" type="number" min={0} max={10} value={apgar1} onChange={(event) => setApgar1(event.target.value)} /></Field>
                   <Field label="Apgar 5" htmlFor="nb-ap5"><Input id="nb-ap5" type="number" min={0} max={10} value={apgar5} onChange={(event) => setApgar5(event.target.value)} /></Field>
                 </div>

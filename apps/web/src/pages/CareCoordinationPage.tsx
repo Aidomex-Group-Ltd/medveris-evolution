@@ -303,7 +303,7 @@ function SharePanel({ referral, onCancel, onSaved }: { referral: Referral; onCan
           <div className="mv-row" style={{ alignItems: "flex-end" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <Field label="Find the receiving facility" htmlFor="share-recipient-search" hint="Type at least two letters, then search.">
-                <Input id="share-recipient-search" value={query} onChange={(event) => setQuery(event.target.value)} maxLength={120} />
+                <Input id="share-recipient-search" value={query} onChange={(event) => setQuery(event.target.value)} maxLength={120} placeholder="Search" />
               </Field>
             </div>
             <Button type="button" variant="secondary" onClick={() => setSearch(query)} disabled={query.trim().length < 2 || recipients.loading}>Search</Button>

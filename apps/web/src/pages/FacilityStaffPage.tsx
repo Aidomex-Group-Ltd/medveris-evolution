@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Badge, Button, Card, ErrorState, LoadingState, Notice } from "@medveris/ui";
-import { AuthFrame } from "../components/AuthFrame";
+import { AuthLayout } from "../features/auth/AuthLayout";
+import { AuthBrand } from "../features/auth/AuthBrand";
 import { errorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useQuery } from "../lib/useQuery";
@@ -51,7 +52,7 @@ export function FacilityStaffPage() {
   }, [facilities.length]);
 
   if (loading) return <LoadingState label="Restoring session" variant="page" />;
-  if (!me) return <Navigate to="/login?as=staff" replace />;
+  if (!me) return <Navigate to="/login?role=provider&mode=signin" replace />;
 
   function body() {
     if (staff.loading || (facilities.length === 1 && !error)) {
@@ -98,12 +99,15 @@ export function FacilityStaffPage() {
   }
 
   return (
-    <AuthFrame
-      eyebrow="Facility staff sign-in"
-      heading="Open your facility workspace."
-      intro={<p>Your facility is chosen from your verified staff assignments, not from this device or the address bar.</p>}
-    >
-      {body()}
-    </AuthFrame>
+    <AuthLayout>
+      <AuthBrand />
+      <div className="mv-authx__card">
+        <div>
+          <h1 className="mv-authx__title">Open your facility workspace</h1>
+          <p className="mv-authx__subtitle">Your facility is chosen from your verified staff assignments, not from this device or the address bar.</p>
+        </div>
+        {body()}
+      </div>
+    </AuthLayout>
   );
 }

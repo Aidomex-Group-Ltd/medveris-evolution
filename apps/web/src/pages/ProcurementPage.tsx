@@ -62,8 +62,8 @@ function Suppliers() {
             <Field label="Code" htmlFor="sup-code" hint="Capital letters, digits and dashes."><Input id="sup-code" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} required pattern="[A-Z0-9][A-Z0-9-]{1,39}" /></Field>
             <Field label="Name" htmlFor="sup-name"><Input id="sup-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required minLength={2} maxLength={200} /></Field>
             <Field label="Contact person" htmlFor="sup-contact"><Input id="sup-contact" value={form.contactName} onChange={(event) => setForm({ ...form, contactName: event.target.value })} maxLength={160} /></Field>
-            <Field label="Phone" htmlFor="sup-phone"><Input id="sup-phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} maxLength={40} /></Field>
-            <Field label="Email" htmlFor="sup-email"><Input id="sup-email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
+            <Field label="Phone" htmlFor="sup-phone"><Input id="sup-phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} maxLength={40} placeholder="Enter phone number" /></Field>
+            <Field label="Email" htmlFor="sup-email"><Input id="sup-email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="Enter your email address" /></Field>
             <Field label="Licence (e.g. NDA wholesale)" htmlFor="sup-licence"><Input id="sup-licence" value={form.licenceReference} onChange={(event) => setForm({ ...form, licenceReference: event.target.value })} maxLength={120} /></Field>
           </div>
           <div><Button type="submit" disabled={action.busy !== null}>Add supplier</Button></div>

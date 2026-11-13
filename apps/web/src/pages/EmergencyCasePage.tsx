@@ -6,6 +6,7 @@ import { formatDateTime } from "../lib/format";
 import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
 import { CodingPicker } from "../components/CodingPicker";
+import { EmergencyAccessPanel } from "../components/EmergencyAccessPanel";
 import { MemberPicker } from "../components/Pickers";
 import { TriagePanel } from "../components/TriagePanel";
 import type { Coding } from "../lib/types";
@@ -89,6 +90,8 @@ export function EmergencyCasePage() {
       </div>
       {record.identityConfidence === "temporary" ? <Notice tone="warning">Temporary identity. Reconcile the patient against confirmed documents before linking longitudinal records.</Notice> : null}
       {!active ? <Notice tone="info">Case closed: {record.disposition?.replaceAll("-", " ")}. {record.dispositionNote}</Notice> : null}
+
+      <EmergencyAccessPanel patientId={record.patientId} encounterId={record.encounterId} />
 
       <div className="mv-grid mv-grid--2">
         <Card title="Presenting problem">

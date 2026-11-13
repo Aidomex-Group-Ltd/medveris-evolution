@@ -36,7 +36,7 @@ import { enforceRateLimit, peekRateLimit, recordRateLimitHit, requestAddress } f
 import { writeAudit } from "../lib/audit.js";
 import { requireAuth, setSessionCookie, revokeCurrentSession } from "../auth/middleware.js";
 import { acceptInvitation, declineInvitation, describeInvitation, maskEmail, registerInvitee } from "../services/invitations.js";
-import { recordLegalAcceptance, requireLegalAcceptance } from "../lib/legal.js";
+import { legalAcknowledgement, recordLegalAcceptance, requireLegalAcceptance } from "../lib/legal.js";
 import { createWorkspace, duplicateFindings, levelFrom, OWNER_ROLES, recordLinkEvent, unitOwnerRoles } from "../services/workspaces.js";
 import { attachTenantToAccount, provisionBillingAccount } from "../services/subscriptions.js";
 import { createSession, loadAuthContext, SESSION_COOKIE } from "../auth/session.js";
@@ -95,7 +95,7 @@ authRoutes.post("/register/patient", async (c) => {
   const deps = c.get("deps");
   await enforceRateLimit(c, "auth.register", requestAddress(c));
   const body = await parseJson(c, registerPatientSchema);
-  const legal = await requireLegalAcceptance(body.legal);
+  const legal = await requireLegalAcceptance(legalAcknowledgement(body));
   const meta = requestMeta(c);
   const userId = crypto.randomUUID();
   const patientId = crypto.randomUUID();
@@ -156,7 +156,7 @@ authRoutes.post("/register/facility", async (c) => {
   const deps = c.get("deps");
   await enforceRateLimit(c, "auth.facility-register", requestAddress(c));
   const body = await parseJson(c, registerFacilitySchema);
-  const legal = await requireLegalAcceptance(body.legal);
+  const legal = await requireLegalAcceptance(legalAcknowledgement(body));
   const meta = requestMeta(c);
   const userId = crypto.randomUUID();
   const passwordHash = await hashPassword(body.password);
@@ -217,7 +217,7 @@ authRoutes.post("/register/workspace", async (c) => {
   const deps = c.get("deps");
   await enforceRateLimit(c, "auth.facility-register", requestAddress(c));
   const body = await parseJson(c, registerWorkspaceSchema);
-  const legal = await requireLegalAcceptance(body.legal);
+  const legal = await requireLegalAcceptance(legalAcknowledgement(body));
   if (body.path === "join" && !body.joinCode === !body.organizationId) {
     throw new ValidationError("Choose the organization to join, or enter the join code its administrator gave you", [{ path: "joinCode", message: "Organization or join code required" }]);
   }
@@ -786,7 +786,7 @@ authRoutes.post("/invitations/register", async (c) => {
   const body = await parseJson(c, invitationRegisterSchema);
   await enforceRateLimit(c, "invitation.register.token", await sha256Hex(body.token));
   if (c.get("auth")) throw new AppError(409, "invitation_signed_in", "Sign out before creating a new account for this invitation");
-  await requireLegalAcceptance(body.legal);
+  await requireLegalAcceptance(legalAcknowledgement(body));
   const meta = requestMeta(c);
   const { userId } = await registerInvitee(deps.sql, deps.config, { ...body, meta: auditMeta(c), acceptance: meta });
   const session = await createSession(deps.sql, deps.config, userId, { mfaVerified: false, activeTenantId: null, ...requestMeta(c) });

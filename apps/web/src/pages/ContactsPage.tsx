@@ -60,11 +60,11 @@ export function ContactsPage() {
                   <Input id="contact-organisation" value={organisation} onChange={(event) => setOrganisation(event.target.value)} autoComplete="organization" />
                 </Field>
                 <Field label="Reply email" htmlFor="contact-email">
-                  <Input id="contact-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
+                  <Input id="contact-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required placeholder="Enter your email address" />
                 </Field>
               </div>
               <Field label="How can we help?" htmlFor="contact-message">
-                <Textarea id="contact-message" rows={5} value={message} onChange={(event) => setMessage(event.target.value)} required maxLength={1200} />
+                <Textarea id="contact-message" rows={5} value={message} onChange={(event) => setMessage(event.target.value)} required maxLength={1200} placeholder="Enter your message" />
               </Field>
               <div className="mv-row">
                 <Button type="submit">Send on WhatsApp</Button>

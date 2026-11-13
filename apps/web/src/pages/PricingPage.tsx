@@ -57,7 +57,7 @@ export function PricingPage() {
           </nav>
           <div className="pricing-header-cta">
             <a href="/login" className="pricing-btn pricing-btn--outline">Sign in</a>
-            <a href="/register?type=facility" className="pricing-btn pricing-btn--primary">Get Started</a>
+            <a href="/login?role=provider&mode=signup" className="pricing-btn pricing-btn--primary">Get Started</a>
             <button
               type="button"
               className="pricing-menu-btn"
@@ -125,7 +125,7 @@ export function PricingPage() {
                     </div>
                   </dl>
                   <div className="pricing-stack" style={{ marginTop: "16px" }}>
-                    <a className="pricing-btn pricing-btn--primary" href="/register?type=facility">
+                    <a className="pricing-btn pricing-btn--primary" href="/login?role=provider&mode=signup">
                       Start free trial
                     </a>
                     <a className="pricing-btn pricing-btn--outline" href="/help#pricing-details">
@@ -155,7 +155,7 @@ export function PricingPage() {
               <a href="/about">Platform</a>
               <a href="/directory">Provider directory</a>
               <a href="/portal">Patient portal</a>
-              <a href="/register?type=facility">Start a trial</a>
+              <a href="/login?role=provider&mode=signup">Start a trial</a>
             </nav>
             <nav className="pricing-footer-col" aria-label="Company">
               <h2>Company</h2>

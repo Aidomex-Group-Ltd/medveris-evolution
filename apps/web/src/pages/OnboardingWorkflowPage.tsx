@@ -295,7 +295,7 @@ export function OnboardingWorkflowPage() {
     
     await action.run("patient-onboarding", async () => {
       // Patient onboarding is handled through the existing registration flow
-      navigate("/register?type=patient");
+      navigate("/login?role=patient&mode=signup");
       return "Redirecting to patient registration...";
     });
   }
@@ -480,8 +480,7 @@ export function OnboardingWorkflowPage() {
                         onChange={(e) => handleFieldChange("givenName", e.target.value)}
                         required
                         minLength={1}
-                        maxLength={120}
-                      />
+                        maxLength={120} placeholder="Enter given name" />
                     </Field>
                     <Field label="Family Name" htmlFor="family-name">
                       <Input
@@ -490,8 +489,7 @@ export function OnboardingWorkflowPage() {
                         onChange={(e) => handleFieldChange("familyName", e.target.value)}
                         required
                         minLength={1}
-                        maxLength={120}
-                      />
+                        maxLength={120} placeholder="Enter family name" />
                     </Field>
                   </div>
                   <div className="mv-form-grid">
@@ -500,16 +498,14 @@ export function OnboardingWorkflowPage() {
                         id="email"
                         type="email"
                         value={form.email ?? ""}
-                        onChange={(e) => handleFieldChange("email", e.target.value)}
-                      />
+                        onChange={(e) => handleFieldChange("email", e.target.value)} placeholder="Enter your email address" />
                     </Field>
                     <Field label="Phone" htmlFor="phone">
                       <Input
                         id="phone"
                         type="tel"
                         value={form.phone ?? ""}
-                        onChange={(e) => handleFieldChange("phone", e.target.value)}
-                      />
+                        onChange={(e) => handleFieldChange("phone", e.target.value)} placeholder="Enter phone number" />
                     </Field>
                   </div>
                   <Field label="Staff ID / Employee Number" htmlFor="staff-id">
@@ -842,8 +838,7 @@ function PatientOnboardingSection({
               onChange={(e) => onChange("givenName", e.target.value)}
               required
               minLength={1}
-              maxLength={120}
-            />
+              maxLength={120} placeholder="Enter given name" />
           </Field>
           <Field label="Family Name" htmlFor="patient-family-name">
             <Input
@@ -852,8 +847,7 @@ function PatientOnboardingSection({
               onChange={(e) => onChange("familyName", e.target.value)}
               required
               minLength={1}
-              maxLength={120}
-            />
+              maxLength={120} placeholder="Enter family name" />
           </Field>
         </div>
         <div className="mv-form-grid">
@@ -863,8 +857,7 @@ function PatientOnboardingSection({
               type="date"
               value={form.startDate}
               onChange={(e) => onChange("startDate", e.target.value)}
-              required
-            />
+              required placeholder="Select date of birth" />
           </Field>
           <Field label="Sex">
             <Select value={form.engagementType} onChange={(e) => onChange("engagementType", e.target.value)}>

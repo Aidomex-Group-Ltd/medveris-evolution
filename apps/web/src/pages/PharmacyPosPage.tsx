@@ -258,7 +258,7 @@ function Checkout() {
                       </Select>
                     </Field>
                     <Field label="Payment reference" htmlFor="pos-reference" hint={referenceRequired ? "Required for this payment method." : "Optional for this payment method."}>
-                      <Input id="pos-reference" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />
+                      <Input id="pos-reference" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="Enter reference number" />
                     </Field>
                     <Field label="Discount on the whole sale" htmlFor="pos-discount">
                       <Input id="pos-discount" type="number" min="0" step="any" value={saleDiscountValue} onChange={(event) => setSaleDiscount(event.target.value)} />
@@ -409,7 +409,7 @@ function IssuePrescription({
             <Input id="rx-patient" value={patientQuery} onChange={(event) => { setPatientQuery(event.target.value); setPatientId(""); }} />
           </Field>
           <Field label="Reference" htmlFor="rx-reference" hint="Left empty, a unique reference is generated.">
-            <Input id="rx-reference" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={80} />
+            <Input id="rx-reference" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={80} placeholder="Enter reference number" />
           </Field>
           <Field label="Expires on" htmlFor="rx-expires" hint="Blank means the prescription is valid until dispensed.">
             <Input id="rx-expires" type="date" value={expiresOn} onChange={(event) => setExpiresOn(event.target.value)} />
@@ -438,8 +438,8 @@ function IssuePrescription({
                 </Select>
               </Field>
               <Field label="Dose" htmlFor={`rx-dose-${index}`}><Input id={`rx-dose-${index}`} value={item.doseText} onChange={(event) => setItem(index, { doseText: event.target.value })} required placeholder="1 tablet" /></Field>
-              <Field label="Route" htmlFor={`rx-route-${index}`}><Input id={`rx-route-${index}`} value={item.route} onChange={(event) => setItem(index, { route: event.target.value })} required placeholder="oral" /></Field>
-              <Field label="Frequency" htmlFor={`rx-freq-${index}`}><Input id={`rx-freq-${index}`} value={item.frequency} onChange={(event) => setItem(index, { frequency: event.target.value })} required placeholder="twice daily" /></Field>
+              <Field label="Route" htmlFor={`rx-route-${index}`}><Input id={`rx-route-${index}`} value={item.route} onChange={(event) => setItem(index, { route: event.target.value })} required placeholder="Enter the route" /></Field>
+              <Field label="Frequency" htmlFor={`rx-freq-${index}`}><Input id={`rx-freq-${index}`} value={item.frequency} onChange={(event) => setItem(index, { frequency: event.target.value })} required placeholder="Enter the frequency" /></Field>
               <Field label="Quantity" htmlFor={`rx-qty-${index}`} hint={product ? `per ${product.baseUnit}? leave as dispensed unit` : undefined}><Input id={`rx-qty-${index}`} type="number" min="0" step="any" value={item.quantity} onChange={(event) => setItem(index, { quantity: event.target.value })} required /></Field>
               <Field label="Repeats" htmlFor={`rx-repeats-${index}`}><Input id={`rx-repeats-${index}`} type="number" min="0" max="24" step="1" value={item.repeatsAllowed} onChange={(event) => setItem(index, { repeatsAllowed: event.target.value })} /></Field>
               <Field label="Directions" htmlFor={`rx-directions-${index}`}><Input id={`rx-directions-${index}`} value={item.directions} onChange={(event) => setItem(index, { directions: event.target.value })} /></Field>
@@ -452,7 +452,7 @@ function IssuePrescription({
           <Button type="button" size="sm" variant="secondary" onClick={() => setItems([...items, { itemId: "", quantity: "1", doseText: "", route: "oral", frequency: "", repeatsAllowed: "0", directions: "" }])}>Add product</Button>
           <Button type="submit" disabled={action.busy !== null || !patientId || !items.length}>Issue prescription</Button>
         </div>
-        <Field label="Notes for the dispenser" htmlFor="rx-notes"><Input id="rx-notes" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} /></Field>
+        <Field label="Notes for the dispenser" htmlFor="rx-notes"><Input id="rx-notes" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Enter your notes" /></Field>
       </form>
     </Card>
   );

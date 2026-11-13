@@ -68,10 +68,10 @@ function Orders({ pharmacist, clinician }: { pharmacist: boolean; clinician: boo
               <PatientPicker value={patientId} onChange={(value) => { setPatientId(value); setEncounterId(""); }} />
               <EncounterPicker value={encounterId} onChange={setEncounterId} patientId={patientId || undefined} />
               <Field label="Medicine"><Select value={medicineId} onChange={(event) => { setMedicineId(event.target.value); const med = medicines.data?.medicines.find((row) => row.id === event.target.value); setRoute(med?.route ?? route); }} required><option value="">Select a medicine…</option>{medicines.data?.medicines.map((med) => <option key={med.id} value={med.id}>{med.name} {med.strength} ({med.form})</option>)}</Select></Field>
-              <Field label="Dose" htmlFor="dose-text"><Input id="dose-text" value={doseText} onChange={(event) => setDoseText(event.target.value)} required /></Field>
-              <Field label="Route" htmlFor="dose-route"><Input id="dose-route" value={route} onChange={(event) => setRoute(event.target.value)} required /></Field>
-              <Field label="Frequency" htmlFor="dose-frequency"><Input id="dose-frequency" value={frequency} onChange={(event) => setFrequency(event.target.value)} required placeholder="e.g. twice daily" /></Field>
-              <Field label="Duration (days)" htmlFor="dose-duration"><Input id="dose-duration" type="number" min={1} max={365} value={durationDays} onChange={(event) => setDurationDays(event.target.value)} /></Field>
+              <Field label="Dose" htmlFor="dose-text"><Input id="dose-text" value={doseText} onChange={(event) => setDoseText(event.target.value)} required placeholder="Enter the dose" /></Field>
+              <Field label="Route" htmlFor="dose-route"><Input id="dose-route" value={route} onChange={(event) => setRoute(event.target.value)} required placeholder="Enter the dose" /></Field>
+              <Field label="Frequency" htmlFor="dose-frequency"><Input id="dose-frequency" value={frequency} onChange={(event) => setFrequency(event.target.value)} required placeholder="Enter the frequency" /></Field>
+              <Field label="Duration (days)" htmlFor="dose-duration"><Input id="dose-duration" type="number" min={1} max={365} value={durationDays} onChange={(event) => setDurationDays(event.target.value)} placeholder="Enter the dose" /></Field>
             </div>
             <Button type="submit" disabled={action.busy !== null || !patientId || !encounterId || !medicineId || !doseText || !route || !frequency}>{action.busy === "order" ? "Submitting…" : "Submit order"}</Button>
           </form>
@@ -259,7 +259,7 @@ function Stock({ pharmacist }: { pharmacist: boolean }) {
               <div className="mv-form-grid">
                 <Field label="Lot number" htmlFor="lot-number"><Input id="lot-number" value={lotNumber} onChange={(event) => setLotNumber(event.target.value)} required /></Field>
                 <Field label="Expires on" htmlFor="lot-expiry"><Input id="lot-expiry" type="date" min={todayInput()} value={expiresOn} onChange={(event) => setExpiresOn(event.target.value)} required /></Field>
-                <Field label="Quantity" htmlFor="lot-quantity"><Input id="lot-quantity" type="number" min={0} step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} required /></Field>
+                <Field label="Quantity" htmlFor="lot-quantity"><Input id="lot-quantity" type="number" min={0} step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} required placeholder="Enter quantity" /></Field>
                 <Field label="Location" htmlFor="lot-location"><Input id="lot-location" value={location} onChange={(event) => setLocation(event.target.value)} required /></Field>
               </div>
               <Button type="submit" disabled={action.busy !== null || !medicineId || !lotNumber || !quantity}>{action.busy === "lot" ? "Receiving…" : "Receive lot"}</Button>
@@ -269,7 +269,7 @@ function Stock({ pharmacist }: { pharmacist: boolean }) {
             <form className="mv-stack" onSubmit={adjust}>
               <Field label="Lot"><Select value={movementLot} onChange={(event) => setMovementLot(event.target.value)} required><option value="">Select a lot…</option>{lots.data?.lots.map((lot) => <option key={lot.id} value={lot.id}>{lot.medicineName} · {lot.lotNumber} · {lot.quantity}</option>)}</Select></Field>
               <Field label="Delta (positive or negative)" htmlFor="stock-delta"><Input id="stock-delta" type="number" step="any" value={delta} onChange={(event) => setDelta(event.target.value)} required /></Field>
-              <Field label="Reason" htmlFor="stock-reason"><Textarea id="stock-reason" value={movementReason} onChange={(event) => setMovementReason(event.target.value)} required minLength={3} /></Field>
+              <Field label="Reason" htmlFor="stock-reason"><Textarea id="stock-reason" value={movementReason} onChange={(event) => setMovementReason(event.target.value)} required minLength={3} placeholder="Enter the reason" /></Field>
               <Button type="submit" variant="secondary" disabled={action.busy !== null || !movementLot || !delta || movementReason.trim().length < 3}>{action.busy === "movement" ? "Adjusting…" : "Record adjustment"}</Button>
             </form>
           </Card>
@@ -318,7 +318,7 @@ function Catalogue({ pharmacist }: { pharmacist: boolean }) {
           <form className="mv-stack" onSubmit={create}>
             <div className="mv-form-grid">
               <Field label="Name" htmlFor="med-name"><Input id="med-name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} /></Field>
-              <Field label="Strength" htmlFor="med-strength"><Input id="med-strength" value={strength} onChange={(event) => setStrength(event.target.value)} required /></Field>
+              <Field label="Strength" htmlFor="med-strength"><Input id="med-strength" value={strength} onChange={(event) => setStrength(event.target.value)} required placeholder="Enter the strength" /></Field>
               <Field label="Form" htmlFor="med-form"><Input id="med-form" value={form} onChange={(event) => setForm(event.target.value)} required /></Field>
               <Field label="Route" htmlFor="med-route"><Input id="med-route" value={route} onChange={(event) => setRoute(event.target.value)} required /></Field>
               <Field label="Code system URL"><Input type="url" value={codeSystem} onChange={(event) => setCodeSystem(event.target.value)} /></Field>

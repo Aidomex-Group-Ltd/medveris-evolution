@@ -12,10 +12,11 @@ import {
 import { ValidationError } from "./errors.js";
 
 export interface LegalAcceptanceInput {
-  termsVersion: string;
-  privacyVersion: string;
-  termsAccepted: boolean;
-  privacyAcknowledged: boolean;
+  termsVersion?: string;
+  privacyVersion?: string;
+  termsAccepted?: boolean;
+  privacyAcknowledged?: boolean;
+  acceptedLegal?: boolean;
 }
 
 export interface CurrentLegalDocument extends LegalDocument {
@@ -33,14 +34,30 @@ export async function currentLegalDocuments(): Promise<CurrentLegalDocument[]> {
 }
 
 /**
- * Validates the registration/re-acceptance acknowledgement. Viewing a page is not acceptance: both
- * booleans must be explicitly true and the client must name the versions it displayed, so a stale
- * tab cannot accept a version it never showed.
+ * Reads the acknowledgement from a registration body. Newer clients send only `acceptedLegal: true`
+ * because the Terms and Privacy versions are no longer displayed; older clients still send the exact
+ * versions they showed, which continue to be validated.
+ */
+export function legalAcknowledgement(body: { legal?: LegalAcceptanceInput | null; acceptedLegal?: boolean }): LegalAcceptanceInput | undefined {
+  if (body.legal) return { ...body.legal, acceptedLegal: body.acceptedLegal };
+  return body.acceptedLegal === true ? { acceptedLegal: true } : undefined;
+}
+
+/**
+ * Validates the registration/re-acceptance acknowledgement. Viewing a page is not acceptance: the
+ * client must either send the single `acceptedLegal` flag, or both booleans plus the exact versions
+ * it displayed, so a stale tab cannot accept a version it never showed. Either way the accepted
+ * record carries the versions and digests bundled with this release.
  */
 export async function requireLegalAcceptance(input: LegalAcceptanceInput | null | undefined): Promise<CurrentLegalDocument[]> {
   const documents = await currentLegalDocuments();
   const terms = documents.find((document) => document.kind === "terms")!;
   const privacy = documents.find((document) => document.kind === "privacy")!;
+  // Newer clients confirm acceptance with a single flag; the Worker then records the versions
+  // bundled with this release, so the client no longer names or displays them.
+  if (input && input.acceptedLegal === true) {
+    return [terms, privacy];
+  }
   const details: Array<{ path: string; message: string }> = [];
   if (!input) {
     details.push({ path: "legal", message: "Accept the Terms of Service and acknowledge the Privacy Notice to continue" });

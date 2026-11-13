@@ -349,8 +349,8 @@ function AddSite({ data, onChanged }: { data: OrganizationDetail; onChanged: () 
           <Field label="Ownership" htmlFor="as-ownership"><Select id="as-ownership" value={details.ownership} onChange={(event) => setDetails({ ...details, ownership: event.target.value })}>
             {OWNERSHIP_TYPES.map((type) => <option key={type} value={type}>{OWNERSHIP_LABELS[type]}</option>)}
           </Select></Field>
-          <Field label="District" htmlFor="as-district"><Input id="as-district" value={details.district} onChange={(event) => setDetails({ ...details, district: event.target.value })} maxLength={120} /></Field>
-          <Field label="Town or city" htmlFor="as-city"><Input id="as-city" value={details.city} onChange={(event) => setDetails({ ...details, city: event.target.value })} maxLength={120} /></Field>
+          <Field label="District" htmlFor="as-district"><Input id="as-district" value={details.district} onChange={(event) => setDetails({ ...details, district: event.target.value })} maxLength={120} placeholder="Enter the district" /></Field>
+          <Field label="Town or city" htmlFor="as-city"><Input id="as-city" value={details.city} onChange={(event) => setDetails({ ...details, city: event.target.value })} maxLength={120} placeholder="Enter the city" /></Field>
         </div>
         <LevelFields idPrefix="as" value={classification} onChange={setClassification} />
         <RegistrationFields idPrefix="as-reg" category={classification.serviceCategory} value={registrations} onChange={setRegistrations} />
@@ -382,7 +382,7 @@ function Members({ data, onChanged }: { data: OrganizationDetail; onChanged: () 
       <div className="mv-grid mv-grid--2">
         <Card title="Invite organization staff" description="Organization roles see aggregate reports across linked sites. Access inside a site is granted separately by that site's administrator.">
           <form className="mv-stack" onSubmit={invite}>
-            <Field label="Email" htmlFor="om-email"><Input id="om-email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></Field>
+            <Field label="Email" htmlFor="om-email"><Input id="om-email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required placeholder="Enter your email address" /></Field>
             <Field label="Role" htmlFor="om-role"><Select id="om-role" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}>
               <option value="organization_reporting">{ROLE_LABELS.organization_reporting}</option><option value="organization_admin">{ROLE_LABELS.organization_admin}</option>
             </Select></Field>

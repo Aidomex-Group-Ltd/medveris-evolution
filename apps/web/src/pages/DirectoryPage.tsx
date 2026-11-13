@@ -236,10 +236,10 @@ export function DirectoryPage() {
           <Card title="Search and filters">
             <form className="mv-form-grid" onSubmit={apply}>
               <Field label="Search by name or service">
-                <Input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="e.g. maternity, pharmacy" />
+                <Input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search facilities" />
               </Field>
               <Field label="Country">
-                <Input value={filters.country} onChange={(event) => setFilters({ ...filters, country: event.target.value })} placeholder="Uganda" />
+                <Input value={filters.country} onChange={(event) => setFilters({ ...filters, country: event.target.value })} placeholder="Enter country" />
               </Field>
               <Field label="District">
                 <Input value={filters.district} onChange={(event) => setFilters({ ...filters, district: event.target.value })} placeholder="Kampala" />

@@ -169,7 +169,7 @@ function LinkedStudy({ studyId, detail, reload, canView, canLink }: { studyId: s
         {canLink ? (
           <form className="mv-stack" onSubmit={unlink}>
             <Field label="Reason to unlink" hint="At least 10 characters; recorded in the audit trail" htmlFor="pacs-unlink-reason">
-              <Input id="pacs-unlink-reason" value={unlinkReason} onChange={(event) => setUnlinkReason(event.target.value)} />
+              <Input id="pacs-unlink-reason" value={unlinkReason} onChange={(event) => setUnlinkReason(event.target.value)} placeholder="Enter the reason" />
             </Field>
             <div><Button type="submit" variant="secondary" disabled={unlinkReason.trim().length < 10 || action.busy === "unlink"}>Unlink PACS study</Button></div>
           </form>

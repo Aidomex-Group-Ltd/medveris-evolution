@@ -342,7 +342,7 @@ function ReferralForm({ encounterId, onSaved }: { encounterId: string; onSaved: 
       <Notice tone="info">This records a local referral. It is not sent to the destination facility.</Notice>
       {error ? <FriendlyError {...describeError(error)} /> : null}
       <Field label="Destination facility or service" htmlFor="referral-destination"><Input id="referral-destination" value={toFacility} onChange={(event) => setToFacility(event.target.value)} required maxLength={300} /></Field>
-      <Field label="Referral reason" htmlFor="referral-reason"><Textarea id="referral-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={4000} /></Field>
+      <Field label="Referral reason" htmlFor="referral-reason"><Textarea id="referral-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={4000} placeholder="Enter the reason" /></Field>
       <Field label="Priority" htmlFor="referral-priority"><Select id="referral-priority" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></Select></Field>
       <Button type="submit" variant="secondary" className="mv-full-width-sm" disabled={busy || !toFacility.trim() || !reason.trim()}>{busy ? "Saving…" : "Record referral"}</Button>
     </form>

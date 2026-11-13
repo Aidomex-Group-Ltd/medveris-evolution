@@ -33,8 +33,7 @@ details > summary:hover { text-decoration: underline; }
   .mv-map__canvas { height: 340px; }
   .mv-public__main { padding: 16px; }
 }
-.mv-auth__card--wide { width: min(680px, 100%); }
-.mv-form-grid > *, .mv-auth__card select { min-width: 0; max-width: 100%; }
+.mv-form-grid > * { min-width: 0; max-width: 100%; }
 .mv-level-badge .mv-badge { text-transform: none; }
 
 /* Onboarding steps */
@@ -125,7 +124,6 @@ details > summary:hover { text-decoration: underline; }
 .mv-grid,
 .mv-page-header,
 .mv-page-header > *,
-.mv-auth__card,
 .mv-public__main {
   min-width: 0;
 }
@@ -171,48 +169,10 @@ details > summary:hover { text-decoration: underline; }
   .mv-table-wrap {
     max-width: 100%;
   }
-  .mv-auth__panel {
-    padding: 16px;
-  }
 }
 
-/* Phase 4.2/4.3 incremental: auth and shell mobile-first refinements */
-.mv-auth__card,
-.mv-auth__intro,
-.mv-auth__intro > div,
-.mv-auth__intro h1,
-.mv-auth__intro p,
-.mv-auth__features,
-.mv-auth__features li {
-  max-width: 100%;
-  min-width: 0;
-  text-align: left;
-}
-.mv-auth__intro h1 {
-  max-width: 100%;
-}
-@media (max-width: 900px) {
-  .mv-auth__intro {
-    min-height: 0;
-    justify-content: flex-start;
-  }
-  .mv-auth__panel {
-    place-items: stretch;
-  }
-  .mv-auth__card,
-  .mv-auth__card--wide {
-    width: 100%;
-  }
-}
+/* Phase 4.2/4.3 incremental: shell mobile-first refinements */
 @media (max-width: 600px) {
-  .mv-auth__panel {
-    padding: 12px;
-  }
-  .mv-auth__card .mv-stack > .mv-button,
-  .mv-auth__card form > .mv-button,
-  .mv-auth__card .mv-row > .mv-button {
-    width: 100%;
-  }
   .mv-topbar__left,
   .mv-topbar__tools {
     min-width: 0;
@@ -232,47 +192,123 @@ details > summary:hover { text-decoration: underline; }
   }
 }
 
-/* Phase 1: unified auth container */
-.mv-auth--single {
+
+/* Medveris authentication experience (2026-11-13): centered, narrow, forest-green on pale */
+.mv-authx {
+  min-height: 100dvh;
+  background: #f3f6f4;
   display: grid;
-  place-items: center;
-  grid-template-columns: 1fr;
-  padding: 24px 16px;
-  background: linear-gradient(180deg, var(--mv-bg) 0%, #eef4f1 100%);
+  justify-items: center;
+  align-content: start;
+  padding: clamp(16px, 7vh, 56px) 16px 40px;
 }
-.mv-auth__single {
-  width: min(560px, 100%);
+.mv-authx__container {
+  width: min(480px, 100%);
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+.mv-authx__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #0b5e4b;
+  justify-self: start;
+  border-radius: 10px;
+}
+.mv-authx__wordmark {
+  font-size: 1.18rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.mv-authx__card {
+  background: #ffffff;
+  border: 1px solid #dbe4df;
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(19, 33, 28, 0.1), 0 2px 6px rgba(19, 33, 28, 0.06);
+  padding: clamp(20px, 5vw, 28px);
   display: grid;
   gap: 16px;
 }
-.mv-auth__single-head {
-  display: grid;
-  gap: 4px;
-  justify-items: start;
-}
-.mv-auth__toggles {
-  display: grid;
-  gap: 12px;
-}
-.mv-auth__toggle-group {
-  border: 0;
+.mv-authx__title {
   margin: 0;
-  padding: 0;
-  min-width: 0;
+  font-size: 1.35rem;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #13211c;
 }
-.mv-auth__legend {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--mv-text-muted);
-  margin-bottom: 6px;
-  padding: 0;
+.mv-authx__subtitle {
+  margin: 4px 0 0;
+  font-size: 0.92rem;
+  color: #4f5f58;
 }
-.mv-auth__foot {
+.mv-authx__consent {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #4f5f58;
   text-align: center;
 }
-@media (min-width: 700px) {
-  .mv-auth__toggles {
-    grid-template-columns: 1fr 1fr;
-    align-items: end;
+.mv-authx__consent a,
+.mv-authx__inline a {
+  color: #0b5e4b;
+  font-weight: 600;
+}
+.mv-authx__foot {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #4f5f58;
+  text-align: center;
+}
+.mv-authx__foot a {
+  color: #0b5e4b;
+  font-weight: 600;
+}
+.mv-authx__card form > .mv-button {
+  width: 100%;
+}
+.mv-authx__selector {
+  display: grid;
+  gap: 6px;
+}
+.mv-authx__selector-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4f5f58;
+  text-align: center;
+}
+.mv-authx__selector .mv-tabs {
+  justify-content: center;
+}
+.mv-password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  translate: 0 -50%;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #0b5e4b;
+  cursor: pointer;
+}
+.mv-password-toggle:hover {
+  background: #eef4f1;
+}
+.mv-password-wrap {
+  position: relative;
+  display: grid;
+}
+.mv-password-wrap .mv-input {
+  padding-right: 64px;
+}
+@media (max-width: 360px) {
+  .mv-authx {
+    padding-left: 10px;
+    padding-right: 10px;
   }
 }

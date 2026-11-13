@@ -174,7 +174,7 @@ function AddItem({ departments, currencies, onSaved }: { departments: Department
           </Field>
           <Field label="Code" htmlFor="pl-code"><Input id="pl-code" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} maxLength={50} /></Field>
           <Field label="Name" htmlFor="pl-name"><Input id="pl-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} maxLength={300} /></Field>
-          <Field label="Price" htmlFor="pl-price"><Input id="pl-price" type="number" min={0} step="any" inputMode="decimal" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></Field>
+          <Field label="Price" htmlFor="pl-price"><Input id="pl-price" type="number" min={0} step="any" inputMode="decimal" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} placeholder="Enter amount" /></Field>
           <Field label="Currency" htmlFor="pl-currency">
             <Select id="pl-currency" value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>
               {currencies.map((currency) => <option key={currency} value={currency}>{currency} — {CURRENCY_LABELS[currency] ?? currency}</option>)}
@@ -196,7 +196,7 @@ function AddItem({ departments, currencies, onSaved }: { departments: Department
             </Field>
           ) : null}
         </div>
-        <Field label="Description (optional)" htmlFor="pl-description"><Textarea id="pl-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} maxLength={1000} /></Field>
+        <Field label="Description (optional)" htmlFor="pl-description"><Textarea id="pl-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} maxLength={1000} placeholder="Enter a description" /></Field>
         <div className="mv-row"><Button type="submit" disabled={action.busy !== null}>{action.busy ? "Adding…" : "Add item"}</Button><Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button></div>
       </form>
     </Card>

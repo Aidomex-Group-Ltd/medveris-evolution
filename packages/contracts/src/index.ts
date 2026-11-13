@@ -120,6 +120,7 @@ export const registerPatientSchema = z.object({
   sex: z.enum(["female", "male", "other", "unknown"]).default("unknown"),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
   legal: legalAcceptanceSchema.optional(),
+  acceptedLegal: z.literal(true).optional(),
 });
 
 export const registerFacilitySchema = z.object({
@@ -132,6 +133,7 @@ export const registerFacilitySchema = z.object({
   city: z.string().trim().max(120).optional().or(z.literal("")),
   country: z.string().trim().max(120).default("Uganda"),
   legal: legalAcceptanceSchema.optional(),
+  acceptedLegal: z.literal(true).optional(),
 });
 
 export const loginSchema = z.object({
@@ -163,6 +165,7 @@ export const invitationRegisterSchema = invitationTokenSchema.extend({
   givenName: z.string().trim().min(1).max(120),
   familyName: z.string().trim().min(1).max(120),
   legal: legalAcceptanceSchema.optional(),
+  acceptedLegal: z.literal(true).optional(),
 });
 
 export const membershipScopeSchema = z.object({
@@ -2696,8 +2699,8 @@ export const joinCodeSchema = z.string().trim().min(12).max(64).regex(/^[A-Za-z0
 
 /** The three onboarding paths: an independent workspace, a new organization with its first site, or joining an organization. */
 export const registerWorkspaceSchema = z.discriminatedUnion("path", [
-  z.object({ path: z.literal("independent"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema, legal: legalAcceptanceSchema.optional() }),
-  z.object({ path: z.literal("organization"), owner: workspaceOwnerSchema, organization: organizationDetailsSchema, workspace: workspaceDetailsSchema, legal: legalAcceptanceSchema.optional() }),
+  z.object({ path: z.literal("independent"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema, legal: legalAcceptanceSchema.optional(), acceptedLegal: z.literal(true).optional() }),
+  z.object({ path: z.literal("organization"), owner: workspaceOwnerSchema, organization: organizationDetailsSchema, workspace: workspaceDetailsSchema, legal: legalAcceptanceSchema.optional(), acceptedLegal: z.literal(true).optional() }),
   z.object({
     path: z.literal("join"), owner: workspaceOwnerSchema, workspace: workspaceDetailsSchema,
     /** A join code from the organization's administrator, or an organization found by name; both need approval. */
@@ -2705,6 +2708,7 @@ export const registerWorkspaceSchema = z.discriminatedUnion("path", [
     organizationId: uuidSchema.optional(),
     historyVisibility: z.enum(["from-link-date", "full-history"]).default("from-link-date"),
     legal: legalAcceptanceSchema.optional(),
+    acceptedLegal: z.literal(true).optional(),
   }),
 ]);
 

@@ -275,10 +275,10 @@ function CashForm({ invoiceId, balance, currency, disabled, onPaid }: { invoiceI
       {action.error ? <ErrorState title="Payment not recorded" message={action.error} /> : null}
       {disabled ? <Notice tone="warning">A mobile money prompt for this bill is still unresolved. Check its status before taking cash so the patient is not charged twice.</Notice> : null}
       <div className="mv-form-grid">
-        <Field label="Amount to pay" htmlFor="cash-amount" hint={`Balance due ${formatMoney(balance, currency)}`}><Input id="cash-amount" type="number" inputMode="decimal" min={1} max={balance} step="any" value={amount} onChange={(event) => setAmount(event.target.value)} /></Field>
+        <Field label="Amount to pay" htmlFor="cash-amount" hint={`Balance due ${formatMoney(balance, currency)}`}><Input id="cash-amount" type="number" inputMode="decimal" min={1} max={balance} step="any" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Enter amount" /></Field>
         <Field label="Cash tendered (optional)" htmlFor="cash-tendered" hint={change != null ? `Change: ${formatMoney(change, currency)}` : "Enter to calculate change"}><Input id="cash-tendered" type="number" inputMode="decimal" min={0} step="any" value={tendered} onChange={(event) => setTendered(event.target.value)} /></Field>
       </div>
-      <Field label="Note (optional)" htmlFor="cash-notes"><Input id="cash-notes" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} /></Field>
+      <Field label="Note (optional)" htmlFor="cash-notes"><Input id="cash-notes" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Enter your notes" /></Field>
       <Button type="submit" disabled={action.busy !== null || disabled}>{action.busy ? "Recording…" : `Receive ${formatMoney(value > 0 ? value : 0, currency)} cash`}</Button>
     </form>
   );
@@ -383,8 +383,8 @@ function MobileMoneyForm({ invoiceId, balance, unresolved, mode, onSettled }: {
       {showForm ? (
         <form className="mv-stack" onSubmit={send}>
           <div className="mv-form-grid">
-            <Field label="Payer's mobile number" htmlFor="momo-phone" hint="MTN or Airtel, e.g. 0772 123456"><Input id="momo-phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={20} /></Field>
-            <Field label="Amount (UGX)" htmlFor="momo-amount" hint={`Balance due ${formatMoney(balance, "UGX")}`}><Input id="momo-amount" type="number" inputMode="numeric" min={1} max={balance} step={1} value={amount} onChange={(event) => setAmount(event.target.value)} /></Field>
+            <Field label="Payer's mobile number" htmlFor="momo-phone" hint="MTN or Airtel, e.g. 0772 123456"><Input id="momo-phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={20} placeholder="Enter phone number" /></Field>
+            <Field label="Amount (UGX)" htmlFor="momo-amount" hint={`Balance due ${formatMoney(balance, "UGX")}`}><Input id="momo-amount" type="number" inputMode="numeric" min={1} max={balance} step={1} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Enter amount" /></Field>
           </div>
           <Button type="submit" disabled={busy !== null || phone.trim().length < 9}>{busy === "send" ? "Sending prompt…" : "Send payment prompt"}</Button>
         </form>
@@ -415,11 +415,11 @@ function OtherPaymentForm({ invoiceId, balance, onPaid }: { invoiceId: string; b
       {action.error ? <ErrorState title="Payment not recorded" message={action.error} /> : null}
       <p className="mv-small mv-muted" style={{ margin: 0 }}>Record a payment received outside the till, such as a bank transfer. It is not confirmed with any provider.</p>
       <div className="mv-form-grid">
-        <Field label="Amount" htmlFor="other-amount"><Input id="other-amount" type="number" min={0.01} step="any" value={amount} onChange={(event) => setAmount(event.target.value)} /></Field>
+        <Field label="Amount" htmlFor="other-amount"><Input id="other-amount" type="number" min={0.01} step="any" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Enter amount" /></Field>
         <Field label="Method" htmlFor="other-method"><Select id="other-method" value={method} onChange={(event) => setMethod(event.target.value)}><option value="bank-transfer">Bank transfer</option><option value="manual">Other (manual)</option></Select></Field>
-        <Field label="Reference" htmlFor="other-reference"><Input id="other-reference" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={200} /></Field>
+        <Field label="Reference" htmlFor="other-reference"><Input id="other-reference" value={reference} onChange={(event) => setReference(event.target.value)} maxLength={200} placeholder="Enter reference number" /></Field>
       </div>
-      <Field label="Notes" htmlFor="other-notes"><Textarea id="other-notes" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} /></Field>
+      <Field label="Notes" htmlFor="other-notes"><Textarea id="other-notes" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="Enter your notes" /></Field>
       <Button type="submit" variant="secondary" disabled={action.busy !== null || Number(amount) <= 0}>{action.busy ? "Recording…" : "Record payment"}</Button>
     </form>
   );
@@ -455,7 +455,7 @@ function ClaimsCard({ invoiceId, currency, claims, disabled, onSaved }: { invoic
           <Field label="Insurer" htmlFor="claim-insurer"><Input id="claim-insurer" value={insurer} onChange={(event) => setInsurer(event.target.value)} required minLength={2} /></Field>
           <Field label="Cover amount" htmlFor="claim-cover"><Input id="claim-cover" type="number" min={0.01} step="any" value={coverAmount} onChange={(event) => setCoverAmount(event.target.value)} required /></Field>
         </div>
-        <Field label="Claim notes" htmlFor="claim-notes"><Textarea id="claim-notes" value={claimNotes} onChange={(event) => setClaimNotes(event.target.value)} /></Field>
+        <Field label="Claim notes" htmlFor="claim-notes"><Textarea id="claim-notes" value={claimNotes} onChange={(event) => setClaimNotes(event.target.value)} placeholder="Enter your notes" /></Field>
         <Button type="submit" variant="secondary" disabled={action.busy !== null || disabled || !insurer || Number(coverAmount) <= 0}>{action.busy === "claim" ? "Preparing…" : "Prepare claim"}</Button>
       </form>
     </Card>

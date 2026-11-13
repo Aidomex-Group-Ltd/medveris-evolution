@@ -319,7 +319,7 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
                   <Field label="Plan" htmlFor="note-p"><Textarea id="note-p" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} /></Field>
                 </div>
               </details>
-              <Field label="Creation note" htmlFor="note-reason"><Input id="note-reason" value={form.changeNote} onChange={(e) => setForm({ ...form, changeNote: e.target.value })} required minLength={5} maxLength={2000} /></Field>
+              <Field label="Creation note" htmlFor="note-reason"><Input id="note-reason" value={form.changeNote} onChange={(e) => setForm({ ...form, changeNote: e.target.value })} required minLength={5} maxLength={2000} placeholder="Enter the reason" /></Field>
             </>
           ) : (
             <>
@@ -328,13 +328,13 @@ export function ClinicalNotePanel({ encounterId, entry, canSign, onChanged }: { 
                 <Field label="Title" htmlFor="note-title"><Input id="note-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required maxLength={300} /></Field>
               </div>
               <div className="mv-grid mv-grid--2">
-                <Field label="Subjective" htmlFor="note-s"><Textarea id="note-s" value={form.subjective} onChange={(e) => setForm({ ...form, subjective: e.target.value })} /></Field>
+                <Field label="Subjective" htmlFor="note-s"><Textarea id="note-s" value={form.subjective} onChange={(e) => setForm({ ...form, subjective: e.target.value })} placeholder="Enter your notes" /></Field>
                 <Field label="Objective" htmlFor="note-o"><Textarea id="note-o" value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} /></Field>
                 <Field label="Assessment" htmlFor="note-a"><Textarea id="note-a" value={form.assessment} onChange={(e) => setForm({ ...form, assessment: e.target.value })} /></Field>
                 <Field label="Plan" htmlFor="note-p"><Textarea id="note-p" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} /></Field>
               </div>
               <Field label={amending ? "Amendment reason (required)" : "Creation note (required)"} htmlFor="note-reason" hint={amending ? "Minimum 10 characters. Stored with this version and audit event." : "Minimum 5 characters. Draft edits also record audit notes."}>
-                <Input id="note-reason" value={form.changeNote} onChange={(e) => setForm({ ...form, changeNote: e.target.value })} required minLength={amending ? 10 : 5} maxLength={2000} />
+                <Input id="note-reason" value={form.changeNote} onChange={(e) => setForm({ ...form, changeNote: e.target.value })} required minLength={amending ? 10 : 5} maxLength={2000} placeholder="Enter the reason" />
               </Field>
             </>
           )}

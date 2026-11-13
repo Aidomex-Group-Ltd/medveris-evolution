@@ -70,7 +70,7 @@ function DeviceList({ admin, clinical }: { admin: boolean; clinical: boolean }) 
               <Field label="Manufacturer" htmlFor="device-manufacturer"><Input id="device-manufacturer" value={manufacturer} onChange={(event) => setManufacturer(event.target.value)} required minLength={2} /></Field>
               <Field label="Model" htmlFor="device-model"><Input id="device-model" value={model} onChange={(event) => setModel(event.target.value)} required /></Field>
               <Field label="Firmware" htmlFor="device-firmware"><Input id="device-firmware" value={firmware} onChange={(event) => setFirmware(event.target.value)} /></Field>
-              <Field label="Site" htmlFor="device-site"><Input id="device-site" value={site} onChange={(event) => setSite(event.target.value)} /></Field>
+              <Field label="Site" htmlFor="device-site"><Input id="device-site" value={site} onChange={(event) => setSite(event.target.value)} placeholder="Search or enter the site" /></Field>
             </div>
             <strong>Supported metrics</strong>
             {metrics.map((metric, index) => (

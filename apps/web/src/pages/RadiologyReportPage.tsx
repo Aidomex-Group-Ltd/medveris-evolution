@@ -325,7 +325,7 @@ function SignedActions({ data, onDone }: { data: ReportResponse; onDone: () => v
               ))}
             </>
           ) : null}
-          {mode !== "critical" ? <Field label="Reason" htmlFor="change-reason" hint={mode === "correction" ? "At least 10 characters." : "At least 5 characters."}><Input id="change-reason" value={reason} onChange={(event) => setReason(event.target.value)} required /></Field> : null}
+          {mode !== "critical" ? <Field label="Reason" htmlFor="change-reason" hint={mode === "correction" ? "At least 10 characters." : "At least 5 characters."}><Input id="change-reason" value={reason} onChange={(event) => setReason(event.target.value)} required placeholder="Enter the reason" /></Field> : null}
           <div className="mv-row">
             <Button type="submit" disabled={action.busy !== null}>{mode === "critical" ? "Record communication" : mode === "addendum" ? "Sign addendum" : "Sign correction"}</Button>
             <Button type="button" variant="ghost" onClick={() => setMode("none")}>Cancel</Button>

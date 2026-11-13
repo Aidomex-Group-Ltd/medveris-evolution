@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Button, Card, ErrorState, Notice } from "@medveris/ui";
-import { BrandMark } from "../components/BrandMark";
+import { Button, ErrorState, Notice } from "@medveris/ui";
+import { AuthLayout } from "../features/auth/AuthLayout";
+import { AuthBrand } from "../features/auth/AuthBrand";
 import { SyntheticDataNote } from "../components/SyntheticDataNote";
 import { api, errorMessage } from "../lib/api";
 
@@ -35,41 +36,32 @@ export function VerifyEmailPage() {
   }
 
   return (
-    <div className="mv-auth">
-      <section className="mv-auth__intro">
-        <Link to="/" className="mv-brand" style={{ color: "inherit" }}>
-          <BrandMark />
-          <span>Medveris<small style={{ color: "#bcd7ce" }}>Email verification</small></span>
-        </Link>
+    <AuthLayout>
+      <AuthBrand />
+      <div className="mv-authx__card">
         <div>
-          <h1>Confirm your email address.</h1>
-          <p style={{ marginTop: 16 }}>Verification links work once and expire after 24 hours.</p>
+          <h1 className="mv-authx__title">Confirm your email address</h1>
+          <p className="mv-authx__subtitle">Verification links work once and expire after 24 hours.</p>
         </div>
-        <SyntheticDataNote />
-      </section>
-      <section className="mv-auth__panel">
-        <div className="mv-auth__card mv-stack">
-          <Card title="Verify email">
-            {error ? <ErrorState message={error} /> : null}
-            {done ? (
-              <div className="mv-stack">
-                <Notice tone="success" title="Email verified">Your email address is confirmed.</Notice>
-                <Link to="/login">Continue to sign in</Link>
-              </div>
-            ) : !token ? (
-              <div className="mv-stack">
-                <Notice tone="warning" title="Verification link missing">Open the link from your verification email. Signed-in users can request a new one from their account.</Notice>
-                <Link to="/login">Go to sign in</Link>
-              </div>
-            ) : (
-              <div className="mv-stack">
-                <p className="mv-small mv-muted">Select the button to confirm this address belongs to you.</p>
-                <Button onClick={() => void verify()} disabled={busy}>{busy ? "Verifying…" : "Verify email"}</Button>
-              </div>
-            )}
-          </Card>
-        </div>
-      </section>
-    </div>
+        {error ? <ErrorState message={error} /> : null}
+        {done ? (
+          <div className="mv-stack">
+            <Notice tone="success" title="Email verified">Your email address is confirmed.</Notice>
+            <p className="mv-authx__consent mv-authx__inline"><Link to="/login">Continue to sign in</Link></p>
+          </div>
+        ) : !token ? (
+          <div className="mv-stack">
+            <Notice tone="warning" title="Verification link missing">Open the link from your verification email. Signed-in users can request a new one from their account.</Notice>
+            <p className="mv-authx__consent mv-authx__inline"><Link to="/login">Go to sign in</Link></p>
+          </div>
+        ) : (
+          <div className="mv-stack">
+            <p className="mv-small mv-muted">Select the button to confirm this address belongs to you.</p>
+            <Button onClick={() => void verify()} disabled={busy}>{busy ? "Verifying…" : "Verify email"}</Button>
+          </div>
+        )}
+      </div>
+      <SyntheticDataNote />
+    </AuthLayout>
   );
 }

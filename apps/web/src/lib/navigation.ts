@@ -4,6 +4,6 @@
  */
 export function safeReturnPath(value: unknown): string | null {
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
-  if (/^\/login(?:[/?#]|$)/.test(value)) return null;
+  if (/^\/(?:login|register|auth)(?:[/?#]|$)/.test(value)) return null;
   return value;
 }

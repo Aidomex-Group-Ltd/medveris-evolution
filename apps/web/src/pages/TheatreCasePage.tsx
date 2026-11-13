@@ -156,7 +156,7 @@ export function TheatreCasePage() {
             <form className="mv-stack" onSubmit={addPreop}>
               <label className="mv-check"><input type="checkbox" checked={investigationsReviewed} onChange={(event) => setInvestigationsReviewed(event.target.checked)} /> Investigations reviewed</label>
               <Field label="Fitness" htmlFor="preop-fitness"><Textarea id="preop-fitness" value={fitness} onChange={(event) => setFitness(event.target.value)} required minLength={2} /></Field>
-              <Field label="Notes" htmlFor="preop-notes"><Textarea id="preop-notes" value={preopNotes} onChange={(event) => setPreopNotes(event.target.value)} /></Field>
+              <Field label="Notes" htmlFor="preop-notes"><Textarea id="preop-notes" value={preopNotes} onChange={(event) => setPreopNotes(event.target.value)} placeholder="Enter your notes" /></Field>
               <Button size="sm" type="submit" disabled={action.busy !== null || !investigationsReviewed || fitness.trim().length < 2}>{action.busy === "preop" ? "Saving…" : "Save assessment"}</Button>
             </form>
           ) : null}
@@ -167,7 +167,7 @@ export function TheatreCasePage() {
             <form className="mv-stack" onSubmit={addConsent}>
               <label className="mv-check"><input type="checkbox" checked={procedureConsent} onChange={(event) => setProcedureConsent(event.target.checked)} /> Procedure consent documented</label>
               <label className="mv-check"><input type="checkbox" checked={siteMarked} onChange={(event) => setSiteMarked(event.target.checked)} /> Site marked</label>
-              <Field label="Consent reference" htmlFor="consent-reference"><Input id="consent-reference" value={consentReference} onChange={(event) => setConsentReference(event.target.value)} required minLength={2} /></Field>
+              <Field label="Consent reference" htmlFor="consent-reference"><Input id="consent-reference" value={consentReference} onChange={(event) => setConsentReference(event.target.value)} required minLength={2} placeholder="Enter reference number" /></Field>
               <Button size="sm" type="submit" disabled={action.busy !== null || !procedureConsent || !siteMarked || consentReference.trim().length < 2}>{action.busy === "consent" ? "Saving…" : "Record consent"}</Button>
             </form>
           ) : null}
@@ -182,7 +182,7 @@ export function TheatreCasePage() {
             <div className="mv-form-grid">
               {itemKeys.map((key) => <label key={key} className="mv-check"><input type="checkbox" checked={Boolean(checkedItems[key])} onChange={(event) => setCheckedItems((prev) => ({ ...prev, [key]: event.target.checked }))} /> {key.replaceAll("-", " ")}</label>)}
             </div>
-            <Field label="Notes" htmlFor="checklist-notes"><Textarea id="checklist-notes" value={checklistNotes} onChange={(event) => setChecklistNotes(event.target.value)} /></Field>
+            <Field label="Notes" htmlFor="checklist-notes"><Textarea id="checklist-notes" value={checklistNotes} onChange={(event) => setChecklistNotes(event.target.value)} placeholder="Enter your notes" /></Field>
             <Button size="sm" type="submit" disabled={action.busy !== null || itemKeys.some((key) => !checkedItems[key])}>{action.busy === "checklist" ? "Recording…" : "Record checklist stage"}</Button>
           </form>
         ) : null}
@@ -198,7 +198,7 @@ export function TheatreCasePage() {
           {["preop-ready", "in-theatre"].includes(record.status) ? (
             <form className="mv-stack" onSubmit={addAnesthesia}>
               <Field label="Anesthesia type" htmlFor="anesthesia-type"><Input id="anesthesia-type" value={anesthesiaType} onChange={(event) => setAnesthesiaType(event.target.value)} required minLength={2} /></Field>
-              <Field label="Notes" htmlFor="anesthesia-notes"><Textarea id="anesthesia-notes" value={anesthesiaNotes} onChange={(event) => setAnesthesiaNotes(event.target.value)} required minLength={2} /></Field>
+              <Field label="Notes" htmlFor="anesthesia-notes"><Textarea id="anesthesia-notes" value={anesthesiaNotes} onChange={(event) => setAnesthesiaNotes(event.target.value)} required minLength={2} placeholder="Enter your notes" /></Field>
               <div className="mv-form-grid">
                 <Field label="Started at"><Input type="datetime-local" value={anesthesiaStart} onChange={(event) => setAnesthesiaStart(event.target.value)} required /></Field>
                 <Field label="Ended at"><Input type="datetime-local" value={anesthesiaEnd} onChange={(event) => setAnesthesiaEnd(event.target.value)} /></Field>
@@ -218,7 +218,7 @@ export function TheatreCasePage() {
                 <Field label="Pain" htmlFor="recovery-pain"><Input id="recovery-pain" value={pain} onChange={(event) => setPain(event.target.value)} required /></Field>
                 <Field label="Observed at"><Input type="datetime-local" value={recoveryAt} onChange={(event) => setRecoveryAt(event.target.value)} required /></Field>
               </div>
-              <Field label="Notes" htmlFor="recovery-notes"><Textarea id="recovery-notes" value={recoveryNotes} onChange={(event) => setRecoveryNotes(event.target.value)} /></Field>
+              <Field label="Notes" htmlFor="recovery-notes"><Textarea id="recovery-notes" value={recoveryNotes} onChange={(event) => setRecoveryNotes(event.target.value)} placeholder="Enter your notes" /></Field>
               <Button size="sm" type="submit" disabled={action.busy !== null || !respiratory || !circulation || !consciousness || !pain}>{action.busy === "recovery" ? "Recording…" : "Record recovery observation"}</Button>
             </form>
           ) : null}
@@ -234,7 +234,7 @@ export function TheatreCasePage() {
               <Field label="Expected" htmlFor="count-expected"><Input id="count-expected" type="number" min={0} value={expectedCount} onChange={(event) => setExpectedCount(event.target.value)} required /></Field>
               <Field label="Actual" htmlFor="count-actual"><Input id="count-actual" type="number" min={0} value={actualCount} onChange={(event) => setActualCount(event.target.value)} required /></Field>
             </div>
-            <Field label="Notes" htmlFor="count-notes"><Input id="count-notes" value={countNotes} onChange={(event) => setCountNotes(event.target.value)} /></Field>
+            <Field label="Notes" htmlFor="count-notes"><Input id="count-notes" value={countNotes} onChange={(event) => setCountNotes(event.target.value)} placeholder="Enter your notes" /></Field>
             <Button size="sm" type="submit" disabled={action.busy !== null || !itemType || expectedCount === "" || actualCount === ""}>{action.busy === "count" ? "Recording…" : "Record count"}</Button>
           </form>
           {counts.length ? <Table head={["Item", "Expected", "Actual", "Match"]} caption="Theatre counts">{counts.map((row) => <tr key={row.id}><td>{row.itemType}</td><td>{row.expectedCount}</td><td>{row.actualCount}</td><td><Badge tone={row.expectedCount === row.actualCount ? "success" : "danger"}>{row.expectedCount === row.actualCount ? "match" : "discrepancy"}</Badge></td></tr>)}</Table> : null}
@@ -242,8 +242,8 @@ export function TheatreCasePage() {
         <Card title="Specimens">
           <form className="mv-stack" onSubmit={addSpecimen}>
             <div className="mv-form-grid">
-              <Field label="Specimen type" htmlFor="specimen-type"><Input id="specimen-type" value={specimenType} onChange={(event) => setSpecimenType(event.target.value)} required /></Field>
-              <Field label="Destination" htmlFor="specimen-destination"><Input id="specimen-destination" value={destination} onChange={(event) => setDestination(event.target.value)} required /></Field>
+              <Field label="Specimen type" htmlFor="specimen-type"><Input id="specimen-type" value={specimenType} onChange={(event) => setSpecimenType(event.target.value)} required placeholder="Select specimen type" /></Field>
+              <Field label="Destination" htmlFor="specimen-destination"><Input id="specimen-destination" value={destination} onChange={(event) => setDestination(event.target.value)} required placeholder="Select specimen type" /></Field>
             </div>
             <Button size="sm" type="submit" disabled={action.busy !== null || !specimenType || !destination}>{action.busy === "specimen" ? "Recording…" : "Record specimen"}</Button>
           </form>

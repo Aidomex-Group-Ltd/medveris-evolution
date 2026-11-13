@@ -65,6 +65,12 @@ describe("requireLegalAcceptance", () => {
     })).rejects.toMatchObject({ status: 422 });
   });
 
+  it("accepts the single acceptedLegal flag newer clients send", async () => {
+    const documents = await requireLegalAcceptance({ acceptedLegal: true });
+    expect(documents.map((document) => ({ kind: document.kind, version: document.version })))
+      .toEqual([{ kind: "terms", version: "1.0" }, { kind: "privacy", version: "1.0" }]);
+  });
+
   it("returns the accepted documents with their digests", async () => {
     const documents = await requireLegalAcceptance({
       termsVersion: "1.0", privacyVersion: "1.0", termsAccepted: true, privacyAcknowledged: true,

@@ -130,7 +130,7 @@ function RegisterEmergencyCase() {
           <div className="mv-grid mv-grid--2">
             <Field label="Given name" htmlFor="emergency-given"><Input id="emergency-given" value={givenName} onChange={(event) => setGivenName(event.target.value)} required maxLength={120} /></Field>
             <Field label="Family name" htmlFor="emergency-family"><Input id="emergency-family" value={familyName} onChange={(event) => setFamilyName(event.target.value)} required maxLength={120} /></Field>
-            <Field label="Approximate date of birth" htmlFor="emergency-dob"><Input id="emergency-dob" type="date" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} required /></Field>
+            <Field label="Approximate date of birth" htmlFor="emergency-dob"><Input id="emergency-dob" type="date" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} required placeholder="Select date of birth" /></Field>
             <Field label="Sex"><Select value={sex} onChange={(event) => setSex(event.target.value)}><option value="unknown">Unknown</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></Select></Field>
           </div>
         )}
@@ -139,7 +139,7 @@ function RegisterEmergencyCase() {
           <Field label="Location (optional)" htmlFor="emergency-location"><Input id="emergency-location" value={location} onChange={(event) => setLocation(event.target.value)} maxLength={120} placeholder="Resus bay, triage room…" /></Field>
         </div>
         <MemberPicker value={assignedUserId} onChange={setAssignedUserId} label="Assigned clinician (optional)" required={false} />
-        <Field label="Presenting problem" htmlFor="emergency-reason"><Textarea id="emergency-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={2000} /></Field>
+        <Field label="Presenting problem" htmlFor="emergency-reason"><Textarea id="emergency-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={2000} placeholder="Enter the reason" /></Field>
         <Button type="submit" disabled={action.busy !== null || !reason.trim() || (mode === "existing" ? !patientId : !dateOfBirth)}>{action.busy === "register" ? "Registering…" : "Register emergency case"}</Button>
       </form>
     </Card>

@@ -81,11 +81,11 @@ export function TriagePanel({ encounterId, onSaved }: { encounterId: string; onS
       {saved ? <Notice tone="success">Triage saved. You can now document the consultation note.</Notice> : null}
       <form className="mv-stack" onSubmit={submit}>
         <Field label="Presenting complaint" htmlFor="complaint">
-          <Textarea id="complaint" value={complaint} onChange={(e) => setComplaint(e.target.value)} required maxLength={4000} placeholder="e.g. Fever and cough for 3 days" />
+          <Textarea id="complaint" value={complaint} onChange={(e) => setComplaint(e.target.value)} required maxLength={4000} placeholder="Enter the presenting complaint" />
         </Field>
         <div className="mv-form-grid">
           <Field label="Urgency"><Select value={urgency} onChange={(e) => setUrgency(e.target.value)}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></Select></Field>
-          <Field label="Notes (optional)" htmlFor="triage-notes"><Input id="triage-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={4000} /></Field>
+          <Field label="Notes (optional)" htmlFor="triage-notes"><Input id="triage-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={4000} placeholder="Enter your notes" /></Field>
         </div>
         <details open={showAdvanced} onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}>
           <summary className="mv-small" style={{ cursor: "pointer" }}>Advanced — optional observation & allergy</summary>

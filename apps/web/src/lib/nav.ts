@@ -364,6 +364,11 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
     roles: ["facility_admin", "clinician", "specialist_clinician", "hr"],
   },
   {
+    id: "emergency-access-review", label: "Emergency access review", to: "/emergency-access-review", icon: "security", section: "administration", mobile: "more",
+    roles: ["facility_admin", "auditor"],
+    description: "Review and revoke break-glass access to patient records",
+  },
+  {
     id: "payroll", label: "Payroll and HR", to: "/payroll", icon: "finance", section: "administration", mobile: "more",
     roles: ["hr", "facility_admin", "finance"],
   },

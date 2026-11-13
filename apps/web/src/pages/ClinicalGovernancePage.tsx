@@ -21,7 +21,7 @@ export function ClinicalGovernancePage() {
       <Card title="Capability suggestions" description="Filter the shared capability catalogue by cadre or specialties. This never grants a privilege.">
         <div className="mv-form-grid">
           <Field label="Cadre"><Select value={cadreCode} onChange={(event) => setCadreCode(event.target.value)}><option value="">Any cadre</option>{cadres.data?.cadres.map((c) => <option key={c.code} value={c.code}>{c.name} ({c.code})</option>)}</Select></Field>
-          <Field label="Specialty codes (comma-separated)" htmlFor="spec-codes"><Input id="spec-codes" value={specialtyCodes} onChange={(event) => setSpecialtyCodes(event.target.value)} placeholder="e.g. INTERNAL-MED" /></Field>
+          <Field label="Specialty codes (comma-separated)" htmlFor="spec-codes"><Input id="spec-codes" value={specialtyCodes} onChange={(event) => setSpecialtyCodes(event.target.value)} placeholder="Enter specialty codes" /></Field>
         </div>
         {capabilities.loading ? <LoadingState /> : capabilities.error ? <ErrorState message={capabilities.error} onRetry={capabilities.reload} /> : !capabilities.data?.capabilities.length ? <EmptyState title="No capabilities" description="Adjust the cadre or specialty filter." /> : (
           <Table head={["Code", "Capability", "Category"]} caption="Capabilities">

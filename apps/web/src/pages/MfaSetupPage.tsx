@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { Button, Card, ErrorState, Field, Input, LoadingState, Notice } from "@medveris/ui";
-import { BrandMark } from "../components/BrandMark";
+import { AuthLayout } from "../features/auth/AuthLayout";
+import { AuthBrand } from "../features/auth/AuthBrand";
 import { api, errorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useAppEnvironment } from "../lib/environment";
@@ -114,22 +115,13 @@ export function MfaSetupPage() {
   }
 
   return (
-    <div className="mv-auth">
-      <section className="mv-auth__intro">
-        <Link to="/" className="mv-brand" style={{ color: "inherit" }}>
-          <BrandMark />
-          <span>Medveris<small style={{ color: "#bcd7ce" }}>Account security</small></span>
-        </Link>
+    <AuthLayout>
+      <AuthBrand />
+      <div className="mv-authx__card">
         <div>
-          <h1>Protect facility access with two-step verification.</h1>
-          <p style={{ marginTop: 16 }}>
-            Staff accounts must use an authenticator app before opening facility workspaces. Each sign-in then asks for a six-digit code.
-          </p>
+          <h1 className="mv-authx__title">Protect facility access with two-step verification</h1>
+          <p className="mv-authx__subtitle">Staff accounts must use an authenticator app before opening facility workspaces. Works with Google Authenticator, Microsoft Authenticator, 1Password and other TOTP apps.</p>
         </div>
-        <p className="mv-small">Works with Google Authenticator, Microsoft Authenticator, 1Password and other TOTP apps.</p>
-      </section>
-      <section className="mv-auth__panel">
-        <div className="mv-auth__card mv-stack">
           <Card title="Set up two-step verification" description={me.user.email}>
             {welcome && me.activeTenant && !recoveryCodes ? (
               <Notice tone="success" title={`${me.activeTenant.name} is ready`}>One last step: turn on two-step verification, then you go straight to its dashboard.</Notice>
@@ -172,8 +164,7 @@ export function MfaSetupPage() {
               </div>
             )}
           </Card>
-        </div>
-      </section>
-    </div>
+      </div>
+    </AuthLayout>
   );
 }

@@ -268,6 +268,44 @@ export interface AuditEventRow {
   summary: string;
 }
 
+export interface ActiveEmergencyOverride {
+  id: string;
+  expiresAt: string;
+  reviewStatus: string;
+}
+
+/** One row of the governance review list (`GET /emergency-overrides`). */
+export interface EmergencyOverrideRow {
+  id: string;
+  reason: string;
+  startedAt: string;
+  expiresAt: string;
+  reviewStatus: string;
+  reviewDueAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  publicId: string;
+  givenName: string;
+  familyName: string;
+  clinicianName: string;
+}
+
+/** A record returned by `GET /emergency-overrides/:id/records` (cross-facility projection). */
+export interface EmergencyOverrideRecord {
+  category: string;
+  sourceTenantId: string;
+  sourceFacility: string;
+  resourceId: string;
+  authorId: string;
+  authorName: string;
+  occurredAt: string;
+  recordedAt: string;
+  status: string;
+  title: string;
+  summary: string;
+  payload?: unknown;
+}
+
 export interface ExchangeGrant {
   id: string;
   patientId: string;

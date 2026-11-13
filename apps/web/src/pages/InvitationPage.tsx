@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, DataList, ErrorState, Field, Input, LoadingState, Notice } from "@medveris/ui";
-import { AuthFrame } from "../components/AuthFrame";
+import { AuthLayout } from "../features/auth/AuthLayout";
+import { AuthBrand } from "../features/auth/AuthBrand";
 import { ApiError, api, errorMessage, setCsrfToken } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -50,23 +51,8 @@ export function InvitationPage() {
   const [accepted, setAccepted] = useState<Accepted | null>(null);
   const [busy, setBusy] = useState<"accept" | "decline" | "register" | "switch" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [legalVersions, setLegalVersions] = useState<{ terms: string; privacy: string } | null>(null);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
-  const reload = useCallback(() => setVersion((v) => v + 1), []);
 
-  useEffect(() => {
-    let cancelled = false;
-    api<{ documents: Array<{ kind: "terms" | "privacy"; version: string }> }>("/public/legal")
-      .then((payload) => {
-        if (cancelled) return;
-        const terms = payload.documents.find((document) => document.kind === "terms")?.version;
-        const privacy = payload.documents.find((document) => document.kind === "privacy")?.version;
-        if (terms && privacy) setLegalVersions({ terms, privacy });
-      })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, []);
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -117,7 +103,7 @@ export function InvitationPage() {
     reload();
   });
 
-  const signIn = () => navigate("/login?as=staff", { state: { from: `${location.pathname}${location.search}` } });
+  const signIn = () => navigate("/login?role=provider&mode=signin", { state: { from: `${location.pathname}${location.search}` } });
 
   const register = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -126,20 +112,13 @@ export function InvitationPage() {
       setActionError("The passwords do not match");
       return;
     }
-    if (!legalVersions || !termsAccepted || !privacyAcknowledged) {
-      setActionError("Accept the Terms of Service and acknowledge the Privacy Notice before creating your account.");
-      return;
-    }
     void run("register", async () => {
       const result = await api<{ csrfToken: string }>("/auth/invitations/register", {
         method: "POST",
         body: {
           token, givenName: String(data.get("givenName") ?? ""), familyName: String(data.get("familyName") ?? ""),
           password: String(data.get("password") ?? ""),
-          legal: {
-            termsVersion: legalVersions.terms, privacyVersion: legalVersions.privacy,
-            termsAccepted, privacyAcknowledged,
-          },
+          acceptedLegal: true,
         },
       });
       setCsrfToken(result.csrfToken);
@@ -207,7 +186,7 @@ export function InvitationPage() {
               ? "This invitation was accepted by a different account and cannot be transferred. Sign in with the account that accepted it, or ask the facility administrator for a new invitation."
               : "This invitation has already been accepted. If you accepted it, use Facility staff sign-in."}</Notice>
             <div className="mv-row">
-              {view.viewer.authenticated ? <Button variant="secondary" type="button" disabled={busy !== null} onClick={() => void switchAccount()}>Sign out and switch account</Button> : <Button type="button" onClick={() => navigate("/login?as=staff")}>Facility staff sign-in</Button>}
+              {view.viewer.authenticated ? <Button variant="secondary" type="button" disabled={busy !== null} onClick={() => void switchAccount()}>Sign out and switch account</Button> : <Button type="button" onClick={() => navigate("/login?role=provider&mode=signin")}>Facility staff sign-in</Button>}
               {home}
             </div>
           </div>
@@ -249,23 +228,10 @@ export function InvitationPage() {
                   <Field label="Given name" htmlFor="invite-given"><Input id="invite-given" name="givenName" autoComplete="given-name" required maxLength={120} /></Field>
                   <Field label="Family name" htmlFor="invite-family"><Input id="invite-family" name="familyName" autoComplete="family-name" required maxLength={120} /></Field>
                 </div>
-                <Field label="Password" htmlFor="invite-password" hint="At least 10 characters."><Input id="invite-password" name="password" type="password" autoComplete="new-password" minLength={10} required /></Field>
+                <Field label="Password" htmlFor="invite-password" hint="At least 10 characters."><Input id="invite-password" name="password" type="password" autoComplete="new-password" minLength={10} required placeholder="Enter your password" /></Field>
                 <Field label="Confirm password" htmlFor="invite-confirm"><Input id="invite-confirm" name="confirm" type="password" autoComplete="new-password" minLength={10} required /></Field>
-                <label className="mv-check">
-                  <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
-                  <span>
-                    I have read and accept the <Link to="/terms" target="_blank" rel="noreferrer">Terms of Service</Link>
-                    {legalVersions ? ` (version ${legalVersions.terms})` : ""}.
-                  </span>
-                </label>
-                <label className="mv-check">
-                  <input type="checkbox" checked={privacyAcknowledged} onChange={(event) => setPrivacyAcknowledged(event.target.checked)} />
-                  <span>
-                    I have read the <Link to="/privacy" target="_blank" rel="noreferrer">Privacy Notice</Link>
-                    {legalVersions ? ` (version ${legalVersions.privacy})` : ""} and understand how personal and health data is handled.
-                  </span>
-                </label>
-                <Button type="submit" disabled={busy !== null || !legalVersions || !termsAccepted || !privacyAcknowledged}>{busy === "register" ? "Creating account…" : "Create account"}</Button>
+                <Button type="submit" disabled={busy !== null}>{busy === "register" ? "Creating account…" : "Create account"}</Button>
+                <p className="mv-small mv-muted">By selecting <strong>Create account</strong>, you confirm that you have read and agree to our <Link to="/terms" target="_blank" rel="noreferrer">Terms of Service</Link> and acknowledge the <Link to="/privacy" target="_blank" rel="noreferrer">Privacy Notice</Link>.</p>
                 <Button variant="ghost" type="button" disabled={busy !== null} onClick={decline}>Decline invitation</Button>
                 <p className="mv-small mv-muted">Already have a Medveris account under this email? <Button variant="ghost" size="sm" type="button" onClick={signIn}>Sign in instead</Button></p>
               </form>
@@ -291,12 +257,15 @@ export function InvitationPage() {
   }
 
   return (
-    <AuthFrame
-      eyebrow="Staff invitation"
-      heading="You have been invited to join a facility."
-      intro={<p>Review the invitation, then accept it to be registered as staff. The facility and role come from the invitation the administrator sent and cannot be changed here.</p>}
-    >
-      {body()}
-    </AuthFrame>
+    <AuthLayout>
+      <AuthBrand />
+      <div className="mv-authx__card">
+        <div>
+          <h1 className="mv-authx__title">You have been invited to join a facility</h1>
+          <p className="mv-authx__subtitle">Review the invitation, then accept it to be registered as staff. The facility and role come from the invitation the administrator sent and cannot be changed here.</p>
+        </div>
+        {body()}
+      </div>
+    </AuthLayout>
   );
 }

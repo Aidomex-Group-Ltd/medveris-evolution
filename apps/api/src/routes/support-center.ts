@@ -151,9 +151,10 @@ supportCenterRoutes.post("/support-center/tickets", async (c) => {
   const deps = c.get("deps");
   const auth = c.get("auth")!;
   const body = await parseJson(c, supportTicketCreateSchema);
-  if (body.externalRef) {
+  const externalRef = body.externalRef ?? null;
+  if (externalRef) {
     const existing = await withPlatformActor(c, (tx) => tx`
-      select id from support_tickets where external_ref = ${body.externalRef} and status in ('open', 'in_progress') limit 1
+      select id from support_tickets where external_ref = ${externalRef} and status in ('open', 'in_progress') limit 1
     `);
     if (existing.length) throw new ConflictError("An open ticket already exists for this reference");
   }
@@ -161,7 +162,7 @@ supportCenterRoutes.post("/support-center/tickets", async (c) => {
   await withPlatformActor(c, async (tx) => {
     await tx`
       insert into support_tickets (id, source, external_ref, category, severity, status, title, summary, opened_by)
-      values (${id}, ${body.source}, ${body.externalRef ?? null}, ${body.category}, ${body.severity}, 'open', ${body.title}, ${body.summary}, ${auth.user.id})
+      values (${id}, ${body.source}, ${externalRef}, ${body.category}, ${body.severity}, 'open', ${body.title}, ${body.summary}, ${auth.user.id})
     `;
     await insertEvent(tx, id, auth.user.id, "opened", undefined, { source: body.source, severity: body.severity, category: body.category });
     await writeAudit(tx, deps.config, {
@@ -172,7 +173,7 @@ supportCenterRoutes.post("/support-center/tickets", async (c) => {
       resourceType: "SupportTicket",
       resourceId: id,
       ...auditMeta(c),
-      metadata: { source: body.source, severity: body.severity, category: body.category, externalRef: body.externalRef ?? null },
+      metadata: { source: body.source, severity: body.severity, category: body.category, externalRef },
     });
   });
   return c.json({ ok: true, id }, 201);

@@ -70,7 +70,7 @@ function Cases() {
               <EncounterPicker value={encounterId} onChange={setEncounterId} patientId={patientId || undefined} />
               <Field label="Procedure" htmlFor="theatre-procedure"><Input id="theatre-procedure" value={procedureName} onChange={(event) => setProcedureName(event.target.value)} required minLength={3} /></Field>
               <Field label="Laterality"><Select value={laterality} onChange={(event) => setLaterality(event.target.value)}><option value="not-applicable">Not applicable</option><option value="left">Left</option><option value="right">Right</option><option value="bilateral">Bilateral</option></Select></Field>
-              <Field label="Site" htmlFor="theatre-site"><Input id="theatre-site" value={site} onChange={(event) => setSite(event.target.value)} /></Field>
+              <Field label="Site" htmlFor="theatre-site"><Input id="theatre-site" value={site} onChange={(event) => setSite(event.target.value)} placeholder="Search or enter the site" /></Field>
               <Field label="Urgency"><Select value={urgency} onChange={(event) => setUrgency(event.target.value)}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></Select></Field>
               <Field label="Scheduled at"><Input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} required /></Field>
               <Field label="Theatre"><Select value={theatreId} onChange={(event) => setTheatreId(event.target.value)}><option value="">Unassigned</option>{theatres.data?.theatres.map((theatre) => <option key={theatre.id} value={theatre.id}>{theatre.name}</option>)}</Select></Field>

@@ -34,7 +34,14 @@ describe("secret hygiene in tracked files", () => {
     const findings: string[] = [];
     for (const file of files) {
       const path = join(REPO_ROOT, file);
-      if (statSync(path).size > 2 * 1024 * 1024) continue;
+      let stat;
+      try {
+        stat = statSync(path);
+      } catch {
+        // File deleted in the worktree before its deletion is committed; contains no readable secrets.
+        continue;
+      }
+      if (stat.size > 2 * 1024 * 1024) continue;
       const content = readFileSync(path, "utf8");
       for (const { name, re } of PATTERNS) {
         if (re.test(content)) findings.push(`${file}: ${name}`);

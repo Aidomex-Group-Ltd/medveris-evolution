@@ -131,13 +131,13 @@ function Profile({ data, onSaved }: { data: WorkspaceResponse; onSaved: () => vo
                   {OWNERSHIP_TYPES.map((type) => <option key={type} value={type}>{OWNERSHIP_LABELS[type]}</option>)}
                 </Select>
               </Field>
-              <Field label="District" htmlFor="wp-district"><Input id="wp-district" value={details.district} onChange={(event) => setDetails({ ...details, district: event.target.value })} maxLength={120} /></Field>
-              <Field label="Town or city" htmlFor="wp-city"><Input id="wp-city" value={details.city} onChange={(event) => setDetails({ ...details, city: event.target.value })} maxLength={120} /></Field>
+              <Field label="District" htmlFor="wp-district"><Input id="wp-district" value={details.district} onChange={(event) => setDetails({ ...details, district: event.target.value })} maxLength={120} placeholder="Enter the district" /></Field>
+              <Field label="Town or city" htmlFor="wp-city"><Input id="wp-city" value={details.city} onChange={(event) => setDetails({ ...details, city: event.target.value })} maxLength={120} placeholder="Enter the city" /></Field>
               <Field label="Region" htmlFor="wp-region"><Input id="wp-region" value={details.region} onChange={(event) => setDetails({ ...details, region: event.target.value })} maxLength={120} /></Field>
-              <Field label="Address" htmlFor="wp-address"><Input id="wp-address" value={details.address} onChange={(event) => setDetails({ ...details, address: event.target.value })} maxLength={300} /></Field>
+              <Field label="Address" htmlFor="wp-address"><Input id="wp-address" value={details.address} onChange={(event) => setDetails({ ...details, address: event.target.value })} maxLength={300} placeholder="Enter physical address" /></Field>
             </div>
             <LevelFields idPrefix="wp" value={classification} onChange={setClassification} />
-            <Field label="Reason for the change" htmlFor="wp-reason" hint="Required when an official level is removed."><Textarea id="wp-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} /></Field>
+            <Field label="Reason for the change" htmlFor="wp-reason" hint="Required when an official level is removed."><Textarea id="wp-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} placeholder="Enter the reason" /></Field>
             <div className="mv-row">
               <Button type="submit" disabled={action.busy !== null}>{action.busy ? "Saving…" : "Save"}</Button>
               <Button type="button" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
@@ -437,12 +437,12 @@ function SharedSupply() {
               <Field label="Lot" htmlFor="ss-lot"><Select id="ss-lot" value={form.lotId} onChange={(event) => setForm({ ...form, lotId: event.target.value })}>
                 <option value="">No lot</option>{stock.data?.stock.filter((row) => row.lotId).map((row) => <option key={row.lotId!} value={row.lotId!}>{row.lotNumber} · exp {row.expiresOn?.slice(0, 10) ?? "—"} · {row.available} available</option>)}
               </Select></Field>
-              <Field label="Quantity" htmlFor="ss-qty"><Input id="ss-qty" type="number" min="0" step="any" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required /></Field>
+              <Field label="Quantity" htmlFor="ss-qty"><Input id="ss-qty" type="number" min="0" step="any" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required placeholder="Enter quantity" /></Field>
               <Field label="Unit" htmlFor="ss-unit"><Select id="ss-unit" value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} required>
                 {(item?.units ?? [{ unit: item?.baseUnit ?? "" }]).map((unit) => <option key={unit.unit} value={unit.unit}>{unit.unit}</option>)}
               </Select></Field>
             </div>
-            <Field label="Reason" htmlFor="ss-reason"><Input id="ss-reason" value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} minLength={3} maxLength={500} required /></Field>
+            <Field label="Reason" htmlFor="ss-reason"><Input id="ss-reason" value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} minLength={3} maxLength={500} required placeholder="Enter the reason" /></Field>
             <div><Button type="submit" disabled={action.busy !== null}>Dispatch</Button></div>
           </form>
         </Card>
@@ -457,7 +457,7 @@ function SharedSupply() {
               <Field label="As item" htmlFor="sr-item" hint="This site's own catalogue item."><Select id="sr-item" value={receipt.destinationItemId} onChange={(event) => setReceipt({ ...receipt, destinationItemId: event.target.value })} required>
                 <option value="">Choose an item</option>{items.data?.items.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.itemCode})</option>)}
               </Select></Field>
-              <Field label="Quantity received (base unit)" htmlFor="sr-qty"><Input id="sr-qty" type="number" min="0" step="any" value={receipt.receivedQuantity} onChange={(event) => setReceipt({ ...receipt, receivedQuantity: event.target.value })} required /></Field>
+              <Field label="Quantity received (base unit)" htmlFor="sr-qty"><Input id="sr-qty" type="number" min="0" step="any" value={receipt.receivedQuantity} onChange={(event) => setReceipt({ ...receipt, receivedQuantity: event.target.value })} required placeholder="Enter quantity" /></Field>
             </div>
             <Field label="Discrepancy note" htmlFor="sr-note" hint="Required when the quantity differs from what was dispatched."><Input id="sr-note" value={receipt.discrepancyNote} onChange={(event) => setReceipt({ ...receipt, discrepancyNote: event.target.value })} maxLength={1000} /></Field>
             <div className="mv-row"><Button type="submit" disabled={action.busy !== null}>Receive</Button><Button type="button" variant="ghost" onClick={() => setReceiving(null)}>Cancel</Button></div>

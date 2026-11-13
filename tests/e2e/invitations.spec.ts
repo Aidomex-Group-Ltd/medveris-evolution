@@ -73,8 +73,6 @@ test("an administrator's invitation takes a new staff member through confirmatio
   await page.getByLabel("Family name").fill("Invitee");
   await page.getByLabel(/^Password/).fill(password);
   await page.getByLabel("Confirm password").fill(password);
-  await page.getByRole("checkbox", { name: /Terms of Service/ }).check();
-  await page.getByRole("checkbox", { name: /Privacy Notice/ }).check();
   await page.getByRole("button", { name: "Create account" }).click();
   await page.getByRole("button", { name: "Accept invitation" }).click();
   await expect(page.getByText(`You are now registered as staff at ${KAMPALA}`)).toBeVisible();

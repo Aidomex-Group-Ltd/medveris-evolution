@@ -62,12 +62,11 @@ export function LegalReacceptance() {
   }
 
   return (
-    <div className="mv-auth">
-      <section className="mv-auth__panel" style={{ gridColumn: "1 / -1" }}>
-        <div className="mv-auth__card mv-auth__card--wide mv-stack">
-          <Link to="/" className="mv-brand">
+    <div className="mv-authx">
+      <div className="mv-authx__card" style={{ maxWidth: 720, margin: "0 auto" }}>
+          <Link to="/" className="mv-authx__brand" aria-label="Medveris home">
             <BrandMark />
-            <span>Medveris</span>
+            <span className="mv-authx__wordmark">Medveris</span>
           </Link>
           <form className="mv-stack" onSubmit={accept}>
             <Card
@@ -88,8 +87,7 @@ export function LegalReacceptance() {
               <Button type="button" variant="ghost" onClick={() => void logout()}>Sign out</Button>
             </Card>
           </form>
-        </div>
-      </section>
+      </div>
     </div>
   );
 }

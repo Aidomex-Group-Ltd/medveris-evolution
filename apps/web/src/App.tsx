@@ -112,14 +112,12 @@ function RegisterRedirect() {
   const [params] = useSearchParams();
   const next = new URLSearchParams(params);
   const type = next.get("type");
-  if (type === "facility") {
-    next.set("role", "provider");
-    next.set("mode", "signup");
-  } else {
-    next.set("role", "patient");
-    next.set("mode", "signup");
-  }
+  const mode = next.get("mode");
+  const role = type === "facility" || next.get("as") === "staff" ? "provider" : "patient";
+  next.set("role", role);
+  next.set("mode", mode === "signin" ? "signin" : "signup");
   next.delete("type");
+  next.delete("as");
   return <Navigate to={`/login?${next.toString()}`} replace state={location.state} />;
 }
 

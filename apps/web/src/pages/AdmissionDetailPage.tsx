@@ -141,7 +141,7 @@ export function AdmissionDetailPage() {
           {active ? (
             <form className="mv-stack" onSubmit={assignBed} style={{ marginTop: 12 }}>
               <Field label="Bed"><Select value={bedId} onChange={(event) => setBedId(event.target.value)} required>{<option value="">Select an available bed…</option>}{available.map((bed) => <option key={bed.id} value={bed.id}>{bed.wardName} · {bed.label}</option>)}</Select></Field>
-              <Field label="Transfer reason" htmlFor="transfer-reason"><Input id="transfer-reason" value={transferReason} onChange={(event) => setTransferReason(event.target.value)} maxLength={500} /></Field>
+              <Field label="Transfer reason" htmlFor="transfer-reason"><Input id="transfer-reason" value={transferReason} onChange={(event) => setTransferReason(event.target.value)} maxLength={500} placeholder="Enter the reason" /></Field>
               <Button type="submit" disabled={action.busy !== null || !bedId}>{action.busy === "bed" ? "Assigning…" : assignments.some((row) => !row.releasedAt) ? "Transfer bed" : "Assign bed"}</Button>
             </form>
           ) : null}
@@ -156,7 +156,7 @@ export function AdmissionDetailPage() {
                 <Field label="Shift"><Select value={shift} onChange={(event) => setShift(event.target.value)}><option value="day">Day</option><option value="evening">Evening</option><option value="night">Night</option></Select></Field>
                 <Field label="Pain score (0–10)" htmlFor="pain-score"><Input id="pain-score" type="number" min={0} max={10} value={painScore} onChange={(event) => setPainScore(event.target.value)} /></Field>
               </div>
-              <Field label="Assessment notes" htmlFor="assessment-notes"><Textarea id="assessment-notes" value={notes} onChange={(event) => setNotes(event.target.value)} required minLength={2} /></Field>
+              <Field label="Assessment notes" htmlFor="assessment-notes"><Textarea id="assessment-notes" value={notes} onChange={(event) => setNotes(event.target.value)} required minLength={2} placeholder="Enter your notes" /></Field>
               <Button type="submit" disabled={action.busy !== null || notes.trim().length < 2}>{action.busy === "assessment" ? "Recording…" : "Record assessment"}</Button>
             </form>
           ) : null}
@@ -175,7 +175,7 @@ export function AdmissionDetailPage() {
         <Card title="Nursing tasks">
           {active ? (
             <form className="mv-stack" onSubmit={addTask}>
-              <Field label="Task" htmlFor="task-description"><Input id="task-description" value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} required minLength={2} /></Field>
+              <Field label="Task" htmlFor="task-description"><Input id="task-description" value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} required minLength={2} placeholder="Enter a description" /></Field>
               <Field label="Due at (optional)"><Input type="datetime-local" value={taskDue} onChange={(event) => setTaskDue(event.target.value)} /></Field>
               <Button type="submit" disabled={action.busy !== null || taskDescription.trim().length < 2}>{action.busy === "task" ? "Adding…" : "Add task"}</Button>
             </form>
@@ -246,7 +246,7 @@ export function AdmissionDetailPage() {
           <form className="mv-stack" onSubmit={transition}>
             <div className="mv-form-grid">
               <Field label="Disposition"><Select value={disposition} onChange={(event) => setDisposition(event.target.value)}><option value="discharged">Discharged</option><option value="transferred-out">Transferred out</option><option value="deceased">Deceased</option><option value="cancelled">Cancelled</option></Select></Field>
-              <Field label="Reason" htmlFor="disposition-reason"><Input id="disposition-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} /></Field>
+              <Field label="Reason" htmlFor="disposition-reason"><Input id="disposition-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} placeholder="Enter the reason" /></Field>
             </div>
             <Field label="Discharge summary" htmlFor="disposition-summary"><Textarea id="disposition-summary" value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={20000} /></Field>
             <Button type="submit" variant="danger" disabled={action.busy !== null}>{action.busy === "transition" ? "Closing…" : "Close admission"}</Button>

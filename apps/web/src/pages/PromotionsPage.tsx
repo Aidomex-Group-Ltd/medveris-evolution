@@ -129,7 +129,7 @@ function CampaignForm({ facilities, packages, loadingPackages, onCreated }: { fa
           <Field label="Scope country"><Input value={form.scopeCountry} onChange={(event) => setForm({ ...form, scopeCountry: event.target.value })} /></Field>
           <Field label="Scope region"><Input value={form.scopeRegion} onChange={(event) => setForm({ ...form, scopeRegion: event.target.value })} /></Field>
           <Field label="Scope district"><Input value={form.scopeDistrict} onChange={(event) => setForm({ ...form, scopeDistrict: event.target.value })} /></Field>
-          <Field label="Service categories" hint="Comma-separated. Leave blank to target all eligible services."><Input value={form.serviceCategories} onChange={(event) => setForm({ ...form, serviceCategories: event.target.value })} placeholder="outpatient, diagnostics" /></Field>
+          <Field label="Service categories" hint="Comma-separated. Leave blank to target all eligible services."><Input value={form.serviceCategories} onChange={(event) => setForm({ ...form, serviceCategories: event.target.value })} placeholder="Comma-separated list" /></Field>
           {selected ? <Notice tone="neutral" title="Package terms">{selected.placementSurface.replaceAll("-", " ")} · {selected.sponsoredSlots} slot(s) · max {selected.maxActivePerFacility} active per facility{selected.requirements ? ` · ${selected.requirements}` : ""}{selected.eligibleServiceCategories.length ? ` · categories: ${selected.eligibleServiceCategories.join(", ")}` : ""}</Notice> : null}
           <div className="mv-form-actions"><Button type="submit" disabled={Boolean(action.busy) || !claimed.length}>{action.busy ? "Submitting…" : "Submit campaign"}</Button></div>
         </form>

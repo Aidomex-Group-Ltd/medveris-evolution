@@ -57,6 +57,12 @@ function classifyByCode(code: string): Classified | null {
       return { tone: "warning", title: "Please verify it is you", message: "For this action we need a fresh two-step verification. Verify and try again." };
     case "rate_limited":
       return { tone: "neutral", title: "One moment", message: "Too many attempts in a short time. Wait a little, then try again." };
+    case "subscription_restricted":
+      return {
+        tone: "warning",
+        title: "This action is paused",
+        message: "Your facility's subscription is restricted, so billing-sensitive changes are paused. Clinical records and care documentation remain available. Ask a facility administrator to restore the subscription.",
+      };
     case "tenant_unavailable":
     case "database_unavailable":
     case "dependency_unavailable":
@@ -71,6 +77,7 @@ function classifyByStatus(status: number): Classified {
   if (status === 401) return classifyByCode("unauthenticated")!;
   if (status === 403) return classifyByCode("forbidden")!;
   if (status === 404) return classifyByCode("not_found")!;
+  if (status === 402) return classifyByCode("subscription_restricted")!;
   if (status === 409) return classifyByCode("conflict")!;
   if (status === 429) return classifyByCode("rate_limited")!;
   if (status >= 500) {

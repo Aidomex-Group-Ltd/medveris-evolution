@@ -85,7 +85,7 @@ export function CaregiversPage() {
             <form className="mv-stack" onSubmit={invite}>
               <div className="mv-grid mv-grid--2">
                 <Field label="Caregiver email" htmlFor="proxy-email" hint="We match the address to an existing account.">
-                  <Input id="proxy-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+                  <Input id="proxy-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required placeholder="Enter your email address" />
                 </Field>
                 <Field label="Relationship" htmlFor="proxy-relationship">
                   <Input id="proxy-relationship" value={relationship} onChange={(event) => setRelationship(event.target.value)} required />

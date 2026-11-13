@@ -194,7 +194,7 @@ export function PatientsPage() {
               </div>
             ) : null}
             <div className="mv-form-grid">
-              <Field label="Encounter reason" htmlFor="encounter-reason"><Input id="encounter-reason" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+              <Field label="Encounter reason" htmlFor="encounter-reason"><Input id="encounter-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Enter the reason" /></Field>
               <div className="mv-field"><span className="mv-field__label" aria-hidden="true">&nbsp;</span><Button onClick={() => void startEncounter()} disabled={busy === "encounter" || busy === "enroll" || !reason.trim()}>{busy === "encounter" ? "Starting…" : "Start walk-in encounter"}</Button></div>
             </div>
           </div>
@@ -207,7 +207,7 @@ export function PatientsPage() {
             <Field label="Public patient ID" htmlFor="resolve-id" hint="Format: MV-XXXX-XXXX-XXXX-XXXX"><Input id="resolve-id" name="publicId" required placeholder="MV-…" autoComplete="off" /></Field>
             <div className="mv-form-grid">
               <Field label="Family name" htmlFor="resolve-family"><Input id="resolve-family" name="familyName" required /></Field>
-              <Field label="Date of birth" htmlFor="resolve-dob"><Input id="resolve-dob" name="dateOfBirth" type="date" required /></Field>
+              <Field label="Date of birth" htmlFor="resolve-dob"><Input id="resolve-dob" name="dateOfBirth" type="date" required placeholder="Select date of birth" /></Field>
             </div>
             <Button type="submit" disabled={busy === "resolve"}>{busy === "resolve" ? "Checking…" : "Confirm identity"}</Button>
           </form>
@@ -219,13 +219,13 @@ export function PatientsPage() {
               <Field label="Family name" htmlFor="reg-family"><Input id="reg-family" name="familyName" required /></Field>
             </div>
             <div className="mv-form-grid">
-              <Field label="Date of birth" htmlFor="reg-dob"><Input id="reg-dob" name="dateOfBirth" type="date" required /></Field>
+              <Field label="Date of birth" htmlFor="reg-dob"><Input id="reg-dob" name="dateOfBirth" type="date" required placeholder="Select date of birth" /></Field>
               <Field label="Sex"><Select name="sex" defaultValue="unknown"><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="unknown">Unknown</option></Select></Field>
             </div>
             <Field label="Identity confidence"><Select name="identityConfidence" defaultValue="confirmed-verbal"><option value="confirmed-document">Confirmed from document</option><option value="confirmed-verbal">Confirmed verbally</option><option value="temporary">Temporary identity</option><option value="uncertain">Uncertain</option></Select></Field>
             <div className="mv-form-grid">
-              <Field label="Phone (optional)" htmlFor="reg-phone"><Input id="reg-phone" name="phone" /></Field>
-              <Field label="Email (optional)" htmlFor="reg-email"><Input id="reg-email" name="email" type="email" /></Field>
+              <Field label="Phone (optional)" htmlFor="reg-phone"><Input id="reg-phone" name="phone" placeholder="Enter phone number" /></Field>
+              <Field label="Email (optional)" htmlFor="reg-email"><Input id="reg-email" name="email" type="email" placeholder="Enter your email address" /></Field>
             </div>
             <label className="mv-row mv-small"><input type="checkbox" name="assisted" /> Registered without contact details</label>
             <Button type="submit" disabled={busy === "register"}>{busy === "register" ? "Registering…" : "Register patient"}</Button>
@@ -235,8 +235,8 @@ export function PatientsPage() {
 
       <Card title="Search this facility's patients" description="Name, public ID or local MRN prefix. Only patients already linked to this facility are searched; searches are audited.">
         <form className="mv-form-grid" onSubmit={submitSearch}>
-          <Field label="Name, ID or MRN" htmlFor="search-q" hint="At least 2 characters."><Input id="search-q" name="q" minLength={2} maxLength={120} required autoComplete="off" /></Field>
-          <Field label="Date of birth (optional)" htmlFor="search-dob"><Input id="search-dob" name="searchDob" type="date" /></Field>
+          <Field label="Name, ID or MRN" htmlFor="search-q" hint="At least 2 characters."><Input id="search-q" name="q" minLength={2} maxLength={120} required autoComplete="off" placeholder="Search" /></Field>
+          <Field label="Date of birth (optional)" htmlFor="search-dob"><Input id="search-dob" name="searchDob" type="date" placeholder="Search" /></Field>
           <div className="mv-row"><Button type="submit" disabled={busy === "search"}>{busy === "search" ? "Searching…" : "Search"}</Button></div>
         </form>
         {searchResult && search ? (

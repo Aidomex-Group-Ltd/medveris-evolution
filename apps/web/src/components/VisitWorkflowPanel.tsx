@@ -288,11 +288,11 @@ function RecommendationForm({ encounterId, departments, consultation, catalogue,
       </div>
       {!catalogItemId ? (
         <Field label="Describe the request" htmlFor="rec-description" hint="Unpriced requests must be priced at the till before billing.">
-          <Input id="rec-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={300} />
+          <Input id="rec-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={300} placeholder="Enter a description" />
         </Field>
       ) : null}
       <div className="mv-form-grid">
-        <Field label="Quantity" htmlFor="rec-quantity"><Input id="rec-quantity" type="number" min={1} step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></Field>
+        <Field label="Quantity" htmlFor="rec-quantity"><Input id="rec-quantity" type="number" min={1} step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="Enter quantity" /></Field>
         <Field label="Priority" htmlFor="rec-priority">
           <Select id="rec-priority" value={priority} onChange={(event) => setPriority(event.target.value)}>
             <option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option>
@@ -300,7 +300,7 @@ function RecommendationForm({ encounterId, departments, consultation, catalogue,
         </Field>
         {!consultation ? <Field label="Requested by (optional)" htmlFor="rec-referrer" hint="Referring clinician or facility."><Input id="rec-referrer" value={referrer} onChange={(event) => setReferrer(event.target.value)} maxLength={300} /></Field> : null}
       </div>
-      <Field label="Instructions for the department" htmlFor="rec-instructions" hint="Clinical question, site, fasting status, dose or preparation."><Textarea id="rec-instructions" value={instructions} onChange={(event) => setInstructions(event.target.value)} maxLength={4000} /></Field>
+      <Field label="Instructions for the department" htmlFor="rec-instructions" hint="Clinical question, site, fasting status, dose or preparation."><Textarea id="rec-instructions" value={instructions} onChange={(event) => setInstructions(event.target.value)} maxLength={4000} placeholder="Enter the instructions" /></Field>
       <div className="mv-row"><Button type="submit" className="mv-full-width-sm" disabled={busy}>{busy ? "Sending…" : consultation ? "Send recommendation" : "Add request"}</Button><Button variant="ghost" className="mv-full-width-sm" onClick={onCancel}>Cancel</Button></div>
     </form>
   );
@@ -353,7 +353,7 @@ function SupplyForm({ encounterId, catalogue, requests, onCancel, onSaved }: {
             {items.map((item) => <option key={item.id} value={item.id}>{item.name}{item.unitOfMeasure ? ` (${item.unitOfMeasure})` : ""}</option>)}
           </Select>
         </Field>
-        <Field label="Quantity" htmlFor="supply-quantity"><Input id="supply-quantity" type="number" min={0.01} step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></Field>
+        <Field label="Quantity" htmlFor="supply-quantity"><Input id="supply-quantity" type="number" min={0.01} step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="Enter quantity" /></Field>
         <Field label="For request (optional)" htmlFor="supply-request">
           <Select id="supply-request" value={recommendationId} onChange={(event) => setRecommendationId(event.target.value)}>
             <option value="">Not linked</option>

@@ -161,7 +161,7 @@ function NewAppointment({ onCreated }: { onCreated: () => void }) {
           <Field label="Start time" htmlFor="appointment-start"><Input id="appointment-start" type="datetime-local" value={startAt} onChange={(event) => setStartAt(event.target.value)} required /></Field>
           <Field label="Duration (minutes)" htmlFor="appointment-duration"><Input id="appointment-duration" type="number" min={5} max={480} value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} required /></Field>
         </div>
-        <Field label="Reason" htmlFor="appointment-reason"><Input id="appointment-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={1000} /></Field>
+        <Field label="Reason" htmlFor="appointment-reason"><Input id="appointment-reason" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={1000} placeholder="Enter the reason" /></Field>
         <Button type="submit" disabled={action.busy !== null || !patientId || !reason.trim()}>{action.busy === "create" ? "Scheduling…" : "Schedule appointment"}</Button>
       </form>
     </Card>

@@ -185,7 +185,7 @@ function Memberships() {
       <div className="mv-grid mv-grid--2">
         <Card title="Invite a staff member" description="Invitations do not establish credential verification or MFA enrolment.">
           <form className="mv-stack" onSubmit={invite}>
-            <Field label="Work email" htmlFor="invite-email"><Input id="invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
+            <Field label="Work email" htmlFor="invite-email"><Input id="invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="Enter your email address" /></Field>
             <Field label="Initial role"><Select value={role} onChange={(e) => setRole(e.target.value)}>{ROLEOPTIONS.map((option) => <option key={option}>{option}</option>)}</Select></Field>
             <Field label={SCOPED_ROLES.has(role) ? "Department (required)" : "Department (optional)"} htmlFor="invite-department" hint="Limits department administrators and unit leads to this department.">
               <Select id="invite-department" value={scopeDepartmentId} onChange={(e) => { setScopeDepartmentId(e.target.value); setScopeUnitId(""); }} required={SCOPED_ROLES.has(role)}>
@@ -387,7 +387,7 @@ function MergeRequestForm({ candidate, onDone, onCancel }: { candidate: Duplicat
           <option value="primary">{primary.label}</option><option value="candidate">{other.label}</option>
         </Select></Field>
         <p className="mv-small">Retired identity: <strong>{retire.label}</strong></p>
-        <Field label="Reason" htmlFor="merge-reason" hint="At least 10 characters."><Textarea id="merge-reason" value={reason} onChange={(event) => setReason(event.target.value)} minLength={10} required /></Field>
+        <Field label="Reason" htmlFor="merge-reason" hint="At least 10 characters."><Textarea id="merge-reason" value={reason} onChange={(event) => setReason(event.target.value)} minLength={10} required placeholder="Enter the reason" /></Field>
         <Field label="Identity evidence" htmlFor="merge-evidence" hint="How it was confirmed that both records are the same person (at least 10 characters)."><Textarea id="merge-evidence" value={evidence} onChange={(event) => setEvidence(event.target.value)} minLength={10} required /></Field>
         <div className="mv-row"><Button type="submit" disabled={busy || reason.trim().length < 10 || evidence.trim().length < 10}>{busy ? "Requesting…" : "Request merge"}</Button><Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button></div>
       </form>

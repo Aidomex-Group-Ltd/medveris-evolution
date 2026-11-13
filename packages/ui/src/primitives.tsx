@@ -30,12 +30,38 @@ export function Field({ label, hint, error, htmlFor, children }: { label: string
   );
 }
 
-export function Input({ ref, className = "", ...rest }: InputHTMLAttributes<HTMLInputElement> & { ref?: React.Ref<HTMLInputElement> }) {
-  return <input ref={ref} className={`mv-input ${className}`.trim()} {...rest} />;
+export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  ref?: React.Ref<HTMLInputElement>;
+  /** Decorative leading icon (aria-hidden); the field label carries the accessible name. */
+  icon?: ReactNode;
 }
 
-export function Textarea({ ref, className = "", ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: React.Ref<HTMLTextAreaElement> }) {
-  return <textarea ref={ref} className={`mv-input mv-textarea ${className}`.trim()} {...rest} />;
+export function Input({ ref, className = "", icon, ...rest }: InputProps) {
+  const input = <input ref={ref} className={`mv-input ${className}`.trim()} {...rest} />;
+  if (!icon) return input;
+  return (
+    <span className="mv-input-wrap mv-input-wrap--icon">
+      <span className="mv-input__icon" aria-hidden="true">{icon}</span>
+      {input}
+    </span>
+  );
+}
+
+export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  ref?: React.Ref<HTMLTextAreaElement>;
+  /** Decorative leading icon aligned to the top (aria-hidden). */
+  icon?: ReactNode;
+}
+
+export function Textarea({ ref, className = "", icon, ...rest }: TextareaProps) {
+  const textarea = <textarea ref={ref} className={`mv-input mv-textarea ${className}`.trim()} {...rest} />;
+  if (!icon) return textarea;
+  return (
+    <span className="mv-input-wrap mv-input-wrap--textarea mv-input-wrap--icon">
+      <span className="mv-input__icon" aria-hidden="true">{icon}</span>
+      {textarea}
+    </span>
+  );
 }
 
 export function Select({ ref, className = "", ...rest }: SelectHTMLAttributes<HTMLSelectElement> & { ref?: React.Ref<HTMLSelectElement> }) {
