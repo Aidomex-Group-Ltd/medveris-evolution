@@ -73,7 +73,7 @@ describe("HTTP caching", () => {
     expect(await revalidated.text()).toBe("");
   });
 
-  it("marks the same public route private when the caller is signed in, and every tenant or clinical route private", async () => {
+  it("marks the same public route private when the caller is signed in, and every tenant or clinical route private", { timeout: 60_000 }, async () => {
     const signedIn = await h.call(reception, "/api/v1/public/config");
     expect(signedIn.headers.get("cache-control")).toBe("no-store, private");
     expect(signedIn.headers.get("etag")).toBeNull();

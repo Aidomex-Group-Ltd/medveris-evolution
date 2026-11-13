@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { accessModeFor } from "@medveris/domain";
 import { isAllowlistedWhileRestricted, POLICY_TABLES } from "../../apps/api/src/lib/billing-middleware.js";
 
-const { RESTRICTED_ROUTES, RESTRICTED_MUTATION_ALLOWLIST, RESTRICTED_FINANCE_CONTINUITY_ALLOWLIST } = POLICY_TABLES;
+const { RESTRICTED_ROUTES, RESTRICTED_FINANCE_CONTINUITY_ALLOWLIST } = POLICY_TABLES;
 
 describe("subscription enforcement policy tables", () => {
   it("accessModeFor restricts terminal/escrow states and allows everything else", () => {

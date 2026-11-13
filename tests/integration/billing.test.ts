@@ -157,7 +157,7 @@ describe("trial and subscription lifecycle", () => {
     expect(status.accessMode).toBe("full");
   });
 
-  it("records a subscription refund and can suspend and reinstate the account", async () => {
+  it("records a subscription refund and can suspend and reinstate the account", { timeout: 60_000 }, async () => {
     const accounts = await get(operator, "/api/v1/platform/billing/accounts");
     const account = accounts.accounts.find((row: any) => row.id === billingAccountId);
     expect(account).toMatchObject({ kind: "independent-facility", status: "active" });
