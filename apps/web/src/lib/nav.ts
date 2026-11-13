@@ -421,9 +421,9 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
     activePrefixes: ["/ai/chat"],
   },
   {
-    id: "ai-chat", label: "AI chat", to: "/ai/chat", icon: "ai", section: "intelligence", mobile: "knowledge",
-    roles: ["nurse", "clinician"], modules: ["outpatient", "radiology"],
-    description: "Assistive conversation with Medveris Intelligence",
+    id: "ai-chat", label: "AI assistant", to: "/ai/chat", icon: "ai", section: "intelligence", mobile: "knowledge",
+    roles: ["nurse", "midwife", "clinician", "specialist_clinician", "pharmacist"], modules: ["outpatient", "radiology"],
+    description: "Assistive conversation with Medveris Intelligence — decision support only",
   },
   {
     id: "reports", label: "Reports", to: "/reports", icon: "reports", section: "intelligence", mobile: "analytics",
@@ -438,6 +438,11 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
   {
     id: "portal", label: "My health record", to: "/portal", icon: "portal", section: "portal", mobile: "more",
     patientOnly: true, description: "Released notes, observations and follow-ups", quickAction: true,
+  },
+  {
+    id: "portal-assistant", label: "AI assistant", to: "/portal/assistant", icon: "ai", section: "portal", mobile: "more",
+    patientOnly: true, activePrefixes: ["/portal/assistant"],
+    description: "Plain-language health help — not medical advice",
   },
   {
     id: "portal-consents", label: "Consent and sharing", to: "/portal/consents", icon: "security", section: "portal", mobile: "more",

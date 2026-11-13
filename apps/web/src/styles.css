@@ -312,3 +312,18 @@ details > summary:hover { text-decoration: underline; }
     padding-right: 10px;
   }
 }
+
+/* Role-aware AI assistant (Phase 12) */
+.mv-audience-switch {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 14px;
+  border-radius: 999px; border: 1px solid var(--mv-border); background: var(--mv-surface);
+  color: var(--mv-text); font-size: 0.85rem; font-weight: 600; cursor: pointer; align-self: flex-start;
+}
+.mv-audience-switch:focus-visible { outline: 2px solid var(--mv-brand); outline-offset: 2px; }
+.mv-audience-switch--confirm { background: var(--mv-surface-muted); }
+.mv-audience-switch--confirm button {
+  min-height: 36px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--mv-border);
+  background: var(--mv-surface); cursor: pointer; font-weight: 700;
+}
+.mv-audience-switch--confirm button:first-of-type { background: var(--mv-brand); color: #fff; border-color: var(--mv-brand); }
+.mv-ai-chat-footer { max-width: 720px; }

@@ -198,11 +198,12 @@ export function App() {
         <Route path="telehealth" element={<ProtectedRoute roles={["nurse", "clinician"]}><TelehealthPage /></ProtectedRoute>} />
         <Route path="devices" element={<ProtectedRoute roles={["nurse", "clinician", "facility_admin"]}><DevicesPage /></ProtectedRoute>} />
         <Route path="ai" element={<ProtectedRoute roles={["nurse", "clinician"]}><AIPage /></ProtectedRoute>} />
-        <Route path="ai/chat" element={<ProtectedRoute roles={["nurse", "clinician"]}><AIChatPage /></ProtectedRoute>} />
+        <Route path="ai/chat" element={<ProtectedRoute roles={["nurse", "midwife", "clinician", "specialist_clinician", "pharmacist"]}><AIChatPage /></ProtectedRoute>} />
         <Route path="content" element={<ProtectedRoute><ContentPage /></ProtectedRoute>} />
         <Route path="portal" element={<ProtectedRoute patient><PatientPortalPage /></ProtectedRoute>} />
         <Route path="portal/consents" element={<ProtectedRoute patient><ConsentPage /></ProtectedRoute>} />
         <Route path="portal/access" element={<ProtectedRoute patient><AccessHistoryPage /></ProtectedRoute>} />
+        <Route path="portal/assistant" element={<ProtectedRoute patient><AIChatPage /></ProtectedRoute>} />
         <Route path="credentials" element={<ProtectedRoute><CredentialsPage /></ProtectedRoute>} />
         <Route path="documents" element={<ProtectedRoute roles={["clinician", "nurse", "records", "receptionist", "facility_admin", "hr", "quality"]}><DocumentsPage /></ProtectedRoute>} />
         <Route path="workforce" element={<ProtectedRoute roles={["hr", "facility_admin", "clinician", "nurse"]}><WorkforcePage /></ProtectedRoute>} />

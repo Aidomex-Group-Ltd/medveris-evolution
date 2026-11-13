@@ -196,6 +196,28 @@ test("patient portal fits mobile, portrait, landscape, tablet and desktop", asyn
   }
 });
 
+test("patient AI assistant in the portal is mobile-first", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(NARROW);
+  await signInPatient(page);
+
+  await page.goto("/portal/assistant");
+  await expect(page.getByRole("heading", { name: "AI assistant" })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  const conversation = page.locator(".mv-conversation");
+  if (await conversation.count()) {
+    await expect(conversation.locator(".mv-conversation__audience--patient")).toBeVisible();
+  }
+
+  for (const viewport of [SUPPORTED_PORTRAIT[1], SUPPORTED_PORTRAIT[2], { width: 768, height: 1024 }, { width: 1366, height: 768 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/portal/assistant");
+    await expect(page.getByRole("heading", { name: "AI assistant" })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
 test("AI chat page is mobile-first and fits mobile, tablet and desktop", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(NARROW);
@@ -213,6 +235,7 @@ test("AI chat page is mobile-first and fits mobile, tablet and desktop", async (
 
   if (hasConversation) {
     await expect(conversation).toBeVisible();
+    await expect(conversation.locator(".mv-conversation__audience--provider")).toBeVisible();
     const composer = conversation.locator("form[aria-label='Compose message']");
     await expect(composer).toBeVisible();
 

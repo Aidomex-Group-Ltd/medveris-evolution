@@ -293,3 +293,49 @@
     scroll-behavior: auto;
   }
 }
+
+/* Role-aware AI assistant (Phase 12) */
+.mv-conversation__header-actions { display: flex; align-items: center; gap: 8px; }
+
+.mv-conversation__audience {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  border-radius: 999px; padding: 3px 10px; border: 1px solid var(--mv-border);
+}
+.mv-conversation__audience--patient { color: var(--mv-brand); border-color: var(--mv-brand); }
+.mv-conversation__audience--provider { color: var(--mv-text); background: var(--mv-surface); }
+
+.mv-conversation__text { white-space: pre-wrap; }
+
+.mv-conversation__chips {
+  flex: 0 0 auto; display: flex; gap: 8px; overflow-x: auto; padding: 8px 12px 0;
+  -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: thin;
+}
+.mv-conversation__chip {
+  flex: 0 0 auto; min-height: 40px; padding: 8px 14px; border-radius: 999px;
+  border: 1px solid var(--mv-brand); color: var(--mv-brand); background: transparent;
+  font-size: 0.85rem; font-weight: 600; cursor: pointer; max-width: 240px;
+  text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
+}
+.mv-conversation__chip:disabled { opacity: 0.5; cursor: default; }
+.mv-conversation__chip:focus-visible { outline: 2px solid var(--mv-brand); outline-offset: 2px; }
+
+.mv-conversation__status--failed { color: var(--mv-danger); }
+.mv-conversation__message--user .mv-conversation__bubble:has(.mv-conversation__status--failed) {
+  border-color: var(--mv-danger);
+}
+.mv-conversation__retry { margin-top: 4px; padding-left: 0; color: #fff; text-decoration: underline; }
+
+.mv-emergency-card {
+  border: 2px solid var(--mv-danger); border-radius: 14px; padding: 14px 16px;
+  background: var(--mv-danger-soft); color: var(--mv-danger); max-width: 100%; word-break: break-word;
+}
+.mv-emergency-card__title { margin: 0 0 6px; font-size: 1.05rem; font-weight: 800; }
+.mv-emergency-card__body { margin: 0 0 10px; font-size: 0.92rem; line-height: 1.5; }
+.mv-emergency-card__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mv-emergency-card__call {
+  display: inline-flex; align-items: center; min-height: 48px; padding: 10px 22px;
+  border-radius: 10px; background: var(--mv-danger); color: #fff;
+  font-weight: 800; font-size: 1rem; text-decoration: none;
+}
+.mv-emergency-card__call:focus-visible { outline: 3px solid var(--mv-danger); outline-offset: 2px; }
+.mv-emergency-card__note { margin: 10px 0 0; font-size: 0.82rem; font-weight: 600; }

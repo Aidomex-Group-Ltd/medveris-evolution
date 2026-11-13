@@ -21,5 +21,5 @@ export {
   Tabs,
   Textarea,
 } from "./primitives";
-export { ConversationPanel } from "./ConversationPanel";
+export { ConversationPanel, type ConversationMessage } from "./ConversationPanel";
 export type { ChartFrameProps, DialogProps, FriendlyErrorProps, LoadingStateProps } from "./primitives";

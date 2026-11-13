@@ -11,7 +11,7 @@ Master implementation tracker for incremental refactoring of the existing Medver
 
 ## Current status (rescan 2026-11-13, updated 2026-11-13)
 
-- **Branch/deploy:** `master@18f842a` = `origin/master` (clean working tree). **Production** `medveris-production` green `13001954-5d14-48c3-9378-ca65c04c370c` (tag `18f842a`, `medveris.online`, 2026-11-13; evidence `.wrangler/release-evidence/production-2026-11-13T13-11-04-012Z.json`; blue `4977ef78` retained, rollback `npm run deploy:production:rollback`). **Staging** `medveris-staging` carries the same commit and all 82 recorded migrations (verified read-only 2026-11-13). Production gate passed (lint/typecheck/tests 917/917, audit, build, packaging, staged verification/smoke); migration state verified 82/82 applied on both staging and production. Phases 3–6 (break-glass revocation, security hardening, security-event telemetry, Observability Support Center), the auth UI replacement and the final program verification sweep are deployed.
+- **Branch/deploy:** `master@18f842a` = `origin/master` at release time; on 2026-11-13 Phase 12 (role-aware AI assistant) was implemented on local `master` on top of `da45c96` — **uncommitted** (typecheck/eslint clean; full suite 927/927 pass at time of run + 7 `ai-chat` integration tests added afterwards, 7/7 pass). **Production** `medveris-production` green `13001954-5d14-48c3-9378-ca65c04c370c` (tag `18f842a`, `medveris.online`, 2026-11-13; evidence `.wrangler/release-evidence/production-2026-11-13T13-11-04-012Z.json`; blue `4977ef78` retained, rollback `npm run deploy:production:rollback`). **Staging** `medveris-staging` carries the same commit and all 82 recorded migrations (verified read-only 2026-11-13). Production gate passed (lint/typecheck/tests 917/917, audit, build, packaging, staged verification/smoke); migration state verified 82/82 applied on both staging and production. Phases 3–6 (break-glass revocation, security hardening, security-event telemetry, Observability Support Center), the auth UI replacement and the final program verification sweep are deployed.
 - **Phase 1A (deployed, partial):** remediation increment 1 code/docs merged in ancestors (`f34666a` + follow-ups `1a87e54,3883e88,6d3bc9b,92da33b`) — additive authz contract/helpers (`packages/authz/src/{contract,index}.ts`, `apps/api/src/lib/{actor,authorization}.ts`), workspace shared-supply safety behavior, targeted tests, `docs/refactor/phase1a/*`, `tests/unit/authz-phase1a.test.ts`. **Not fully complete/verified:** focused shared-supply negative/invariant/audit integration cases added; generalized dual-approval workflow not activated; uniform RBAC/policy adoption, full permission-matrix & negative/security coverage (cross-tenant/forged-destination/ended-link/invariants, conditional RLS proof, audit success/no-success-on-denial, outbox consumer/poison/dedup), and `requestActor` 404→401 full impact require further verification/hardening (see `docs/refactor/phase1a/REMEDIATION_1_REPORT.md`).
 - **Phase 1.2 (authorization matrix) — completed at registry level (2026-11-12):** matrix modularized and reconciled against 711 API routes; all 346 approved permission mappings (24 reuse + 322 NEW) adopted and 10 auth/payment-callback exemption candidates verified. Final reconcile: **404 actions / 671 patterns, 0 stale, 5 intentional multi-claims, 666 matrix-covered + 46 exempt − 1 overlap = 711/711 covered**. Adopted in slices, tests 58/58 + typecheck/lint passing, committed/pushed and deployed to staging/production. **Remaining:** runtime route-handler rewiring to the matrix decision path not performed (handlers keep existing inline enforcement).
 - **Overall:** Phases 0.1, 0.3, 1.1 completed; Phase 1.2 registry adoption completed. Most other prompts remain **partial/not started** with significant external blockers in terminology/interoperability, partners/credentials, governance/ops, and large modularization/feature work.
@@ -65,6 +65,7 @@ Master implementation tracker for incremental refactoring of the existing Medver
 | 11.3 Patient self-access API & FHIR release | not started | Server-side redaction, disclosure log, token-gated export | 11.2; patient portal |
 | 11.4 Consent-gated provider sharing + break-the-glass | not started | One-time hashed token, expiry/revocation, no-write scoped access, audited emergency override + patient notification | 11.2; joint governance |
 | 11.5 Identity assurance & privacy regression | not started | Stepped-up verification for release/export; "who accessed my record" UX; regression suite | 11.3; identity infra |
+| 12.1 Role-aware AI assistant | **implemented in-repo, not deployed (2026-11-13)** | Patient + provider conversational surfaces (`/portal/assistant`, `/ai/chat`), `POST /api/v1/ai/chat`, deterministic red-flag gate pre-empting inference, metadata-only audit (`ai.chat.turn`), audience badge + dual-role re-confirmed switcher; voice, photo attach, symptom/triage/medication cards, chart grounding, patient→clinician escalation backend intentionally not built; `FEATURE_AI=false` in production; `FEATURE_AI` + verified provider required before any live use | Governance/DPIA sign-off before patient-facing production use; crisis-line partnership |
 
 ## Incremental execution procedure (mandatory per phase/slice)
 
@@ -1155,3 +1156,64 @@ Master implementation tracker for incremental refactoring of the existing Medver
 - Risks/breaking changes/mitigations: none (additive only). Note: no cross-tenant read path was added — redemption/exchange lands with 11.4.
 - External dependencies/blockers: DPIA + clinical-governance sign-off still required before any patient-portal production release of Phase 11 surfaces (by design).
 - Status: completed (schema layer). Patient-facing behavior ships with 11.3–11.5 behind the same governance gate.
+### 2026-11-13 — Phase 12 (Role-aware AI assistant) — implemented in-repo; production promotion gated
+
+**Scope (user directive, 2026-11-13):** the interrupted tracker was resumed per this file; the owner pasted the
+"# ROLE — senior product designer / conversational-UX architect" brief for Medveris's mobile-first, role-aware
+AI chat interface covering patients and medical service providers ("implement to the final phase only stopping
+when all is complete"). Working style restated: understanding + critical assumptions first; patient and
+provider variants shown side by side; safety over delight; **no** production deployment claimed.
+
+- **Design record:** `docs/refactor/phase12/ROLE_AWARE_AI_CHAT.md` — restated understanding and 13 critical
+  assumptions; per-role UX strategy (goals/flows/risks); role-permission matrix (13 capabilities); IA and
+  flows (patient triage, provider review, emergency escalation, clinician handoff) with 360×800 wireframes;
+  screen/state inventory (implemented vs designed-not-built); component library additions and token mapping;
+  content guidelines with tone-specific example responses and banned words; 13 open questions for
+  clinical/legal/safeguarding review (emergency numbers, crisis lines, DPIA, multilingual detection,
+  persistence/retention, chart grounding, model residency).
+- **Shared safety primitive:** `packages/domain/src/red-flag.ts` — deterministic keyword/pattern detection
+  (chest pain, stroke, severe bleeding, breathing, anaphylaxis, severe allergic reaction, self-harm,
+  loss of consciousness), shared client+server; English-first, flagged for localisation; 10 unit tests.
+- **UI:** `ConversationPanel` v2 (audience badge `Patient`/`Provider`, quick-reply chips, `kind:"emergency"`
+  crisis card with one-tap `tel:112`/`tel:999`, failed+Retry message state, multi-line output, assistant
+  labelled "AI assistant", `data-message-role`) + `.mv-conversation__*`/`.mv-emergency-card` tokens.
+- **API:** `POST /api/v1/ai/chat` — mode derived from session (provider: active facility + clinical role
+  (nurse/midwife/clinician/specialist_clinician/pharmacist) + `requireStaff` MFA; patient: verified patient
+  account); rate limit `ai.chat` (30/10 min); `withActor` audit `ai.chat.turn` (metadata only: mode,
+  redFlag, redFlagCategory, messageCount — never content); red-flag content pre-empts any model call with a
+  fixed deterministic crisis reply; system prompts per audience; `assertIntegrationAvailable` fail-closed
+  (503 with remediation) when no provider is configured/verified; `DependencyError` on provider failure;
+  **no chart injection** — general information only, never invented citations; conversation never persists.
+- **Web:** `AIChatPage` rewrite — route-derived mode (`/portal/assistant` patient, `/ai/chat` provider);
+  per-audience greeting/chips/disclaimers; dual-role audience switcher with inline re-confirmation;
+  offline banner + honest failure states (no silent queue); `/public/ai/status` gating with honest
+  unconfigured/sandbox states; footer disclaimers; consent link for patients; patient nav entry
+  `portal-assistant` (patientOnly) and staff `ai-chat` retitled "AI assistant" with widened clinical roles.
+- **Routes:** `App.tsx` — `/ai/chat` now `roles={["nurse","midwife","clinician","specialist_clinician","pharmacist"]}`;
+  new `/portal/assistant` behind `ProtectedRoute patient`.
+- **Tests added:** `tests/unit/red-flag.test.ts` (10), `tests/integration/ai-chat.test.ts` (7 — anonymous 401;
+  non-clinical 403; provider 200 + model called with decision-support system prompt + metadata-only audit;
+  red-flag pre-emption (model never called, crisis reply, audit flag); patient 200; staff-without-patient
+  403; patient→provider 403); e2e patient responsive test (320→1366) + provider audience-badge assertion.
+- **DB migrations:** none. No schema changes; no new secrets; no config changes.
+- **Verification:** `tsc --noEmit` clean; `eslint` clean on all changed files; **934/934 pass (102 files)** —
+  includes 10 `red-flag` unit tests and 7 `ai-chat` integration tests (against a stand-in local Ollama stub);
+  `route-authz-coverage` 52 tests pass with the new route file scanned. One earlier full-suite run showed a
+  20s-timeout flake in `tests/integration/billing.test.ts` ("waives unbilled visit work…") under load — it
+  passed in the first full suite (927/927) and passed 12/12 again in isolation on re-run; recorded as
+  pre-existing load flake, not introduced here.
+- **Concurrent session repair (2026-11-13, same tree):** the parallel opencode session wove an
+  "operator" (platform SRE) mode into `/ai/chat` mid-flight and left it broken (unreachable eligibility
+  check on facility roles instead of `auth.platformRoles`, undefined `disclaimer` → 500 on every successful
+  turn, `actorKind:"system"`). Repaired minimally, kept the feature: eligibility now
+  `platformRoles.includes("platform_operator")`, `actorKind:"staff"`, disclaimer defined; clinical-content
+  redactions and refusal prompt retained; no web UI exposes operator mode. Its design is recorded in the
+  Phase 12 design doc only as an endpoint capability — **not reviewed for production use** and never wired
+  to a surface in this slice.
+- **Not built / not claimed:** voice-to-text, photo attach, structured symptom/triage/medication cards,
+  appointment deep-link card, patient→clinician escalation backend, conversation persistence/compliance,
+  chart-grounded answering, multilingual red-flag detection, emergency-number legal sign-off.
+  `FEATURE_AI=false` in production; sandbox works in dev; live needs a configured+verified provider.
+- **Governance blocker:** patient-facing production promotion requires DPIA/clinical-governance sign-off and
+  crisis-line partnership (see open questions 1–6). Until then `/portal/assistant` is development/staging only.
+- **Status:** in-repo complete for the specified scope; production promotion explicitly not claimed.

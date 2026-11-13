@@ -213,7 +213,16 @@
 				// The API key, account number and webhook secret are Worker secrets.
 				"PAYMENT_PROVIDER": "livepay",
 				"LIVEPAY_BASE_URL": "https://livepay.me/api",
-				"LIVEPAY_WEBHOOK_URL": "https://medveris-staging.aidomexgroupltd.workers.dev/api/v1/public/payments/livepay/webhook"
+				"LIVEPAY_WEBHOOK_URL": "https://medveris-staging.aidomexgroupltd.workers.dev/api/v1/public/payments/livepay/webhook",
+				// PACS / DICOMweb: set FEATURE_DICOMWEB=true with DICOMWEB_BASE_URL and DICOMWEB_AUTH here,
+				// add the matching credentials to secrets.required, then put the values with `wrangler secret put`.
+				// The PACS stays unavailable until a platform operator records a passing conformance run.
+				// See docs/22_PACS_DICOMWEB_RUNBOOK.md.
+				"FEATURE_DICOMWEB": "false",
+				"DICOMWEB_AUTH": "basic",
+				"DICOMWEB_TIMEOUT_MS": "15000",
+				"DICOMWEB_MAX_IMAGE_BYTES": "20971520",
+				"DICOMWEB_VERIFICATION_MAX_AGE_DAYS": "30"
 			},
 			"secrets": {
 				"required": [
@@ -352,6 +361,10 @@
 				// The PACS stays unavailable until a platform operator records a passing conformance run.
 				// See docs/22_PACS_DICOMWEB_RUNBOOK.md.
 				"FEATURE_DICOMWEB": "false",
+				"DICOMWEB_AUTH": "basic",
+				"DICOMWEB_TIMEOUT_MS": "15000",
+				"DICOMWEB_MAX_IMAGE_BYTES": "20971520",
+				"DICOMWEB_VERIFICATION_MAX_AGE_DAYS": "30",
 				"FEATURE_LAB": "false",
 				"FEATURE_PHARMACY": "false",
 				"FEATURE_TELEMEDICINE": "false",

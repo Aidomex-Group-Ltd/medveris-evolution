@@ -1,5 +1,6 @@
 import { DomainError } from "./errors.js";
 export { DomainError } from "./errors.js";
+export * from "./red-flag.js";
 export * from "./catalog.js";
 export * from "./onboarding-catalogue.js";
 export * from "./radiology.js";
