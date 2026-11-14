@@ -220,4 +220,20 @@ describe("subscription checkout", () => {
     expect(body.renewal.amountUgx).toBeGreaterThan(0);
     expect(body.renewal.disclosure).toContain("Renewal is manual");
   });
+
+  it("keeps displayed and charged UGX amount equal (single rounding, quote lock)", async () => {
+    const { withContext } = await import("@medveris/db");
+    const price = await quote("monthly");
+    const created = await startCheckout("monthly");
+    expect(created.amountUgx).toBe(price.amountUgx);
+    // Change provider rate after checkout is created; stored quote/amount must remain unchanged.
+    (h.deps as any).fxProvider.rate = async () => ({ base: "USD", quote: "UGX", rate: FX_RATE + 777, provider: "test-fx", providerTimestamp: new Date() });
+    const [row] = await withContext(h.sql, { actorKind: "system", tenantId: KAMPALA_TENANT }, (tx) =>
+      tx`select amount_ugx, fx_rate from subscription_checkouts where id = ${created.id}`);
+    expect(Number(row.amountUgx)).toBe(price.amountUgx);
+    expect(Number(row.fxRate)).toBe(FX_RATE);
+    // restore
+    (h.deps as any).fxProvider.rate = async () => ({ base: "USD", quote: "UGX", rate: FX_RATE, provider: "test-fx", providerTimestamp: new Date(Date.now() - 60_000) });
+    await h.post(admin, `/api/v1/billing/subscription-checkout/${created.id}/cancel`, { reason: "quote lock verification cleanup" }, 200);
+  });
 });
