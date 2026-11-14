@@ -21,6 +21,105 @@ export const BILLING_INTERVAL_LABELS: Record<BillingInterval, { singular: string
 /** USD 0.50 per user per billing period, charged in its UGX equivalent. */
 export const SEAT_PRICE_USD_MINOR = 50;
 
+/** Package tiers with staff limits and storage allocations.
+ * Pricing is server-authoritative: $0.50 per active seat per period.
+ * The listed monthly price assumes the package's staff limit active users.
+ * Patient accounts are free and do not consume staff allocations. */
+export const PACKAGE_TIERS = {
+  basic: {
+    code: "basic",
+    name: "Basic",
+    monthlyPriceUsd: 15, // 10 staff × $1.50 = $15; $0.50 × 30-period convention
+    staffLimit: 10,
+    storageGb: 10,
+    description: "Essential healthcare management for small facilities",
+    features: ["patient-management", "emr", "clinical-consultations", "clinical-documentation",
+      "pharmacy-management", "laboratory-management", "imaging-diagnostics",
+      "inpatient-ward-management", "theatre-maternity", "billing-pos",
+      "staff-management", "rbac", "ai-capabilities", "advanced-analytics",
+      "operational-reports", "digital-consultations", "departmental-management"],
+    includedStorage: "10 GB",
+  },
+  standard: {
+    code: "standard",
+    name: "Standard",
+    monthlyPriceUsd: 30, // 50 staff × $0.60 = $30; benchmark price point
+    staffLimit: 50,
+    storageGb: 50,
+    description: "Recommended for growing healthcare organizations",
+    features: ["patient-management", "emr", "clinical-consultations", "clinical-documentation",
+      "pharmacy-management", "laboratory-management", "imaging-diagnostics",
+      "inpatient-ward-management", "theatre-maternity", "billing-pos",
+      "staff-management", "rbac", "ai-capabilities", "advanced-analytics",
+      "operational-reports", "digital-consultations", "departmental-management"],
+    includedStorage: "50 GB",
+  },
+  professional: {
+    code: "professional",
+    name: "Professional",
+    monthlyPriceUsd: 100, // 250 staff × $0.40 = $100; enterprise benchmark
+    staffLimit: 250,
+    storageGb: 200,
+    description: " Comprehensive platform for large healthcare networks",
+    features: ["patient-management", "emr", "clinical-consultations", "clinical-documentation",
+      "pharmacy-management", "laboratory-management", "imaging-diagnostics",
+      "inpatient-ward-management", "theatre-maternity", "billing-pos",
+      "staff-management", "rbac", "ai-capabilities", "advanced-analytics",
+      "operational-reports", "digital-consultations", "departmental-management"],
+    includedStorage: "200 GB",
+  },
+  enterprise: {
+    code: "enterprise",
+    name: "Enterprise",
+    monthlyPriceUsd: null, // Custom negotiated; contact Medveris sales
+    staffLimit: null, // Negotiated per contract
+    storageGb: null, // Configurable per contract
+    description: "Custom arrangement for enterprise healthcare organizations",
+    features: ["patient-management", "emr", "clinical-consultations", "clinical-documentation",
+      "pharmacy-management", "laboratory-management", "imaging-diagnostics",
+      "inpatient-ward-management", "theatre-maternity", "billing-pos",
+      "staff-management", "rbac", "ai-capabilities", "advanced-analytics",
+      "operational-reports", "digital-consultations", "departmental-management"],
+    includedStorage: "Configurable",
+  },
+} as const;
+
+/** Return the package tier for a given plan code, or undefined. */
+export function getPackageTier(code: string): (typeof PACKAGE_TIERS)[keyof typeof PACKAGE_TIERS] | undefined {
+  return PACKAGE_TIERS[code as keyof typeof PACKAGE_TIERS];
+}
+
+/** Staff limit for a given plan code. */
+export function staffLimitForPlan(planCode: string): number | undefined {
+  const tier = getPackageTier(planCode);
+  return tier?.staffLimit;
+}
+
+/** Storage in GB for a given plan code. */
+export function storageGbForPlan(planCode: string): number | undefined {
+  const tier = getPackageTier(planCode);
+  return tier?.storageGb;
+}
+
+/** Monthly price in USD for a given plan code. */
+export function monthlyPriceUsdForPlan(planCode: string): number | undefined {
+  const tier = getPackageTier(planCode);
+  return tier?.monthlyPriceUsd;
+}
+
+/** Human-readable staff limit label. */
+export function staffLimitLabel(staffLimit: number | null): string {
+  if (staffLimit === null) return "Negotiated";
+  if (staffLimit >= 250) return "250+";
+  return `${staffLimit}`;
+}
+
+/** Human-readable storage label. */
+export function storageLabel(storageGb: number | null): string {
+  if (storageGb === null) return "Configurable";
+  return `${storageGb} GB`;
+}
+
 export function isBillingInterval(value: unknown): value is BillingInterval {
   return typeof value === "string" && (BILLING_INTERVALS as readonly string[]).includes(value);
 }
