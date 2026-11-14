@@ -49,6 +49,7 @@ import { promotionRoutes } from "./routes/promotions.js";
 import { integrationRoutes } from "./routes/integrations.js";
 import { radiologyRoutes } from "./routes/radiology.js";
 import { patientMergeRoutes } from "./routes/patient-merge.js";
+import { patientSelfAccessRoutes } from "./routes/patient-self-access.ts";
 import { reportRoutes } from "./routes/reports.js";
 import { realtimeRoutes } from "./routes/realtime.js";
 import { opsRoutes } from "./routes/ops.js";
@@ -241,6 +242,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", integrationRoutes);
   app.route("/api/v1", radiologyRoutes);
   app.route("/api/v1", patientMergeRoutes);
+  app.route("/api/v1", patientSelfAccessRoutes);
   app.route("/api/v1", reportRoutes);
   app.route("/api/v1", realtimeRoutes);
   app.route("/api/v1", opsRoutes);
