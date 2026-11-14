@@ -1217,3 +1217,44 @@ provider variants shown side by side; safety over delight; **no** production dep
 - **Governance blocker:** patient-facing production promotion requires DPIA/clinical-governance sign-off and
   crisis-line partnership (see open questions 1–6). Until then `/portal/assistant` is development/staging only.
 - **Status:** in-repo complete for the specified scope; production promotion explicitly not claimed.
+
+### 2026-11-14 — Phase 13a (PACS / DICOMweb over Workers VPC) — staging wired; conformance pending
+
+**Scope:** the VM-side half of the DICOMweb production path, delivering the runbook's staging precursor
+(`docs/22_PACS_DICOMWEB_RUNBOOK.md`). Production promotion is explicitly **not approved**.
+
+- **HAPI FHIR (VM-only):** container `medveris-hapi-fhir:6.6.0` running as `medveris-hapi-fhir`, bound to
+  `127.0.0.1:8091` (server.address=127.0.0.1). Backing store: database `hapi_fhir` on the native Kamatera
+  PG 18.6 cluster, service role `hapi_fhir_app` (LOGIN, not superuser, not createdb); password generated and
+  held only in `/opt/hapi-fhir/config/.env` (0600 root). Schema auto-created on first boot (53 tables);
+  `GET /fhir/metadata` returns 200 (CapabilityStatement, HAPI 6.6.0, R4). No public exposure; not consumed
+  by any Medveris surface yet. `medveris-prod` untouched.
+- **Orthanc PACS (VM-only):** `orthancteam/orthanc:26.11.0` as container `medveris-orthanc`, bound to
+  `127.0.0.1:8042` (HTTP) and `127.0.0.1:4242` (DICOM), storage `/opt/orthanc/data`, basic auth (`orthanc` +
+  generated password in `/opt/orthanc/config/orthanc.env`, 0600 root). DICOMweb plugin enabled and **verified
+  end-to-end from the VM**: QIDO-RS `GET /dicom-web/studies` → 200; WADO-RS rendered frame → 200 (JPEG);
+  metadata → 200. Seeded with exactly one synthetic study (StudyInstanceUID `2.25.1794625648000001`,
+  accession `SYN001`, patient `SYNTHETIC^PATIENT`, 64×64 synthetic pixels).
+- **Workers VPC service:** `medveris-pacs` (`01a1d809-cef2-7e03-b9bb-9794aa4d0a33`, type http, port 8042 →
+  IPv4 127.0.0.1, tunnel `medveris-vpc-pg` `e48e45dd-af49-4180-92c8-87b18927821e`).
+- **Code (`f8c236a`):** new `DICOMWEB_TRANSPORT=url|vpc` (default url) selects the PACS transport. In `vpc`
+  mode the Worker routes PACS traffic through a `vpc_services` binding (`env.PACS`); `bindingProblems`
+  fails closed at boot when `DICOMWEB_TRANSPORT=vpc` is set without the binding; `dicomwebConfigProblems`
+  relaxes the scheme rule for vpc (host is a routing label); verification fingerprints isolate transports;
+  9 unit tests (`tests/unit/dicomweb-vpc.test.ts`). The DICOMweb client is reused via `deps.dicomweb`.
+- **Staging release:** deployed as blue-green from a pinned checkout of `master@f8c236a`
+  (green `a6cf7994-e86a-4c2d-a630-d9950d7cd163`, 100% of traffic; blue `66130082-…` retained;
+  `npm run deploy:staging:rollback` restores). Staging vars: `DICOMWEB_TRANSPORT=vpc`,
+  `DICOMWEB_BASE_URL=http://medveris-pacs/dicom-web` (routing label), `DICOMWEB_AUTH=basic`,
+  `FEATURE_DICOMWEB=false`, `DICOMWEB_USERNAME/DICOMWEB_PASSWORD` uploaded as staging secrets
+  out-of-band (value is the Orthanc password). Production unchanged (`18f842a`) and has no PACS binding.
+- **Not done / needs the operator:** staging PACS conformance run (`POST /api/v1/admin/integrations/
+  dicomweb/verify` with `sampleStudyInstanceUid=2.25.1794625648000001`) as a platform operator — records the
+  `dicomweb` verification used by `integration_verifications`; expected outcome either
+  `available` (VPC route works) or `unreachable` (tunnel lacks the 8042 route — needs a dashboard/network-side
+  fix, which cannot be performed with deploy credentials). Suggested order before any production talk:
+  (1) operator verification on staging must pass; (2) DICOMweb surface (radiology proxy) stays
+  `FEATURE_DICOMWEB=false` until the verification is recorded; (3) production promotion requires an
+  explicit go-ahead, the §B5 secret/binding wiring in production, and the same verification there.
+- **Credentials exposure note:** the deploy/root passwords were pasted into this session transcript; rotate
+  them. The `.env`/`secrets` files on the VM are 0600 root; nothing secret was committed.
