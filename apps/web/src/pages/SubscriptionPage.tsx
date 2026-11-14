@@ -111,6 +111,7 @@ function Manageable({ overviewRefresh }: { overviewRefresh: () => void }) {
   const data = overview.data;
   const subscription = data.subscription;
   const choosable = data.plans.filter((plan) => plan.code !== "trial" && plan.status === "approved" && plan.monthlyPriceMinor != null && !plan.contractRequired && plan.id !== subscription.plan.id);
+  const receipts = data.receipts ?? [];
 
   async function getQuote() {
     if (!planId) {
@@ -296,6 +297,21 @@ function Manageable({ overviewRefresh }: { overviewRefresh: () => void }) {
                 <td>{event.event}</td>
                 <td className="mv-small">{event.fromStatus ?? "—"} → {event.toStatus ?? "—"}</td>
                 <td className="mv-small">{event.actorName ?? event.actorKind}</td>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </Card>
+
+      <Card title="Payment receipts" description="Provider receipts from LivePay or Yo! collections">
+        {!receipts.length ? <EmptyState title="No receipts yet" description="Receipts appear here after a successful checkout or webhook." /> : (
+          <Table head=["Provider", "Reference", "Amount (UGX)", "Status", "Received"]>            {receipts.map((receipt) => (
+              <tr key={receipt.id}>
+                <td>{receipt.provider === "livepay" ? "LivePay" : "Yo!"}</td>
+                <td>{receipt.provider_reference}</td>
+                <td className="mv-money">{receipt.amount_ugx.toLocaleString()}</td>
+                <td><Badge tone={receipt.status === "succeeded" ? "success" : receipt.status === "failed" ? "danger" : "neutral"}>{receipt.status}</Badge></td>
+                <td className="mv-small mv-muted">{formatDate(receipt.received_at)}</td>
               </tr>
             ))}
           </Table>

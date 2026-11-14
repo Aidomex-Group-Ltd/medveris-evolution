@@ -136,7 +136,15 @@ billingRoutes.get("/billing/overview", async (c) => {
         from subscription_events e left join users u on u.id = e.actor_user_id
        where e.billing_account_id = ${scope.billingAccountId} order by e.occurred_at desc limit 20`;
     const workspaces = await tx`select id, name from tenants where billing_account_id = ${scope.billingAccountId} order by name`;
-    return { scope, subscription, plan, pendingPlan, periodStart, usage, byWorkspace, unassigned: Number(unassigned[0]?.events ?? 0), plans, currentEstimate, recommendation, invoices, notifications, events, workspaces };
+    let receipts: any[] = [];
+    try {
+      // Use raw SQL against the receipts table directly (works if migration 134 was applied)
+      // The function app.subscription_receipts_for_account may not exist in older deployments.
+      receipts = await tx`select id, provider, provider_reference, amount_ugx, currency, status, received_at, recorded_by from public.receipts where billing_account_id = ${scope.billingAccountId} order by received_at desc`;
+    } catch {
+      // Table or function may not exist; keep empty receipts.
+    }
+    return { scope, subscription, plan, pendingPlan, periodStart, usage, byWorkspace, unassigned: Number(unassigned[0]?.events ?? 0), plans, currentEstimate, recommendation, invoices, notifications, events, workspaces, receipts };
   });
   const summary = summarize(data.subscription);
   const estimate = data.currentEstimate ? estimatePlan(data.currentEstimate, data.usage) : null;
@@ -177,6 +185,25 @@ billingRoutes.get("/billing/overview", async (c) => {
 billingRoutes.get("/billing/plans", async (c) => {
   requireAuth(c);
   return c.json({ plans: await withStaffActor(c, plansWithRules) });
+});
+
+/** Receipts from LivePay or Yo! collections for the active billing account. */
+billingRoutes.get("/billing/receipts", async (c) => {
+  requireStaff(c);
+  const { scope } = await withStaffActor(c, async (tx) => {
+    const found = await billingScope(c, tx);
+    assertBillingView(scope);
+    return found;
+  });
+  let receipts: any[] = [];
+  try {
+    // Use raw SQL against the receipts table directly (works if migration 134 was applied)
+    // The function app.subscription_receipts_for_account may not exist in older deployments.
+    receipts = await tx`select id, provider, provider_reference, amount_ugx, currency, status, received_at, recorded_by from public.receipts where billing_account_id = ${scope.billingAccountId} order by received_at desc`;
+  } catch {
+    // Table or function may not exist; keep empty receipts.
+  }
+  return c.json({ receipts });
 });
 
 /** The exact terms of a plan change, for the administrator to read before accepting. Changes nothing. */

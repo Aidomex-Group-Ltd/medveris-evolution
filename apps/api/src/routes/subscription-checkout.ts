@@ -184,6 +184,84 @@ subscriptionCheckoutRoutes.get("/billing/subscription-checkout/:id", async (c) =
   return c.json({ checkout: checkoutView(data) });
 });
 
+/** Transaction recovery: get authoritative checkout status from provider. */
+subscriptionCheckoutRoutes.get("/billing/subscription-checkout/:id/status", async (c) => {
+  requireStaff(c);
+  const id = c.req.param("id");
+  if (!/^[0-9a-f-]{36}$/.test(id)) throw new ValidationError("Invalid checkout id");
+  const deps = c.get("deps");
+  const checkout = await withStaffActor(c, async (tx) => {
+    const scope = await billingScope(c, tx);
+    assertBillingView(scope);
+    const [row] = await tx`select * from subscription_checkouts where id = ${id} and billing_account_id = ${scope.billingAccountId}`;
+    return row as Record<string, unknown> | undefined;
+  });
+  if (!checkout) return c.json({ error: { code: "not_found", message: "Checkout not found" } }, 404);
+  if (deps.config.payments.provider === "livepay") {
+    try {
+      const response = await createLivePayClient(deps.config.payments.livepay, deps.livepayTransport).checkStatus(String(checkout.externalReference), "UGX");
+      const sameCurrency = response.currency == null || response.currency.toUpperCase() === "UGX";
+      return c.json({
+        checkout: checkoutView(checkout),
+        status: {
+          checkoutId: id,
+          provider: "livepay",
+          status: sameCurrency ? response.status : "indeterminate",
+          currency: sameCurrency ? response.currency : response.currency ?? "unknown",
+          amount: sameCurrency ? response.amount : null,
+          providerReference: response.internalReference,
+          message: sameCurrency ? null : `LivePay reported ${response.currency} but this checkout is in UGX; not applied. Reconcile before taking another payment.`,
+        },
+      });
+    } catch (error) {
+      if (!(error instanceof LivePayTransportError)) throw error;
+      return c.json({
+        checkout: checkoutView(checkout),
+        status: {
+          checkoutId: id,
+          provider: "livepay",
+          status: "indeterminate",
+          currency: "unknown",
+          amount: null,
+          providerReference: null,
+          message: `${error.message}. The prompt may still be waiting; check again shortly.`,
+        },
+      });
+    }
+  } else {
+    try {
+      const response = await createYoClient(deps.config.yo, deps.yoTransport).checkStatus({ externalReference: String(checkout.externalReference) });
+      const outcome = yoOutcome(response);
+      return c.json({
+        checkout: checkoutView(checkout),
+        status: {
+          checkoutId: id,
+          provider: "yo!",
+          status: outcome,
+          currency: outcome === "succeeded" && response.amount != null ? response.currency : "unknown",
+          amount: outcome === "succeeded" && response.amount != null ? Number(response.amount) : null,
+          providerReference: response.transactionReference,
+          message: outcome === "succeeded" && response.amount != null ? null : `${outcome} from Yo! (check the status before reconciling)`,
+        },
+      });
+    } catch (error) {
+      if (!(error instanceof YoTransportError)) throw error;
+      return c.json({
+        checkout: checkoutView(checkout),
+        status: {
+          checkoutId: id,
+          provider: "yo!",
+          status: "indeterminate",
+          currency: "unknown",
+          amount: null,
+          providerReference: null,
+          message: `${error.message}. The prompt may still be waiting; check again shortly.`,
+        },
+      });
+    }
+  }
+});
+
 /** Asks Yo! for the authoritative status. Idempotent; a settled checkout is returned unchanged. */
 subscriptionCheckoutRoutes.post("/billing/subscription-checkout/:id/check", async (c) => {
   const auth = requireStaff(c);
