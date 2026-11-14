@@ -33,7 +33,10 @@ export function dicomwebConfigProblems(config: Pick<AppConfig, "appEnv" | "dicom
     if (url) {
       if (url.username || url.password) problems.push("DICOMWEB_BASE_URL must not embed credentials; use DICOMWEB_USERNAME and DICOMWEB_PASSWORD");
       if (url.search || url.hash) problems.push("DICOMWEB_BASE_URL must not contain a query or fragment");
-      if (url.protocol !== "https:" && !(LOCAL_ENVIRONMENTS.has(config.appEnv) && url.protocol === "http:")) {
+      // A VPC binding routes the request over the private network; the host is a routing label, not an
+      // address, so scheme rules are relaxed (http is the expected shape there).
+      const relaxed = settings.transport === "vpc" || LOCAL_ENVIRONMENTS.has(config.appEnv);
+      if (url.protocol !== "https:" && !(relaxed && url.protocol === "http:")) {
         problems.push("DICOMWEB_BASE_URL must use HTTPS outside local development and tests");
       }
     }
@@ -46,7 +49,7 @@ export function dicomwebConfigProblems(config: Pick<AppConfig, "appEnv" | "dicom
 
 /** Identifies the configured endpoint and principal, so a verification run only covers the PACS it tested. */
 export async function dicomwebFingerprint(settings: DicomwebConfig): Promise<string> {
-  const material = `${settings.baseUrl ?? ""}|${settings.auth}|${settings.auth === "basic" ? settings.username ?? "" : ""}`;
+  const material = `${settings.baseUrl ?? ""}|${settings.auth}|${settings.auth === "basic" ? settings.username ?? "" : ""}|${settings.transport}`;
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(material));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

@@ -2,6 +2,7 @@ import { assertServableTopology } from "@medveris/db";
 import type { QueueProducer } from "../../jobs/src/queue.js";
 import type { AppConfig } from "./config.js";
 import type { DurableObjectNamespaceLike } from "./lib/rate-limit.js";
+import type { VpcServiceBinding } from "./integrations/vpc.js";
 
 export interface HyperdriveBinding {
   connectionString: string;
@@ -17,6 +18,8 @@ export interface WorkerEnv {
   UPLOADS?: unknown;
   RATE_LIMITER?: DurableObjectNamespaceLike;
   REALTIME?: DurableObjectNamespaceLike;
+  /** DICOMweb PACS reached over the private Workers VPC network (DICOMWEB_TRANSPORT=vpc only). */
+  PACS?: VpcServiceBinding;
   JOBS_QUEUE?: QueueProducer;
   JOBS_DLQ?: QueueProducer;
   /** Workers version metadata; the blue-green deploy uses it to confirm which version answered. */
@@ -59,6 +62,9 @@ export function bindingProblems(env: WorkerEnv, config: AppConfig): string[] {
   }
   if (config.database.replicaEnabled && !env.HYPERDRIVE_REPLICA) problems.push("DB_REPLICA_ENABLED requires the HYPERDRIVE_REPLICA binding");
   if (!local && !env.RATE_LIMITER) problems.push("RATE_LIMITER Durable Object binding is required outside local development");
+  if (config.dicomweb.transport === "vpc" && !env.PACS) {
+    problems.push("DICOMWEB_TRANSPORT=vpc requires a PACS VPC service binding (vpc_services.PACS)");
+  }
   if (config.realtime.enabled && !env.REALTIME) problems.push("REALTIME_ENABLED requires the REALTIME Durable Object binding");
   return problems;
 }

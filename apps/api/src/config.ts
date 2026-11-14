@@ -435,6 +435,8 @@ export interface DicomwebConfig {
   maxImageBytes: number;
   /** A successful conformance run older than this no longer makes the PACS available. */
   verificationMaxAgeDays: number;
+  /** How every PACS request is transported: `url` (public HTTPS endpoint) or `vpc` (private network through a Workers VPC service binding). */
+  transport: "url" | "vpc";
 }
 
 export interface EhmisConfig {
@@ -556,6 +558,12 @@ function allowedOrigins(raw: string | undefined, origin: string, appEnv: string)
   const origins = new Set([origin]);
   for (const candidate of list(raw)) origins.add(validatedOrigin(candidate, appEnv));
   return [...origins];
+}
+
+function dicomwebTransport(env: Record<string, string | undefined>): "url" | "vpc" {
+  const raw = (env.DICOMWEB_TRANSPORT ?? "url").trim().toLowerCase();
+  if (raw !== "url" && raw !== "vpc") throw new Error("DICOMWEB_TRANSPORT must be url or vpc");
+  return raw;
 }
 
 function bool(value: string | undefined, fallback = false): boolean {
@@ -816,6 +824,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
       timeoutMs: Math.max(1_000, Math.min(integer(env.DICOMWEB_TIMEOUT_MS, 15_000), 60_000)),
       maxImageBytes: Math.max(256 * 1024, Math.min(integer(env.DICOMWEB_MAX_IMAGE_BYTES, 20 * 1024 * 1024), 64 * 1024 * 1024)),
       verificationMaxAgeDays: Math.max(1, Math.min(integer(env.DICOMWEB_VERIFICATION_MAX_AGE_DAYS, 30), 365)),
+      transport: dicomwebTransport(env),
     },
     database: {
       replicaEnabled: bool(env.DB_REPLICA_ENABLED, false),

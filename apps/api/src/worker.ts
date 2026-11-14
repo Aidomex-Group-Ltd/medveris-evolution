@@ -13,6 +13,8 @@ import { edgeCached, type CacheStore } from "./lib/edge-cache.js";
 import { DATABASE_RETRY_AFTER_SECONDS, DatabaseUnavailableSignal, databaseErrorSummary, isDatabaseUnavailable, needsDatabase, primaryDatabaseBreaker } from "./lib/db-health.js";
 import { CoordinatedRateLimiter, LocalRateLimiter } from "./lib/rate-limit.js";
 import { DurableRealtimePublisher } from "./realtime/publisher.js";
+import { DicomwebClient } from "./integrations/dicomweb.js";
+import { vpcServiceFetch, type VpcServiceBinding } from "./integrations/vpc.js";
 import { handleRealtimeUpgrade, isRealtimeUpgrade } from "./realtime/upgrade.js";
 import type { EmailAdapter } from "./lib/email.js";
 import type { StorageAdapter } from "./lib/storage.js";
@@ -37,6 +39,8 @@ interface Runtime {
   shards: ShardRouter;
   rateLimiter: CoordinatedRateLimiter;
   realtime: DurableRealtimePublisher | null;
+  /** One PACS client for the process; absent unless the PACS is reachable (VPC binding + vpc transport). */
+  pacs: DicomwebClient | null;
   app: Hono<AppEnv>;
 }
 
@@ -90,8 +94,15 @@ function initialise(env: WorkerEnv): Runtime {
     shards: new ShardRouter(config.shardTopology),
     rateLimiter: new CoordinatedRateLimiter(env.RATE_LIMITER ?? null, localLimiter, config.rateLimit.overrides),
     realtime: env.REALTIME ? new DurableRealtimePublisher(env.REALTIME) : null,
+    pacs: pacsClientFor(env, config),
     app: createApp({ config, email, storage }),
   };
+}
+
+/** One DICOMweb client when the PACS is routed over the private VPC network; null otherwise. */
+function pacsClientFor(env: WorkerEnv, config: AppConfig): DicomwebClient | null {
+  if (config.dicomweb.transport !== "vpc" || !env.PACS) return null;
+  return new DicomwebClient(config.dicomweb, vpcServiceFetch(env.PACS as VpcServiceBinding));
 }
 
 function getRuntime(env: WorkerEnv): Runtime {
@@ -169,6 +180,7 @@ async function serveApp(request: Request, env: WorkerEnv, ctx: WorkerContext, cu
       config: current.config,
       email: current.email,
       storage: current.storage,
+      dicomweb: current.pacs,
     };
     const requestState: RequestState = { databaseUnavailable: false };
     const response = await current.app.fetch(request, { requestDeps, requestState, waitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise) });

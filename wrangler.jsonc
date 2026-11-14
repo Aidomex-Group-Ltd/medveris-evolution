@@ -108,6 +108,13 @@
 			// permission-dependent query results must never be served from a shared cache.
 			// HYPERDRIVE connects as medveris_runtime and HYPERDRIVE_JOBS as medveris_jobs, both to
 			// medveris_staging; `npm run deploy:staging:check` verifies this against the remote configs.
+			"vpc_services": [
+				{
+					"binding": "PACS",
+					"service_id": "01a1d809-cef2-7e03-b9bb-9794aa4d0a33",
+					"remote": true
+				}
+			],
 			"hyperdrive": [
 				{
 					"binding": "HYPERDRIVE",
@@ -214,11 +221,14 @@
 				"PAYMENT_PROVIDER": "livepay",
 				"LIVEPAY_BASE_URL": "https://livepay.me/api",
 				"LIVEPAY_WEBHOOK_URL": "https://medveris-staging.aidomexgroupltd.workers.dev/api/v1/public/payments/livepay/webhook",
-				// PACS / DICOMweb: set FEATURE_DICOMWEB=true with DICOMWEB_BASE_URL and DICOMWEB_AUTH here,
-				// add the matching credentials to secrets.required, then put the values with `wrangler secret put`.
-				// The PACS stays unavailable until a platform operator records a passing conformance run.
+				// PACS / DICOMweb over the private Workers VPC network (service medveris-pacs via tunnel
+				// medveris-vpc-pg). DICOMWEB_BASE_URL is a routing label for the VPC binding, never resolved;
+				// the Orthanc PACS answers on 127.0.0.1:8042 on the VM (VM-only exposure). The PACS stays
+				// unavailable until a platform operator records a passing conformance run.
 				// See docs/22_PACS_DICOMWEB_RUNBOOK.md.
 				"FEATURE_DICOMWEB": "false",
+				"DICOMWEB_TRANSPORT": "vpc",
+				"DICOMWEB_BASE_URL": "http://medveris-pacs/dicom-web",
 				"DICOMWEB_AUTH": "basic",
 				"DICOMWEB_TIMEOUT_MS": "15000",
 				"DICOMWEB_MAX_IMAGE_BYTES": "20971520",
