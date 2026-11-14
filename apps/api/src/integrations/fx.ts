@@ -18,7 +18,7 @@ export interface FxProvider {
 export function maskFxSecrets(message: string): string {
   return String(message)
     .replace(/([?&]app_id=)[^&\s]+/gi, "$1[redacted]")
-    .replace(/([?&](?:api[_-]?key|key|token|secret)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/(^|[?&\s,;])((?:api[_-]?key|key|token|secret)=)[^&\s,;]+/gi, "$1$2[redacted]")
     .replace(/\b(re_[A-Za-z0-9_-]{8,}|sk_[A-Za-z0-9_-]{8,})\b/g, "[redacted]");
 }
 
