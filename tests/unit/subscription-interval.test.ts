@@ -4,10 +4,10 @@ import {
   BILLING_INTERVALS,
   billingIntervalPeriod,
   checkoutDisclosure,
-  exchangeRateIsStale,
+  exchangeRateIsStaleHours,
   SEAT_PRICE_USD_MINOR,
   seatAmountUsdMinor,
-  usdMinorToUgxMinor,
+  usdMinorToUgx,
 } from "@medveris/domain";
 
 describe("subscription billing intervals", () => {
@@ -39,17 +39,20 @@ describe("subscription billing intervals", () => {
     expect(() => seatAmountUsdMinor(2.5)).toThrow();
   });
 
-  it("converts to whole shillings by rounding up, never down", () => {
-    expect(usdMinorToUgxMinor(300, 3800)).toBe(11_400);
-    expect(usdMinorToUgxMinor(50, 3811.37)).toBe(1906); // 1905.685 rounds up
-    expect(() => usdMinorToUgxMinor(50, 0)).toThrow();
+  it("converts to whole shillings by rounding up, never down (single rounding)", () => {
+    expect(usdMinorToUgx(300, 3800)).toBe(11_400);
+    expect(usdMinorToUgx(50, 3811.37)).toBe(1906);
+    expect(() => usdMinorToUgx(50, 0)).toThrow();
+    expect(() => usdMinorToUgx(0, 3800)).toThrow();
+    expect(() => usdMinorToUgx(-50, 3800)).toThrow();
   });
 
-  it("treats a rate older than the configured age as stale", () => {
+  it("treats a rate older than FX_MAX_AGE_HOURS as stale at the boundary", () => {
     const now = new Date("2026-10-30T12:00:00.000Z");
-    expect(exchangeRateIsStale(new Date("2026-10-30T11:59:00.000Z"), now, 60)).toBe(false);
-    expect(exchangeRateIsStale(new Date("2026-10-30T10:00:00.000Z"), now, 60)).toBe(true);
-    expect(exchangeRateIsStale(now, now, 0)).toBe(true);
+    expect(exchangeRateIsStaleHours(new Date("2026-10-30T11:59:59.000Z"), now, 24)).toBe(false);
+    expect(exchangeRateIsStaleHours(new Date("2026-10-29T12:00:00.000Z"), now, 24)).toBe(false);
+    expect(exchangeRateIsStaleHours(new Date("2026-10-29T11:59:59.999Z"), now, 24)).toBe(true);
+    expect(exchangeRateIsStaleHours(now, now, 0)).toBe(true);
   });
 
   it("discloses the UGX amount, interval, dates, manual renewal and minimum before payment", () => {
