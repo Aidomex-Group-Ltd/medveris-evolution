@@ -190,19 +190,19 @@ billingRoutes.get("/billing/plans", async (c) => {
 /** Receipts from LivePay or Yo! collections for the active billing account. */
 billingRoutes.get("/billing/receipts", async (c) => {
   requireStaff(c);
-  const { scope } = await withStaffActor(c, async (tx) => {
+  const { receipts } = await withStaffActor(c, async (tx) => {
     const found = await billingScope(c, tx);
-    assertBillingView(scope);
-    return found;
+    assertBillingView(found);
+    let rows: any[] = [];
+    try {
+      // Use raw SQL against the receipts table directly (works if migration 134 was applied)
+      // The function app.subscription_receipts_for_account may not exist in older deployments.
+      rows = await tx`select id, provider, provider_reference, amount_ugx, currency, status, received_at, recorded_by from public.receipts where billing_account_id = ${found.billingAccountId} order by received_at desc`;
+    } catch {
+      // Table or function may not exist; keep empty receipts.
+    }
+    return { scope: found, receipts: rows };
   });
-  let receipts: any[] = [];
-  try {
-    // Use raw SQL against the receipts table directly (works if migration 134 was applied)
-    // The function app.subscription_receipts_for_account may not exist in older deployments.
-    receipts = await tx`select id, provider, provider_reference, amount_ugx, currency, status, received_at, recorded_by from public.receipts where billing_account_id = ${scope.billingAccountId} order by received_at desc`;
-  } catch {
-    // Table or function may not exist; keep empty receipts.
-  }
   return c.json({ receipts });
 });
 
