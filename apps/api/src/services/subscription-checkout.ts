@@ -2,16 +2,16 @@ import type { Tx } from "@medveris/db";
 import {
   billingIntervalPeriod,
   checkoutDisclosure,
-  exchangeRateIsStale,
+  exchangeRateIsStaleHours,
   maskMsisdn,
   SEAT_PRICE_USD_MINOR,
   seatAmountUsdMinor,
-  usdMinorToUgxMinor,
+  usdMinorToUgx,
   type BillingInterval,
 } from "@medveris/domain";
 import { notifyAccount, recordSubscriptionEvent } from "../../../jobs/src/billing.js";
 import type { AppConfig } from "../config.js";
-import { createFxProvider, FxUnavailableError } from "../integrations/fx.js";
+import { createFxProvider, FxUnavailableError, maskFxSecrets } from "../integrations/fx.js";
 import { writeAudit } from "../lib/audit.js";
 import { AppError, ConflictError, NotFoundError } from "../lib/errors.js";
 import type { AppDeps } from "../types.js";
@@ -48,31 +48,109 @@ export interface CheckoutActor {
   tenantId: string;
 }
 
+export interface FxResolutionContext {
+  billingAccountId?: string | null;
+  correlationId?: string | null;
+  tenantId?: string | null;
+}
+
+const FX_EVENT = "subscription_fx_rate";
+
+function fxLog(level: "info" | "warn" | "error", event: string, detail: Record<string, unknown>) {
+  const payload = { event, level, ...detail };
+  if (level === "error") console.error(JSON.stringify(payload));
+  else if (level === "warn") console.warn(JSON.stringify(payload));
+  else console.log(JSON.stringify(payload));
+}
+
+function stale(maxAgeHours: number, when: Date | null, now: Date): boolean {
+  if (!when) return true;
+  return exchangeRateIsStaleHours(when, now, maxAgeHours);
+}
+
 /**
- * Resolves the USD/UGX rate from the configured provider and refuses a stale quote. The operator's
- * configured rate is used only when no provider is available, and is labelled as such so the
- * customer is never shown an operator rate as if it were a market rate.
+ * Resolves a USD/UGX rate: fresh provider fetch (cached in DB), then cached provider rate, then an
+ * operator-set manual DB rate (non-expired) as fallback. Any rate older than FX_MAX_AGE_HOURS is
+ * refused. If no valid rate exists, pricing fails closed and a structured alerting event is logged.
  */
-export async function subscriptionExchangeRate(config: AppConfig, deps: Pick<AppDeps, "fxProvider">, now = new Date()): Promise<SubscriptionFx> {
+export async function subscriptionExchangeRate(
+  tx: Tx,
+  config: AppConfig,
+  deps: Pick<AppDeps, "fxProvider">,
+  now = new Date(),
+  ctx: FxResolutionContext = {},
+): Promise<SubscriptionFx> {
+  const maxAgeHours = config.subscription.fxMaxAgeHours;
+  const meta = { correlationId: ctx.correlationId ?? null, billingAccountId: ctx.billingAccountId ?? null, base: "USD", quote: "UGX" };
   const provider = deps.fxProvider ?? createFxProvider(config.fx);
+
   if (provider) {
     try {
       const quote = await provider.rate("USD", "UGX");
-      if (exchangeRateIsStale(quote.providerTimestamp, now, config.subscription.fxMaxAgeMinutes)) {
-        throw new AppError(503, "exchange_rate_stale", `The USD/UGX rate published at ${quote.providerTimestamp.toISOString()} is older than ${config.subscription.fxMaxAgeMinutes} minutes, so it cannot be used for a price that must be disclosed in UGX. Try again later.`);
+      if (stale(maxAgeHours, quote.providerTimestamp, now)) {
+        fxLog("warn", FX_EVENT, { ...meta, outcome: "provider_stale", provider: quote.provider, providerTimestamp: quote.providerTimestamp.toISOString(), maxAgeHours });
+      } else {
+        await tx`
+          insert into subscription_fx_rates (base, quote, rate, provider, provider_timestamp, fetched_at)
+          values ('USD', 'UGX', ${quote.rate}, ${quote.provider}, ${quote.providerTimestamp}, ${now})
+          on conflict (base, quote) do update set
+            rate = excluded.rate,
+            provider = excluded.provider,
+            provider_timestamp = excluded.provider_timestamp,
+            fetched_at = excluded.fetched_at
+        `;
+        fxLog("info", FX_EVENT, { ...meta, outcome: "provider_fresh", provider: quote.provider, providerTimestamp: quote.providerTimestamp.toISOString() });
+        return { base: "USD", quote: "UGX", rate: quote.rate, source: quote.provider, providerTimestamp: quote.providerTimestamp, recordedAt: now, fallback: false };
       }
-      return { base: "USD", quote: "UGX", rate: quote.rate, source: quote.provider, providerTimestamp: quote.providerTimestamp, recordedAt: now, fallback: false };
     } catch (error) {
-      if (!(error instanceof FxUnavailableError) || config.subscription.fxFallbackUsdUgx == null) {
-        if (error instanceof AppError) throw error;
-        throw new AppError(503, "exchange_rate_unavailable", "A current USD/UGX exchange rate is not available, so the UGX price cannot be shown. No payment has been requested.");
-      }
+      const message = error instanceof FxUnavailableError ? error.message : maskFxSecrets((error as Error)?.message || "provider_error");
+      fxLog("warn", FX_EVENT, { ...meta, outcome: "provider_failed", reason: message });
+      // fall through to cached/manual
     }
+  } else {
+    fxLog("warn", FX_EVENT, { ...meta, outcome: "provider_unconfigured" });
   }
-  if (config.subscription.fxFallbackUsdUgx == null) {
-    throw new AppError(503, "exchange_rate_unavailable", "No USD/UGX exchange rate source is configured, so the UGX price cannot be shown. No payment has been requested.");
+
+  const [cached] = await tx`
+    select rate, provider, provider_timestamp, fetched_at from subscription_fx_rates
+     where base = 'USD' and quote = 'UGX' limit 1
+  `;
+  if (cached && !stale(maxAgeHours, new Date(cached.providerTimestamp as Date), now)) {
+    fxLog("info", FX_EVENT, { ...meta, outcome: "cache_used", provider: String(cached.provider), providerTimestamp: new Date(cached.providerTimestamp as Date).toISOString() });
+    return {
+      base: "USD", quote: "UGX", rate: Number(cached.rate), source: String(cached.provider),
+      providerTimestamp: new Date(cached.providerTimestamp as Date), recordedAt: new Date(cached.fetchedAt as Date), fallback: false,
+    };
   }
-  return { base: "USD", quote: "UGX", rate: config.subscription.fxFallbackUsdUgx, source: "operator-configured", providerTimestamp: null, recordedAt: now, fallback: true };
+  if (cached) {
+    fxLog("warn", FX_EVENT, { ...meta, outcome: "cache_stale", provider: String(cached.provider), providerTimestamp: new Date(cached.providerTimestamp as Date).toISOString(), maxAgeHours });
+  }
+
+  const [manual] = await tx`
+    select rate, expires_at, set_at from subscription_fx_manual_rates
+     where base = 'USD' and quote = 'UGX' and expires_at > ${now}
+     order by expires_at desc, set_at desc limit 1
+  `;
+  if (manual && !stale(maxAgeHours, new Date(manual.setAt as Date), now)) {
+    fxLog("warn", FX_EVENT, { ...meta, outcome: "manual_fallback", expiresAt: new Date(manual.expiresAt as Date).toISOString() });
+    return {
+      base: "USD", quote: "UGX", rate: Number(manual.rate), source: "manual",
+      providerTimestamp: new Date(manual.setAt as Date), recordedAt: now, fallback: true,
+    };
+  }
+  if (manual) {
+    fxLog("warn", FX_EVENT, { ...meta, outcome: "manual_expired_or_stale", expiresAt: new Date(manual.expiresAt as Date).toISOString(), maxAgeHours });
+  } else {
+    fxLog("warn", FX_EVENT, { ...meta, outcome: "manual_missing" });
+  }
+
+  fxLog("error", FX_EVENT, { ...meta, outcome: "unavailable", reason: "no_valid_rate", maxAgeHours });
+  throw new AppError(
+    503,
+    "exchange_rate_unavailable",
+    "The UGX price is not available right now, so no payment can be requested. Please try again later or contact support and share the reference shown.",
+    { correlationId: ctx.correlationId ?? null },
+  );
 }
 
 /** Active distinct users across every workspace paid for by this billing account. */
@@ -88,8 +166,17 @@ export async function billingSeats(tx: Tx, billingAccountId: string): Promise<nu
 /**
  * The price, period and terms for one interval. A paid period starts when the current paid period
  * ends (or now, when nothing is paid), so an early renewal extends access instead of discarding it.
+ * The UGX amount is computed once here from the resolved rate (single rounding point).
  */
-export async function quoteCheckout(tx: Tx, config: AppConfig, deps: Pick<AppDeps, "fxProvider">, billingAccountId: string, interval: BillingInterval, now = new Date()): Promise<CheckoutQuote> {
+export async function quoteCheckout(
+  tx: Tx,
+  config: AppConfig,
+  deps: Pick<AppDeps, "fxProvider">,
+  billingAccountId: string,
+  interval: BillingInterval,
+  now = new Date(),
+  ctx: FxResolutionContext = {},
+): Promise<CheckoutQuote> {
   const [subscription] = await tx`
     select id, status, current_period_end from subscriptions
      where billing_account_id = ${billingAccountId} order by (status <> 'cancelled') desc, created_at desc limit 1
@@ -100,8 +187,8 @@ export async function quoteCheckout(tx: Tx, config: AppConfig, deps: Pick<AppDep
   }
   const seats = await billingSeats(tx, billingAccountId);
   const amountUsdMinor = seatAmountUsdMinor(seats);
-  const fx = await subscriptionExchangeRate(config, deps, now);
-  const amountUgx = usdMinorToUgxMinor(amountUsdMinor, fx.rate);
+  const fx = await subscriptionExchangeRate(tx, config, deps, now, { ...ctx, billingAccountId });
+  const amountUgx = usdMinorToUgx(amountUsdMinor, fx.rate);
   if (amountUgx < config.subscription.minUgx) {
     throw new AppError(422, "amount_below_minimum", `The UGX equivalent for ${seats} user${seats === 1 ? "" : "s"} is below the UGX ${config.subscription.minUgx.toLocaleString("en-UG")} minimum for a mobile-money collection. Add an active user or choose a longer interval.`, {
       seats, amountUsdMinor, amountUgx, minUgx: config.subscription.minUgx, rate: fx.rate,
@@ -136,6 +223,10 @@ export interface CreatedCheckout {
   quote: CheckoutQuote;
 }
 
+/**
+ * Locks the priced quote to a payment record: the rate, its timestamp/source and the UGX amount are
+ * stored and the provider is charged that stored amount. A later rate change does not affect it.
+ */
 export async function createCheckout(tx: Tx, config: AppConfig, deps: Pick<AppDeps, "fxProvider">, input: {
   billingAccountId: string;
   interval: BillingInterval;
@@ -144,8 +235,11 @@ export async function createCheckout(tx: Tx, config: AppConfig, deps: Pick<AppDe
   initiatedBy: string;
   actor: CheckoutActor;
   now?: Date;
+  correlationId?: string | null;
 }): Promise<CreatedCheckout> {
-  const quote = await quoteCheckout(tx, config, deps, input.billingAccountId, input.interval, input.now ?? new Date());
+  const quote = await quoteCheckout(tx, config, deps, input.billingAccountId, input.interval, input.now ?? new Date(), {
+    billingAccountId: input.billingAccountId, correlationId: input.correlationId ?? null, tenantId: input.actor.tenantId,
+  });
   const [subscription] = await tx`select id from subscriptions where billing_account_id = ${input.billingAccountId} order by (status <> 'cancelled') desc, created_at desc limit 1`;
   const checkoutId = crypto.randomUUID();
   const provider = config.payments.provider;
@@ -173,6 +267,7 @@ export async function createCheckout(tx: Tx, config: AppConfig, deps: Pick<AppDe
   await writeAudit(tx, config, {
     tenantId: input.actor.tenantId, actorKind: input.actor.kind, actorUserId: input.actor.userId, actorRoles: [],
     action: "subscription.checkout.request", resourceType: "SubscriptionCheckout", resourceId: checkoutId,
+    correlationId: input.correlationId ?? null,
     metadata: { interval: quote.interval, seats: quote.seats, amountUsdMinor: quote.amountUsdMinor, amountUgx: quote.amountUgx, rate: quote.fx.rate, rateSource: quote.fx.source, msisdn: maskMsisdn(input.msisdn), provider, mode: providerMode },
   });
   return { checkoutId, externalReference, quote };
@@ -293,7 +388,8 @@ export async function applyCheckoutEvidence(tx: Tx, config: AppConfig, checkoutI
     detail = "Waiting for the payer to approve the prompt on their phone.";
   } else if (evidence.outcome === "indeterminate" && current === "pending") {
     next = "indeterminate";
-    applied = true;      detail = evidence.statusMessage || `${provider} has not resolved this transaction yet; check again before paying.`;
+    applied = true;
+    detail = evidence.statusMessage || `${provider} has not resolved this transaction yet; check again before paying.`;
   }
 
   await tx`

@@ -223,13 +223,8 @@ export interface SubscriptionConfig {
   productDescription: string;
   /** Smallest UGX collection attempted; Yo! collects whole shillings and small prompts are uneconomic. */
   minUgx: number;
-  /**
-   * Operator-configured USD/UGX rate used only when no live provider is configured or reachable.
-   * It is disclosed as a configured rate, never presented as a market rate, and never hardcoded here.
-   */
-  fxFallbackUsdUgx: number | null;
-  /** A provider rate older than this is refused rather than priced. */
-  fxMaxAgeMinutes: number;
+  /** A rate older than this is refused rather than priced. */
+  fxMaxAgeHours: number;
 }
 
 export interface AiConfig {
@@ -793,14 +788,16 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     subscription: {
       productDescription: (env.SUBSCRIPTION_PRODUCT_DESCRIPTION ?? "").trim() || "Medveris workspace access for all modules enabled in the workspace",
       minUgx: Math.max(0, integer(env.SUBSCRIPTION_MIN_UGX, 500)),
-      fxFallbackUsdUgx: (() => {
-        const raw = (env.SUBSCRIPTION_FX_USD_UGX ?? "").trim();
-        if (!raw) return null;
-        const value = Number(raw);
-        if (!Number.isFinite(value) || value <= 0) throw new Error("SUBSCRIPTION_FX_USD_UGX must be a positive number when set");
-        return value;
+      fxMaxAgeHours: (() => {
+        const rawHours = (env.FX_MAX_AGE_HOURS ?? "").trim();
+        if (rawHours) {
+          const value = Number(rawHours);
+          if (!Number.isFinite(value) || value <= 0) throw new Error("FX_MAX_AGE_HOURS must be a positive number when set");
+          return Math.max(1, Math.min(value, 168));
+        }
+        // Backward compatibility: minutes were used previously (default 1440 = 24h).
+        return Math.max(1 / 60, Math.min(integer(env.SUBSCRIPTION_FX_MAX_AGE_MINUTES, 1440) / 60, 168));
       })(),
-      fxMaxAgeMinutes: Math.max(1, Math.min(integer(env.SUBSCRIPTION_FX_MAX_AGE_MINUTES, 1440), 10_080)),
     },
     fx: {
       provider: env.FX_PROVIDER === "openexchangerates" ? "openexchangerates" : "none",

@@ -6,7 +6,7 @@ import { assertIntegrationAvailable } from "../integrations/registry.js";
 import { createLivePayClient, LivePayTransportError } from "../integrations/livepay.js";
 import { createYoClient, YoTransportError, yoOutcome } from "../integrations/yo.js";
 import { writeAudit } from "../lib/audit.js";
-import { ConflictError, ValidationError } from "../lib/errors.js";
+import { AppError, ConflictError, ValidationError, correlationId } from "../lib/errors.js";
 import { parseJson } from "../lib/http.js";
 import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
 import { enforceRateLimit } from "../lib/rate-limit.js";
@@ -54,12 +54,20 @@ subscriptionCheckoutRoutes.get("/billing/subscription-checkout/quote", async (c)
   requireStaff(c);
   const interval = billingIntervalSchema.parse(c.req.query("interval"));
   const deps = c.get("deps");
-  const quote = await withStaffActor(c, async (tx) => {
-    const scope = await billingScope(c, tx);
-    assertBillingManage(scope);
-    return quoteCheckout(tx, deps.config, deps, scope.billingAccountId, interval);
-  });
-  return c.json({ quote });
+  const cid = correlationId(c);
+  try {
+    const quote = await withStaffActor(c, async (tx) => {
+      const scope = await billingScope(c, tx);
+      assertBillingManage(scope);
+      return quoteCheckout(tx, deps.config, deps, scope.billingAccountId, interval, new Date(), { correlationId: cid, tenantId: c.get("auth")?.activeTenant?.id ?? null });
+    });
+    return c.json({ quote });
+  } catch (error) {
+    if (error instanceof AppError && error.code === "exchange_rate_unavailable") {
+      return c.json({ error: { code: error.code, message: error.message, correlationId: cid } }, error.status);
+    }
+    throw error;
+  }
 });
 
 /** Creates the checkout, then asks Yo! to prompt the payer. A browser redirect never marks it paid. */
@@ -88,11 +96,13 @@ subscriptionCheckoutRoutes.post("/billing/subscription-checkout", async (c) => {
   const existing = await replay();
   if (existing) return c.json({ ok: true, replayed: true, checkout: checkoutView(existing) }, 200);
 
+  const cid = correlationId(c);
   let created;
   try {
     created = await withBillingSystem(c, (tx) => createCheckout(tx, deps.config, deps, {
       billingAccountId: scope.billingAccountId, interval: body.interval, msisdn, idempotencyKey: key,
       initiatedBy: auth.user.id, actor: { kind: "staff", userId: auth.user.id, tenantId: auth.activeTenant!.id },
+      correlationId: cid,
     }));
   } catch (error) {
     if (uniqueViolation(error) === "subscription_checkouts_one_pending") {
@@ -101,6 +111,9 @@ subscriptionCheckoutRoutes.post("/billing/subscription-checkout", async (c) => {
     if (uniqueViolation(error) === "subscription_checkouts_billing_account_id_idempotency_key_key") {
       const raced = await replay();
       if (raced) return c.json({ ok: true, replayed: true, checkout: checkoutView(raced) }, 200);
+    }
+    if (error instanceof AppError && error.code === "exchange_rate_unavailable") {
+      return c.json({ error: { code: error.code, message: error.message, correlationId: cid } }, error.status);
     }
     throw error;
   }
