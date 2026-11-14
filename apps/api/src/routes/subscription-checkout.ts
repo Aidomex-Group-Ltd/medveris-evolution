@@ -238,7 +238,7 @@ subscriptionCheckoutRoutes.get("/billing/subscription-checkout/:id/status", asyn
           checkoutId: id,
           provider: "yo!",
           status: outcome,
-          currency: outcome === "succeeded" && response.amount != null ? response.currency : "unknown",
+          currency: outcome === "succeeded" && response.amount != null ? response.currencyCode : "unknown",
           amount: outcome === "succeeded" && response.amount != null ? Number(response.amount) : null,
           providerReference: response.transactionReference,
           message: outcome === "succeeded" && response.amount != null ? null : `${outcome} from Yo! (check the status before reconciling)`,
