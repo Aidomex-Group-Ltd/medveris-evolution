@@ -90,19 +90,19 @@ export function getPackageTier(code: string): (typeof PACKAGE_TIERS)[keyof typeo
 }
 
 /** Staff limit for a given plan code. */
-export function staffLimitForPlan(planCode: string): number | undefined {
+export function staffLimitForPlan(planCode: string): number | null | undefined {
   const tier = getPackageTier(planCode);
   return tier?.staffLimit;
 }
 
 /** Storage in GB for a given plan code. */
-export function storageGbForPlan(planCode: string): number | undefined {
+export function storageGbForPlan(planCode: string): number | null | undefined {
   const tier = getPackageTier(planCode);
   return tier?.storageGb;
 }
 
 /** Monthly price in USD for a given plan code. */
-export function monthlyPriceUsdForPlan(planCode: string): number | undefined {
+export function monthlyPriceUsdForPlan(planCode: string): number | null | undefined {
   const tier = getPackageTier(planCode);
   return tier?.monthlyPriceUsd;
 }
@@ -156,13 +156,18 @@ export function seatAmountUsdMinor(seats: number): number {
 }
 
 /**
- * Converts a USD minor amount to whole Ugandan shillings, rounding up. Mobile money collects whole
- * shillings, and rounding up means the collected amount is never below the disclosed price.
+ * The single place USD minor amounts become whole Ugandan shillings. Mobile money collects whole
+ * shillings, so we round up: the collected amount is never below the disclosed price.
  */
-export function usdMinorToUgxMinor(amountUsdMinor: number, ugxPerUsd: number): number {
+export function usdMinorToUgx(amountUsdMinor: number, ugxPerUsd: number): number {
   if (!Number.isInteger(amountUsdMinor) || amountUsdMinor <= 0) throw new DomainError("The USD amount must be a positive number of cents");
   if (!Number.isFinite(ugxPerUsd) || ugxPerUsd <= 0) throw new DomainError("A positive USD/UGX exchange rate is required");
   return Math.ceil((amountUsdMinor / 100) * ugxPerUsd);
+}
+
+/** @deprecated use `usdMinorToUgx` (kept for compatibility). */
+export function usdMinorToUgxMinor(amountUsdMinor: number, ugxPerUsd: number): number {
+  return usdMinorToUgx(amountUsdMinor, ugxPerUsd);
 }
 
 /** A market rate older than the configured age is not used; a stale price would be a false disclosure. */
@@ -170,6 +175,13 @@ export function exchangeRateIsStale(providerTimestamp: Date, now: Date, maxAgeMi
   if (!Number.isFinite(maxAgeMinutes) || maxAgeMinutes <= 0) return true;
   const ageMs = now.getTime() - providerTimestamp.getTime();
   return ageMs > maxAgeMinutes * 60 * 1000;
+}
+
+/** Staleness check in hours. */
+export function exchangeRateIsStaleHours(referenceTime: Date, now: Date, maxAgeHours: number): boolean {
+  if (!Number.isFinite(maxAgeHours) || maxAgeHours <= 0) return true;
+  const ageMs = now.getTime() - referenceTime.getTime();
+  return ageMs > maxAgeHours * 60 * 60 * 1000;
 }
 
 export const SUBSCRIPTION_RENEWAL_MODE = "manual" as const;
