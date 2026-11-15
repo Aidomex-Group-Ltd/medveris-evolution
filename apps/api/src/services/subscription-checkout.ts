@@ -1,4 +1,4 @@
-import type { Tx } from "@medveris/db";
+import { withContext, type Tx } from "@medveris/db";
 import {
   billingIntervalPeriod,
   checkoutDisclosure,
@@ -76,7 +76,7 @@ function stale(maxAgeHours: number, when: Date | null, now: Date): boolean {
 export async function subscriptionExchangeRate(
   tx: Tx,
   config: AppConfig,
-  deps: Pick<AppDeps, "fxProvider">,
+  deps: Pick<AppDeps, "fxProvider" | "sql">,
   now = new Date(),
   ctx: FxResolutionContext = {},
 ): Promise<SubscriptionFx> {
@@ -90,7 +90,13 @@ export async function subscriptionExchangeRate(
       if (stale(maxAgeHours, quote.providerTimestamp, now)) {
         fxLog("warn", FX_EVENT, { ...meta, outcome: "provider_stale", provider: quote.provider, providerTimestamp: quote.providerTimestamp.toISOString(), maxAgeHours });
       } else {
-        await tx`
+        // The cached rate is shared pricing state, not the caller's data: the table is keyed by
+        // currency pair with no tenant column, and a wrong rate reprices every account. The
+        // write policy therefore permits only actor_kind() = 'system' (migration 136), so it runs
+        // in its own short system transaction instead of the staff transaction that is pricing
+        // this request. Widening the policy to staff would let any facility administrator
+        // overwrite the platform's USD/UGX rate.
+        await withContext(deps.sql, { actorKind: "system", tenantId: ctx.tenantId ?? null }, (sysTx) => sysTx`
           insert into subscription_fx_rates (base, quote, rate, provider, provider_timestamp, fetched_at)
           values ('USD', 'UGX', ${quote.rate}, ${quote.provider}, ${quote.providerTimestamp}, ${now})
           on conflict (base, quote) do update set
@@ -98,7 +104,7 @@ export async function subscriptionExchangeRate(
             provider = excluded.provider,
             provider_timestamp = excluded.provider_timestamp,
             fetched_at = excluded.fetched_at
-        `;
+        `);
         fxLog("info", FX_EVENT, { ...meta, outcome: "provider_fresh", provider: quote.provider, providerTimestamp: quote.providerTimestamp.toISOString() });
         return { base: "USD", quote: "UGX", rate: quote.rate, source: quote.provider, providerTimestamp: quote.providerTimestamp, recordedAt: now, fallback: false };
       }
@@ -171,7 +177,7 @@ export async function billingSeats(tx: Tx, billingAccountId: string): Promise<nu
 export async function quoteCheckout(
   tx: Tx,
   config: AppConfig,
-  deps: Pick<AppDeps, "fxProvider">,
+  deps: Pick<AppDeps, "fxProvider" | "sql">,
   billingAccountId: string,
   interval: BillingInterval,
   now = new Date(),
@@ -227,7 +233,7 @@ export interface CreatedCheckout {
  * Locks the priced quote to a payment record: the rate, its timestamp/source and the UGX amount are
  * stored and the provider is charged that stored amount. A later rate change does not affect it.
  */
-export async function createCheckout(tx: Tx, config: AppConfig, deps: Pick<AppDeps, "fxProvider">, input: {
+export async function createCheckout(tx: Tx, config: AppConfig, deps: Pick<AppDeps, "fxProvider" | "sql">, input: {
   billingAccountId: string;
   interval: BillingInterval;
   msisdn: string;

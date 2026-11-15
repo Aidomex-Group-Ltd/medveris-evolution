@@ -12,6 +12,8 @@ function sign(data: string): string {
 }
 
 const FX_RATE = 3800;
+/** Mutable so a test can change the provider rate after a checkout was created. */
+let fxRate = FX_RATE;
 let transactions = 0;
 const deposits: string[] = [];
 
@@ -37,7 +39,7 @@ const h = createHarness("subscription-checkout", {
     fxProvider: {
       name: "test-fx",
       async rate() {
-        return { base: "USD", quote: "UGX", rate: FX_RATE, provider: "test-fx", providerTimestamp: new Date(Date.now() - 60_000) };
+        return { base: "USD", quote: "UGX", rate: fxRate, provider: "test-fx", providerTimestamp: new Date(Date.now() - 60_000) };
       },
     },
   }),
@@ -227,13 +229,30 @@ describe("subscription checkout", () => {
     const created = await startCheckout("monthly");
     expect(created.amountUgx).toBe(price.amountUgx);
     // Change provider rate after checkout is created; stored quote/amount must remain unchanged.
-    (h.deps as any).fxProvider.rate = async () => ({ base: "USD", quote: "UGX", rate: FX_RATE + 777, provider: "test-fx", providerTimestamp: new Date() });
+    fxRate = FX_RATE + 777;
     const [row] = await withContext(h.sql, { actorKind: "system", tenantId: KAMPALA_TENANT }, (tx) =>
       tx`select amount_ugx, fx_rate from subscription_checkouts where id = ${created.id}`);
-    expect(Number(row.amountUgx)).toBe(price.amountUgx);
-    expect(Number(row.fxRate)).toBe(FX_RATE);
-    // restore
-    (h.deps as any).fxProvider.rate = async () => ({ base: "USD", quote: "UGX", rate: FX_RATE, provider: "test-fx", providerTimestamp: new Date(Date.now() - 60_000) });
+    expect(Number(row?.amountUgx)).toBe(price.amountUgx);
+    expect(Number(row?.fxRate)).toBe(FX_RATE);
+    fxRate = FX_RATE;
     await h.post(admin, `/api/v1/billing/subscription-checkout/${created.id}/cancel`, { reason: "quote lock verification cleanup" }, 200);
+  });
+
+  it("refreshes the shared rate cache as the system actor, not the requesting staff actor", async () => {
+    const { withContext } = await import("@medveris/db");
+    // A staff member asking for a quote triggers the provider fetch and the cache write.
+    const result = await quote("monthly");
+    expect(result.fx.source).toBe("test-fx");
+    const [cached] = await withContext(h.sql, { actorKind: "system", tenantId: KAMPALA_TENANT }, (tx) =>
+      tx`select rate, provider from subscription_fx_rates where base = 'USD' and quote = 'UGX'`);
+    expect(cached, "the quote should have persisted the provider rate").toBeDefined();
+    expect(Number(cached?.rate)).toBe(FX_RATE);
+    expect(cached?.provider).toBe("test-fx");
+    // The same table refuses the write when it is attempted as the requesting staff actor,
+    // because the rate is shared pricing state rather than tenant data (migration 136).
+    await expect(withContext(h.sql, { actorKind: "staff", tenantId: KAMPALA_TENANT }, (tx) =>
+      tx`insert into subscription_fx_rates (base, quote, rate, provider, provider_timestamp, fetched_at)
+         values ('EUR', 'UGX', 1, 'test-eur', now(), now())`,
+    )).rejects.toThrow(/row-level security|permission denied/i);
   });
 });
