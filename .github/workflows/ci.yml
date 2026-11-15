@@ -26,9 +26,9 @@ jobs:
       APP_ORIGIN: http://localhost:5173
       DEV_SHOW_TOTP_SECRETS: "true"
       PGADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
-      MIGRATION_DATABASE_URL: postgres://medveris_migrator:medveris_migrator_dev@localhost:5432/medveris_dev
-      DATABASE_URL: postgres://medveris_runtime:medveris_runtime_dev@localhost:5432/medveris_dev
-      JOBS_DATABASE_URL: postgres://medveris_jobs:medveris_jobs_dev@localhost:5432/medveris_dev
+      MIGRATION_DATABASE_URL: postgres://medveris_migrator:medveris_migrator_dev@localhost:5432/medveris_test
+      DATABASE_URL: postgres://medveris_runtime:medveris_runtime_dev@localhost:5432/medveris_test
+      JOBS_DATABASE_URL: postgres://medveris_jobs:medveris_jobs_dev@localhost:5432/medveris_test
       SESSION_SECRET: ci-session-secret-ci-session-secret
       MFA_ENCRYPTION_KEY: ci-mfa-encryption-key-ci-mfa-encryption-key
       AUDIT_SIGNING_KEY: ci-audit-signing-key-ci-audit-signing-key
