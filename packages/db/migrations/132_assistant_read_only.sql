@@ -18,21 +18,36 @@
 -- grant SELECT on there; an earlier draft of this migration referenced tables
 -- that do not exist and would have failed on apply.
 --
--- Prepared, NOT applied to staging or production. Applying it is an operator
--- action: see docs/observability/SECRETS-RUNBOOK.md and the migration runbook.
+-- The role itself is created by the operator bootstrap (`npm run db:setup`,
+-- which connects as the database admin), not here. `medveris_migrator` is
+-- deliberately NOCREATEROLE, so role DDL in a migration cannot run under the
+-- normal migration role: it failed CI with "permission denied to create role"
+-- and made every fresh database unmigratable. This migration only verifies the
+-- role exists with the intended attributes and applies the grants.
+-- See docs/observability/MIGRATION_132_133_RUNBOOK.md.
 --
 -- Rollback:
 --   DROP ROLE medveris_assistant;   -- takes effect immediately; grants die with it
 --
 BEGIN;
 
--- Idempotent: safe to re-run if the role was created out of band.
+-- Fail loudly and actionably if the bootstrap was not run, and refuse to
+-- continue silently if the existing role is over-privileged. Both checks are
+-- catalog reads, so they work for any migration role.
 DO $$
+DECLARE
+  role_row record;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medveris_assistant') THEN
-    CREATE ROLE medveris_assistant LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT;
-  ELSE
-    ALTER ROLE medveris_assistant NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+  SELECT r.rolsuper, r.rolbypassrls, r.rolcanlogin INTO role_row
+    FROM pg_roles r WHERE r.rolname = 'medveris_assistant';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'role medveris_assistant is missing: run the operator bootstrap (npm run db:setup) before migrating'
+      USING HINT = 'The migration role is NOCREATEROLE by design; see docs/observability/MIGRATION_132_133_RUNBOOK.md';
+  END IF;
+  IF role_row.rolsuper OR role_row.rolbypassrls THEN
+    RAISE EXCEPTION 'role medveris_assistant must be NOSUPERUSER NOBYPASSRLS (found rolsuper=%, rolbypassrls=%)',
+      role_row.rolsuper, role_row.rolbypassrls
+      USING HINT = 'Recreate the role with scripts/db-setup.ts; it must stay subject to RLS';
   END IF;
 END
 $$;
@@ -65,7 +80,7 @@ GRANT EXECUTE ON FUNCTION app.outbox_backlog() TO medveris_assistant;
 -- platform_roles, users, memberships. Reads on all of these fail with
 -- "permission denied for table ...".
 
-COMMENT ON ROLE medveris_assistant IS
-  'Read-only assistant surface: EXECUTE on count-only app helpers, no table privileges, no BYPASSRLS.';
+-- The role comment is set by the bootstrap, where a role-owning superuser is
+-- connected; COMMENT ON ROLE is not available to a NOCREATEROLE migrator.
 
 COMMIT;

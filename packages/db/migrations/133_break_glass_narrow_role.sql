@@ -19,7 +19,12 @@
 -- and it is not granted here on purpose: the guard should go through the
 -- helper, which applies its own expiry and revocation checks.
 --
--- Prepared, NOT applied to staging or production.
+-- The role itself is created by the operator bootstrap (`npm run db:setup`,
+-- which connects as the database admin), not here: `medveris_migrator` is
+-- NOCREATEROLE by design, so role DDL in a migration made every fresh database
+-- unmigratable. This migration verifies the role exists with the intended
+-- attributes and applies the grants. See
+-- docs/observability/MIGRATION_132_133_RUNBOOK.md.
 --
 -- Rollback:
 --   DROP ROLE medveris_operator_guard;
@@ -27,11 +32,19 @@
 BEGIN;
 
 DO $$
+DECLARE
+  role_row record;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medveris_operator_guard') THEN
-    CREATE ROLE medveris_operator_guard LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT;
-  ELSE
-    ALTER ROLE medveris_operator_guard NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+  SELECT r.rolsuper, r.rolbypassrls, r.rolcanlogin INTO role_row
+    FROM pg_roles r WHERE r.rolname = 'medveris_operator_guard';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'role medveris_operator_guard is missing: run the operator bootstrap (npm run db:setup) before migrating'
+      USING HINT = 'The migration role is NOCREATEROLE by design; see docs/observability/MIGRATION_132_133_RUNBOOK.md';
+  END IF;
+  IF role_row.rolsuper OR role_row.rolbypassrls THEN
+    RAISE EXCEPTION 'role medveris_operator_guard must be NOSUPERUSER NOBYPASSRLS (found rolsuper=%, rolbypassrls=%)',
+      role_row.rolsuper, role_row.rolbypassrls
+      USING HINT = 'Recreate the role with scripts/db-setup.ts; break-glass must not bypass RLS';
   END IF;
 END
 $$;
@@ -48,7 +61,7 @@ REVOKE ALL ON SCHEMA public FROM medveris_operator_guard;
 GRANT USAGE ON SCHEMA app TO medveris_operator_guard;
 GRANT EXECUTE ON FUNCTION app.is_platform_operator() TO medveris_operator_guard;
 
-COMMENT ON ROLE medveris_operator_guard IS
-  'Break-glass verification: EXECUTE on app.is_platform_operator() only. No table access, no BYPASSRLS.';
+-- The role comment is set by the bootstrap, where a role-owning superuser is
+-- connected; COMMENT ON ROLE is not available to a NOCREATEROLE migrator.
 
 COMMIT;

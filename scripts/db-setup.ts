@@ -35,6 +35,23 @@ const roleSpecs = [
     password: null,
     options: "NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS",
   },
+  {
+    // Support/observability roles. Created by the bootstrap (which connects as
+    // the database admin) rather than by migrations 132/133, because the
+    // migration role is NOCREATEROLE by design and role DDL there made every
+    // fresh database unmigratable. Passwords are set out of band; the bootstrap
+    // never assigns one. The migrations verify these roles and apply grants.
+    name: "medveris_assistant",
+    password: null,
+    options: "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT",
+    comment: "Read-only assistant surface: EXECUTE on count-only app helpers, no table privileges, no BYPASSRLS.",
+  },
+  {
+    name: "medveris_operator_guard",
+    password: null,
+    options: "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT",
+    comment: "Break-glass verification: EXECUTE on app.is_platform_operator() only. No table access, no BYPASSRLS.",
+  },
 ];
 
 if (!/^[a-z][a-z0-9_]+$/.test(targetDatabase)) throw new Error("Unsafe database name");
@@ -50,6 +67,10 @@ for (const role of roleSpecs) {
     console.log(`created role ${role.name}`);
   } else {
     console.log(`role ${role.name} already exists (left unchanged)`);
+  }
+  if ("comment" in role && role.comment) {
+    // Migrations cannot do this (COMMENT ON ROLE needs CREATEROLE/ownership).
+    await admin.query(`COMMENT ON ROLE ${role.name} IS ${sqlLiteral(role.comment)}`);
   }
 }
 
