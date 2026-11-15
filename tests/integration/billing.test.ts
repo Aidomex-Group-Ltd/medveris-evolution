@@ -360,6 +360,20 @@ describe("price governance, refunds and voiding", () => {
   });
 });
 
+describe("payment receipts", () => {
+  // Regression: GET /billing/receipts read `scope` before its declaration (TDZ)
+  // and used `tx` outside the transaction callback, so it failed on every call
+  // regardless of data. A fresh account has no receipts, so only the fetch path
+  // is under test here.
+  it("returns the account's receipts instead of failing", async () => {
+    const response = await h.call(owner, "/api/v1/billing/receipts");
+    const body = await h.json(response);
+    expect(response.status, JSON.stringify(body)).toBe(200);
+    expect(Array.isArray(body.receipts)).toBe(true);
+    expect(body.receipts).toEqual([]);
+  });
+});
+
 describe("plan catalogue", () => {
   it("trial and Basic keep their published prices and Basic forbids usage overages", async () => {
     const plans = await get(operator, "/api/v1/platform/billing/plans");
