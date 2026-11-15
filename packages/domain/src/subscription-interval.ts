@@ -90,19 +90,19 @@ export function getPackageTier(code: string): (typeof PACKAGE_TIERS)[keyof typeo
 }
 
 /** Staff limit for a given plan code. */
-export function staffLimitForPlan(planCode: string): number | undefined {
+export function staffLimitForPlan(planCode: string): number | null | undefined {
   const tier = getPackageTier(planCode);
   return tier?.staffLimit;
 }
 
 /** Storage in GB for a given plan code. */
-export function storageGbForPlan(planCode: string): number | undefined {
+export function storageGbForPlan(planCode: string): number | null | undefined {
   const tier = getPackageTier(planCode);
   return tier?.storageGb;
 }
 
 /** Monthly price in USD for a given plan code. */
-export function monthlyPriceUsdForPlan(planCode: string): number | undefined {
+export function monthlyPriceUsdForPlan(planCode: string): number | null | undefined {
   const tier = getPackageTier(planCode);
   return tier?.monthlyPriceUsd;
 }
