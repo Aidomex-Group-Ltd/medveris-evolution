@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { accessModeFor, type SubscriptionStatus } from "@medveris/domain";
-import { tenantSubscriptionStatus } from "../../apps/api/src/services/subscriptions.js";
 
 describe("Phase 3.2 — Subscription lifecycle & restoration", () => {
   it("accessModeFor restricts terminal states and allows active/trialing", () => {
@@ -72,9 +71,14 @@ describe("Phase 3.2 — Subscription lifecycle & restoration", () => {
 
     // Test that same dedupe key is detected as duplicate
     const firstApply = { applied: true, duplicate: false };
-    const secondApply = { applied: false, duplicate: true };
+    // Replaying the same dedupe key must not apply anything a second time.
+    const secondApply = newDedupeKey === existingDedupeKey
+      ? { applied: false, duplicate: true }
+      : { applied: true, duplicate: false };
 
     // First application succeeds
+    expect(firstApply.applied).toBe(true);
+    expect(firstApply.duplicate).toBe(false);
     expect(secondApply.duplicate).toBe(true);
     expect(secondApply.applied).toBe(false);
   });
@@ -125,17 +129,14 @@ describe("Phase 3.2 — Subscription lifecycle & restoration", () => {
       "/api/v1/finance/encounters/00000000-0000-4000-8000-000000000001/bill",
     ];
 
+    // The two lists must not overlap: a growth path that slipped into the
+    // continuity allowlist would be writable while the account is restricted.
     for (const path of restrictedPaths) {
-      // isAllowlistedWhileRestricted should return false for growth features
-      // (the middleware throws 402 when subscription is restricted)
-      const isAllowed = false; // Simplified - actual check is in middleware
-      expect(isAllowed).toBe(false);
+      expect(allowlistedPaths).not.toContain(path);
     }
 
     for (const path of allowlistedPaths) {
-      // Allowlisted paths should pass even when restricted
-      const isAllowed = true; // Simplified
-      expect(isAllowed).toBe(true);
+      expect(restrictedPaths).not.toContain(path);
     }
   });
 });
