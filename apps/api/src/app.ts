@@ -311,7 +311,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
         const code = error.status === 401 ? "login" : error.status === 403 ? "forbidden" : error.status === 404 ? "not-found" : error.status === 409 ? "conflict" : error.status === 422 ? "invalid" : error.status === 429 ? "throttled" : error.status >= 500 ? "transient" : "processing";
         return fhirResponse(c, operationOutcome("error", code, error.message), error.status);
       }
-      return c.json(nativeErrorBody(c, error), error.status as 400);
+      return c.json(nativeErrorBody(c, error), error.status);
     }
     console.error(JSON.stringify({
       event: "unhandled_error",
