@@ -30,4 +30,9 @@ data/
 .worktree/
 .neon
 
+# Nested repository clones and temporary install dirs left by debugging sessions.
+# They are not part of this project and break repo-wide tooling (see audit finding S6).
+.tmp-npmci/
+origin/
+
 .env.test
