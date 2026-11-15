@@ -45,7 +45,15 @@ export function stripTransactionWrapper(version: string, sql: string): string {
 }
 
 const MIGRATIONS_DIRECTORY = resolve(process.cwd(), "packages/db/migrations");
-const IGNORED_TREE_DIRECTORIES = new Set(["node_modules", ".git", ".wrangler", ".freebuff", ".worktree", "dist", "build", "coverage", "test-results", ".data", ".mail-sink"]);
+const IGNORED_TREE_DIRECTORIES = new Set([
+  "node_modules", ".git", ".wrangler", ".freebuff", ".worktree", "dist", "build", "coverage", "test-results", ".data", ".mail-sink",
+  // Scratch checkouts that live inside the working tree on developer machines:
+  // `.tmp-npmci/` (throwaway `npm ci` targets) and `origin/` (a checked-out
+  // clone). They contain their own `packages/db/migrations/`, so without this
+  // `db:migrate` refuses to run on any machine that has them - and they are
+  // not part of this repository's schema.
+  ".tmp-npmci", "origin",
+]);
 
 /**
  * Migration files are only applied from the loaded directory. A `.sql` file in
