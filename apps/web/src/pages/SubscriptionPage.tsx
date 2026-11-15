@@ -31,6 +31,7 @@ interface Plan {
 interface Notification { id: string; kind: string; title: string; body: string; createdAt: string; readAt: string | null }
 interface SubscriptionEvent { event: string; fromStatus: string | null; toStatus: string | null; detail: unknown; occurredAt: string; actorKind: string; actorName: string | null }
 interface Invoice { id: string; number: string; kind: string; periodStart: string; periodEnd: string; totalMinor: number; status: string; issuedAt: string; dueAt: string; paidAt: string | null }
+interface Receipt { id: string; provider: string; provider_reference: string; amount_ugx: number; currency: string; status: string; received_at: string; recorded_by: string | null }
 interface Overview {
   account: { id: string; kind: string; name: string; canManage: boolean; workspaces: Array<{ id: string; name: string }> };
   subscription: {
@@ -50,6 +51,7 @@ interface Overview {
   invoices: Invoice[];
   notifications: Notification[];
   events: SubscriptionEvent[];
+  receipts: Receipt[];
 }
 interface Quote {
   change: "start" | "upgrade" | "downgrade";
@@ -305,7 +307,8 @@ function Manageable({ overviewRefresh }: { overviewRefresh: () => void }) {
 
       <Card title="Payment receipts" description="Provider receipts from LivePay or Yo! collections">
         {!receipts.length ? <EmptyState title="No receipts yet" description="Receipts appear here after a successful checkout or webhook." /> : (
-          <Table head=["Provider", "Reference", "Amount (UGX)", "Status", "Received"]>            {receipts.map((receipt) => (
+          <Table head={["Provider", "Reference", "Amount (UGX)", "Status", "Received"]}>
+            {receipts.map((receipt) => (
               <tr key={receipt.id}>
                 <td>{receipt.provider === "livepay" ? "LivePay" : "Yo!"}</td>
                 <td>{receipt.provider_reference}</td>
