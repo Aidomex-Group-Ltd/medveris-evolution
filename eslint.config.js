@@ -14,6 +14,15 @@ export default tseslint.config(
       "**/test-results/**",
       "**/.worktree/**",
       ".worktree",
+      // Scratch checkouts that live inside the working tree on developer
+      // machines and are gitignored: throwaway `npm ci` targets and a
+      // checked-out clone. They are not this repository's source, so linting
+      // them only reports the state of some other commit. Root-anchored so a
+      // real `origin/` or `.tmp-npmci/` source directory cannot be hidden.
+      ".tmp-npmci",
+      ".tmp-npmci/**",
+      "origin",
+      "origin/**",
     ],
   },
   ...tseslint.configs.recommended,
