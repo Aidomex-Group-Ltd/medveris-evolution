@@ -132,10 +132,13 @@ export async function subscriptionExchangeRate(
     fxLog("warn", FX_EVENT, { ...meta, outcome: "cache_stale", provider: String(cached.provider), providerTimestamp: new Date(cached.providerTimestamp as Date).toISOString(), maxAgeHours });
   }
 
+  // Ordering is by set_at, not expiry: when an operator corrects a rate the newest row must win,
+  // even if an earlier row was given a longer window. Ordering by expires_at first let a stale
+  // rate keep overriding the correction until its window elapsed (docs: "latest non-expired row").
   const [manual] = await tx`
     select rate, expires_at, set_at from subscription_fx_manual_rates
      where base = 'USD' and quote = 'UGX' and expires_at > ${now}
-     order by expires_at desc, set_at desc limit 1
+     order by set_at desc, expires_at desc limit 1
   `;
   if (manual && !stale(maxAgeHours, new Date(manual.setAt as Date), now)) {
     fxLog("warn", FX_EVENT, { ...meta, outcome: "manual_fallback", expiresAt: new Date(manual.expiresAt as Date).toISOString() });

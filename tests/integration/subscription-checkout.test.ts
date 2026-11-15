@@ -1,5 +1,6 @@
 import { createSign, generateKeyPairSync } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { FxUnavailableError } from "../../apps/api/src/integrations/fx.js";
 import { KAMPALA_TENANT, createHarness, type Session } from "./support.js";
 
 const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -14,6 +15,8 @@ function sign(data: string): string {
 const FX_RATE = 3800;
 /** Mutable so a test can change the provider rate after a checkout was created. */
 let fxRate = FX_RATE;
+/** Set to simulate the provider being unreachable, which is when the manual fallback applies. */
+let fxDown = false;
 let transactions = 0;
 const deposits: string[] = [];
 
@@ -39,6 +42,7 @@ const h = createHarness("subscription-checkout", {
     fxProvider: {
       name: "test-fx",
       async rate() {
+        if (fxDown) throw new FxUnavailableError("The exchange rate provider could not be reached");
         return { base: "USD", quote: "UGX", rate: fxRate, provider: "test-fx", providerTimestamp: new Date(Date.now() - 60_000) };
       },
     },
@@ -254,5 +258,37 @@ describe("subscription checkout", () => {
       tx`insert into subscription_fx_rates (base, quote, rate, provider, provider_timestamp, fetched_at)
          values ('EUR', 'UGX', 1, 'test-eur', now(), now())`,
     )).rejects.toThrow(/row-level security|permission denied/i);
+  });
+
+  it("uses the most recently set manual rate when more than one is valid", async () => {
+    const { withContext } = await import("@medveris/db");
+    // Manual rates only apply when the provider is unreachable and the cached rate is stale.
+    fxDown = true;
+    await withContext(h.sql, { actorKind: "system", tenantId: KAMPALA_TENANT }, async (tx) => {
+      await tx`update subscription_fx_rates set provider_timestamp = now() - interval '30 days', fetched_at = now() - interval '30 days'
+                where base = 'USD' and quote = 'UGX'`;
+      // Rows are retired by expiry, not deletion: migration 136 grants no DELETE policy on either
+      // table (a break-glass rate lapses; it is never removed).
+      await tx`update subscription_fx_manual_rates set expires_at = now() - interval '1 second'
+                where base = 'USD' and quote = 'UGX'`;
+      // Both rows are valid (non-expired, set within FX_MAX_AGE_HOURS), but the older rate has the
+      // longer window. The operator's latest correction must win, not the longest expiry.
+      await tx`insert into subscription_fx_manual_rates (id, base, quote, rate, set_at, expires_at, note) values
+        (gen_random_uuid(), 'USD', 'UGX', 3900, now() - interval '20 hours', now() + interval '8 days', 'older rate, longer window'),
+        (gen_random_uuid(), 'USD', 'UGX', 3950, now() - interval '1 hour',  now() + interval '2 hours', 'newer correction, shorter window')`;
+    });
+    try {
+      const result = await quote("monthly");
+      expect(result.fx.source).toBe("manual");
+      expect(result.fx.rate).toBe(3950);
+    } finally {
+      fxDown = false;
+      await withContext(h.sql, { actorKind: "system", tenantId: KAMPALA_TENANT }, async (tx) => {
+        await tx`update subscription_fx_manual_rates set expires_at = now() - interval '1 second'
+                  where base = 'USD' and quote = 'UGX' and expires_at > now()`;
+        await tx`update subscription_fx_rates set rate = ${FX_RATE}, provider = 'test-fx', provider_timestamp = now(), fetched_at = now()
+                  where base = 'USD' and quote = 'UGX'`;
+      });
+    }
   });
 });
