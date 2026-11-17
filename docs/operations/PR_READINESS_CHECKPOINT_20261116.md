@@ -162,6 +162,18 @@ migrations ran.
 The staging script tagged the release `44538b5-dirty` because the excluded,
 untracked `.tsbuildinfo` file was present during deployment; the deployed source
 was commit `44538b5`. That generated file was removed afterward. Production was
-not deployed. Its package dry-run passed, but the full production readiness gate
-was not run, so production backup, migration, secret, and resource checks remain
-uncertified.
+not deployed. `npm run deploy:production:check` passed lint, typecheck, all 106
+Vitest files (956 tests), dependency audit, build, and Wrangler packaging. The
+gate verified required Worker secrets and the existing blue version, but
+blocked because production migration state could not be read:
+`MIGRATION_DATABASE_URL` expects the local SSH tunnel on port 55432, and the
+connection was refused. No upload, migration, domain change, or production
+deployment occurred.
+
+The local backup attestation records an Aiven restore drill from 2026-10-28,
+while the production database is documented as Kamatera-native PostgreSQL. A
+fresh backup/restore drill against `medveris-prod` is required; the deployment
+gate does not currently detect this provider mismatch. SSH key/agent access was
+unavailable, and password authentication was not used. Production remains
+blocked until the operator establishes the tunnel and records current recovery
+evidence.
