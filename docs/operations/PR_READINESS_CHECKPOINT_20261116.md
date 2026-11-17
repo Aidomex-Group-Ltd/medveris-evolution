@@ -7,7 +7,7 @@ Existing remediation checkpoint: the `pre-slice-safety` stash on `e2e-auth-invit
 
 This file is the durable slice log. Each slice gets its own status, root cause,
 files, exact verification command/result, and remaining dependency. Production
-was not touched. No migrations, purges, deployments or remote settings were run.
+was not touched. Staging was deployed; no database migrations or purges ran.
 
 ## Backlog (ordered)
 
@@ -149,11 +149,19 @@ complete suite passed.
 - `npx wrangler deploy --env production --dry-run --outdir .wrangler/dry-run-production`
   — packaging passed; no upload or deployment.
 
-The combined `npm run deploy:staging:check` passed lint and typecheck, but its
-redundant Vitest rerun stopped making progress after 97/106 files for over 18
-minutes and was stopped. No test failure was reported, and the standalone full
-Vitest run passed. Consequently, the complete staging gate result is
-unconfirmed; `npm run deploy:production:check` was not run. Both environments
-package successfully, but remote secret, backup, migration, and resource
-readiness are not fully certified. No deployment, migration, or remote setting
-change was performed.
+The first `npm run deploy:staging:check` attempt stalled during its repeated
+Vitest run. A subsequent complete check passed all 106 files and verified the
+staging resources, required secrets, and migration state. `npm run deploy:staging`
+then promoted green version `617a5bc3-71c7-46ec-b26a-e153026c4771` to 100%
+traffic. Live, readiness, and shell probes all returned 200; version metadata
+and assets matched. Previous blue version
+`e17e7a21-23d1-4989-8963-077ed2b004ff` remains available for rollback. Existing
+secrets were already configured; no secrets were uploaded and no database
+migrations ran.
+
+The staging script tagged the release `44538b5-dirty` because the excluded,
+untracked `.tsbuildinfo` file was present during deployment; the deployed source
+was commit `44538b5`. That generated file was removed afterward. Production was
+not deployed. Its package dry-run passed, but the full production readiness gate
+was not run, so production backup, migration, secret, and resource checks remain
+uncertified.
