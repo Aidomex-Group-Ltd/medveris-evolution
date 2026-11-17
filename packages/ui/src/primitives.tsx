@@ -20,14 +20,20 @@ export function Button({
 }
 
 export function Field({ label, hint, error, htmlFor, children }: { label: string; hint?: string; error?: string; htmlFor?: string; children: ReactNode }) {
-  return (
-    <label className="mv-field" htmlFor={htmlFor}>
-      <span className="mv-field__label">{label}</span>
+  const labelNode = htmlFor
+    ? <label className="mv-field__label" htmlFor={htmlFor}>{label}</label>
+    : <span className="mv-field__label">{label}</span>;
+  const content = (
+    <>
+      {labelNode}
       {children}
       {hint ? <span className="mv-field__hint">{hint}</span> : null}
       {error ? <span className="mv-field__error" role="alert">{error}</span> : null}
-    </label>
+    </>
   );
+  return htmlFor
+    ? <div className="mv-field">{content}</div>
+    : <label className="mv-field">{content}</label>;
 }
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {

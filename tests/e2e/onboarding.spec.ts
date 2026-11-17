@@ -1,21 +1,22 @@
 import { expect, test, type Page } from "./fixtures.js";
+import { openNavItem } from "./nav.js";
 
 const PASSWORD = "Medveris!2026";
 
 async function signInStaff(page: Page, email: string): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByText("Two-step verification")).toBeVisible();
   await page.getByRole("button", { name: "Use local development code" }).click();
   await page.getByRole("button", { name: "Verify and continue" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 }
 
 test("clinician reviews onboarding guidance and searches the Uganda catalogue", async ({ page }) => {
   await signInStaff(page, "clinician@medveris.local");
-  await page.getByRole("link", { name: "Onboarding", exact: true }).click();
+  await openNavItem(page, "Staff onboarding");
   await expect(page).toHaveURL(/\/onboarding-workflow$/);
   await expect(page.getByRole("heading", { name: "Staff Onboarding" })).toBeVisible();
   await page.goto("/onboarding");
@@ -29,10 +30,10 @@ test("clinician reviews onboarding guidance and searches the Uganda catalogue", 
 test("patient opens the caregiver path and sees the inactive-request guidance", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill("patient@medveris.local");
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/portal$/);
-  await page.getByRole("link", { name: "Caregivers", exact: true }).click();
+  await openNavItem(page, "Caregivers");
   await expect(page.getByRole("heading", { name: "Your caregiver access" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Invite a caregiver" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send caregiver request" })).toBeDisabled();

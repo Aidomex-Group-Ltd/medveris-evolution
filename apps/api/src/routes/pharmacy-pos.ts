@@ -637,7 +637,8 @@ pharmacyPosRoutes.get("/pharmacy/sales", async (c) => {
   requireAnyRole(c, [...POS_ROLES, "auditor"], "Sales access is not permitted for this role");
   const auth = c.get("auth")!;
   const patientId = optionalUuid(c.req.query("patientId"), "patientId");
-  const status = c.req.query("status");
+  const statusParam = c.req.query("status");
+  const status = statusParam && statusParam !== "all" ? statusParam : undefined;
   const from = optionalDate(c.req.query("from"), "from");
   const to = optionalDate(c.req.query("to"), "to");
   const sales = await withStaffActor(c, async (tx) => tx`

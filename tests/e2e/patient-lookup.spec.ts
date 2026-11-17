@@ -9,12 +9,12 @@ test("reception confirms, misses and searches patients without failed API reques
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("reception@medveris.local");
-  await page.getByLabel("Password").fill("Medveris!2026");
+  await page.getByLabel("Password", { exact: true }).fill("Medveris!2026");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Use local development code" }).click();
   await expect(page.getByLabel("Verification code")).toHaveValue(/^\d{6}$/);
   await page.getByRole("button", { name: "Verify and continue" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 
   await page.goto("/patients");
   const familyName = `Lookup${Date.now()}`;

@@ -48,7 +48,7 @@ async function acceptLegalIfNeeded(page: Page): Promise<void> {
 async function signInStaff(page: Page, email: string): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Use local development code" }).click();
   await expect(page.getByLabel("Verification code")).toHaveValue(/^\d{6}$/);
@@ -60,7 +60,7 @@ async function signInStaff(page: Page, email: string): Promise<void> {
 async function signInPatient(page: Page): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill("patient@medveris.local");
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/portal$/);
   await acceptLegalIfNeeded(page);
@@ -224,7 +224,7 @@ test("AI chat page is mobile-first and fits mobile, tablet and desktop", async (
   await signInStaff(page, "clinician@medveris.local");
 
   await page.goto("/ai/chat");
-  await expect(page.getByRole("heading", { name: "AI chat" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI assistant" })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   // The conversation panel is only rendered when an AI provider is configured.
@@ -255,7 +255,7 @@ test("AI chat page is mobile-first and fits mobile, tablet and desktop", async (
   for (const viewport of [NARROW, SUPPORTED_PORTRAIT[2], { width: 768, height: 1024 }, { width: 1366, height: 768 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(viewport);
     await page.goto("/ai/chat");
-    await expect(page.getByRole("heading", { name: "AI chat" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "AI assistant" })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   }
 });

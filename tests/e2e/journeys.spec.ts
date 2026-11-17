@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from "./fixtures.js";
+import { openNavItem } from "./nav.js";
 
 /**
  * Department journeys A–G. Every journey runs in real browser sessions signed in through the UI with MFA.
@@ -18,12 +19,12 @@ interface Session {
 async function signInStaff(page: Page, email: string): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Use local development code" }).click();
   await expect(page.getByLabel("Verification code")).toHaveValue(/^\d{6}$/);
   await page.getByRole("button", { name: "Verify and continue" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 }
 
 async function session(browser: Browser, email: string, tenantId?: string): Promise<Session> {
@@ -72,7 +73,7 @@ test("Journey A — outpatient: registration, walk-in encounter and clinician wo
   await reception.close();
 
   const clinician = await session(browser, "clinician@medveris.local");
-  await clinician.page.getByRole("link", { name: "Clinical worklist", exact: true }).click();
+  await openNavItem(clinician.page, "Clinical worklist");
   const row = clinician.page.getByRole("row", { name: new RegExp(familyName) });
   await expect(row).toBeVisible();
   await row.getByRole("link", { name: "Open" }).click();
@@ -199,7 +200,7 @@ test("Journey D — pharmacy: order, pharmacist review, dispense with stock upda
   await pharmacist.api("POST", `/medication-orders/${order.order.id}/review`, { decision: "approved", note: "Journey D synthetic review" }, 200);
   await pharmacist.api("POST", "/dispenses", { orderId: order.order.id, lotId: lot.lot.id, quantity: 5 });
 
-  await pharmacist.page.getByRole("link", { name: "Pharmacy", exact: true }).click();
+  await openNavItem(pharmacist.page, "Pharmacy");
   await pharmacist.page.getByRole("tab", { name: "Stock", exact: true }).click();
   const lotRow = pharmacist.page.getByRole("row", { name: new RegExp(lotNumber) });
   await expect(lotRow).toBeVisible();
@@ -247,7 +248,7 @@ test("Journey F — maternity: episode, labour observation, delivery and newborn
   const babyName = `Baby${Date.now()}`;
   await nurse.api("POST", `/maternity/episodes/${episode.episode.id}/newborns`, { familyName: babyName, sex: "male", weightG: 3200, apgar1: 9, apgar5: 10 });
 
-  await nurse.page.getByRole("link", { name: "Maternity", exact: true }).click();
+  await openNavItem(nurse.page, "Maternity");
   await expect(nurse.page.getByRole("heading", { name: "Maternity and labour" })).toBeVisible();
   await expect(nurse.page.getByRole("row", { name: new RegExp(patient.familyName) })).toBeVisible();
   await nurse.close();

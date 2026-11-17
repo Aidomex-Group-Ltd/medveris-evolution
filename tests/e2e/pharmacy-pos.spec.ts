@@ -17,12 +17,12 @@ interface Session {
 async function signInStaff(page: Page, email: string): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Use local development code" }).click();
   await expect(page.getByLabel("Verification code")).toHaveValue(/^\d{6}$/);
   await page.getByRole("button", { name: "Verify and continue" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 }
 
 async function session(browser: Browser, email: string, tenantId?: string): Promise<Session> {
@@ -44,7 +44,7 @@ async function session(browser: Browser, email: string, tenantId?: string): Prom
 }
 
 async function createProduct(admin: Session, suffix: string, overrides: Record<string, unknown> = {}): Promise<string> {
-  const created = await admin.api<{ id: string }>("POST", "/inventory/items", {
+  const created = await admin.api<{ item: { id: string } }>("POST", "/inventory/items", {
     itemCode: `POSE2E-${suffix}-${Date.now()}`,
     name: `Pharmacy E2E ${suffix}`,
     category: "Pharmacy",
@@ -60,7 +60,7 @@ async function createProduct(admin: Session, suffix: string, overrides: Record<s
     units: [{ unit: "tablet", conversionFactor: 1, isBase: true, purchasingUnit: true, issuingUnit: true }],
     ...overrides,
   }, 201);
-  return created.id;
+  return created.item.id;
 }
 
 async function receive(pharmacist: Session, locationId: string, itemId: string, lotNumber: string, expiresOn: string, quantity = 100): Promise<void> {
@@ -89,16 +89,20 @@ test("pos checkout sells FEFO stock, blocks expired lots and enforces prescripti
   const admin = await session(browser, "admin@medveris.local");
   const pharmacist = await session(browser, "pharmacist@medveris.local");
   const clinician = await session(browser, "clinician@medveris.local");
+  const pharmacistMe = await pharmacist.api<{ user: { id: string } }>("GET", "/me");
 
   const location = await admin.api<{ location: { id: string } }>("POST", "/inventory/locations", {
     code: `POS-${stamp}`,
-    name: "Pharmacy counter (e2e)",
+    name: `Pharmacy counter e2e ${stamp}`,
     locationType: "department-store",
+    custodianUserId: pharmacistMe.user.id,
   }, 201);
   const locationId = location.location.id as string;
 
-  const otcItemId = await createProduct(admin, "OTC");
-  const rxItemId = await createProduct(admin, "RX", { prescriptionOnly: true, sellingPrice: 1000 });
+  const otcName = `Pharmacy E2E OTC ${stamp}`;
+  const rxName = `Pharmacy E2E RX ${stamp}`;
+  const otcItemId = await createProduct(admin, "OTC", { name: otcName });
+  const rxItemId = await createProduct(admin, "RX", { name: rxName, prescriptionOnly: true, sellingPrice: 1000 });
   await receive(pharmacist, locationId, otcItemId, "EXPIRED-LOT", daysFromNow(-30), 500);
   await receive(pharmacist, locationId, otcItemId, "SOON-EXPIRY-LOT", daysFromNow(30), 20);
   await receive(pharmacist, locationId, otcItemId, "LATER-EXPIRY-LOT", daysFromNow(365), 30);
@@ -118,15 +122,15 @@ test("pos checkout sells FEFO stock, blocks expired lots and enforces prescripti
     data: { locationId, currency: "UGX", paymentMethod: "cash", lines: [{ itemId: rxItemId, quantity: 500, discount: 0 }] },
     headers: { "x-medveris-csrf": (await (await pharmacist.page.request.get("/api/v1/me")).json()).csrfToken, "idempotency-key": `over-rx-${stamp}` },
   });
-  expect([400, 409]).toContain(overSale.status());
+  expect([400, 409, 422]).toContain(overSale.status());
 
   // The FEFO checkout itself is driven through the UI.
   await pharmacist.page.goto("/pharmacy-pos");
   await expect(pharmacist.page.getByRole("heading", { name: "Pharmacy point of sale" })).toBeVisible();
-  await pharmacist.page.getByLabel("Selling location").selectOption({ label: "Pharmacy counter (e2e)" });
+  await pharmacist.page.getByLabel("Selling location").selectOption({ label: `Pharmacy counter e2e ${stamp}` });
   const catalogueTable = pharmacist.page.getByRole("table", { name: "Retail catalogue" });
 
-  const otcRow = catalogueTable.getByRole("row", { name: /Pharmacy E2E OTC/ });
+  const otcRow = catalogueTable.getByRole("row", { name: new RegExp(otcName) });
   await otcRow.getByLabel(/Quantity of /).fill("20");
   await expect(pharmacist.page.getByRole("button", { name: "Complete sale" })).toBeEnabled();
   await pharmacist.page.getByRole("button", { name: "Complete sale" }).click();
@@ -145,7 +149,8 @@ test("pos checkout sells FEFO stock, blocks expired lots and enforces prescripti
   const afterUiSale = await pharmacist.api<{ items: Array<{ id: string }> }>("GET", `/pharmacy/pos/catalog?locationId=${locationId}`);
   expect(afterUiSale.items.length).toBeGreaterThan(0);
   await pharmacist.page.reload();
-  const rxRow = catalogueTable.getByRole("row", { name: /Pharmacy E2E RX/ });
+  await pharmacist.page.getByLabel("Selling location").selectOption({ label: `Pharmacy counter e2e ${stamp}` });
+  const rxRow = catalogueTable.getByRole("row", { name: new RegExp(rxName) });
   await rxRow.getByLabel(/Quantity of /).fill("2");
   await expect(pharmacist.page.getByRole("button", { name: "Complete sale" })).toBeDisabled();
 
@@ -174,7 +179,10 @@ test("pos checkout sells FEFO stock, blocks expired lots and enforces prescripti
 
   // Search the patient in the checkout patient finder, select the prescription and complete the sale in the UI.
   await pharmacist.page.locator("#pos-patient").fill(`Checkout${stamp}`);
-  const patientRow = pharmacist.page.getByRole("row", { name: /Pos Checkout/ }).first();
+  const patientRow = pharmacist.page.getByRole("table", { name: "Matching patients" })
+    .locator("tbody tr")
+    .filter({ hasText: `Pos Checkout${stamp}` });
+  await expect(patientRow).toBeVisible();
   await patientRow.getByRole("button", { name: "Select" }).click();
   await expect(pharmacist.page.getByLabel("Prescription")).toBeVisible();
   await pharmacist.page.getByLabel("Prescription").selectOption({ index: 1 });

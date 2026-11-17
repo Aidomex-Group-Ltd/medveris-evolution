@@ -21,7 +21,7 @@ test("a newly registered facility admin enrols MFA before facility workspaces lo
 
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/mfa-setup$/);
 
@@ -36,6 +36,6 @@ test("a newly registered facility admin enrols MFA before facility workspaces lo
   await page.getByRole("button", { name: /I have saved my codes/ }).click();
 
   await expect(page).not.toHaveURL(/\/mfa-setup/);
-  await expect(page.getByText("Synthetic MFA Clinic").first()).toBeVisible();
+  await expect(page.locator(".mv-page-header").getByText("Synthetic MFA Clinic")).toBeVisible();
   expect(failures).toEqual([]);
 });

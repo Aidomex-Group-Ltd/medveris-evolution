@@ -1,11 +1,12 @@
 import { expect, test, type Page } from "./fixtures.js";
+import { openNavItem } from "./nav.js";
 
 const PASSWORD = "Medveris!2026";
 
 async function signIn(page: Page, email: string): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }
 
@@ -15,7 +16,7 @@ async function signInStaff(page: Page, email: string): Promise<void> {
   await page.getByRole("button", { name: "Use local development code" }).click();
   await expect(page.getByLabel("Verification code")).toHaveValue(/^\d{6}$/);
   await page.getByRole("button", { name: "Verify and continue" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
 }
 
 test("clinician can open every clinical operations workspace", async ({ page }) => {
@@ -24,13 +25,13 @@ test("clinician can open every clinical operations workspace", async ({ page }) 
     ["Wards and beds", "Wards and bed management"],
     ["Diagnostics", "Laboratory and imaging orders"],
     ["Pharmacy", "Medication, stock and administration"],
-    ["Care programmes", "Care programmes"],
-    ["Telehealth", "Remote consultation records"],
-    ["Devices", "Connected device registry"],
+    ["Chronic & Community Care", "Care programmes"],
+    ["Virtual Care", "Remote consultation records"],
+    ["IoT & Remote Monitoring", "Connected device registry"],
     ["Assistive AI", "AI job records"],
   ];
   for (const [link, heading] of workspaces) {
-    await page.getByRole("link", { name: link, exact: true }).click();
+    await openNavItem(page, link);
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     await expect(page.getByText("Access denied")).toHaveCount(0);
   }
@@ -38,19 +39,20 @@ test("clinician can open every clinical operations workspace", async ({ page }) 
 
 test("laboratory and radiology accounts reach diagnostics", async ({ page }) => {
   await signInStaff(page, "lab@medveris.local");
-  await page.getByRole("link", { name: "Diagnostics", exact: true }).click();
+  await openNavItem(page, "Diagnostics");
   await expect(page.getByRole("heading", { name: "Laboratory and imaging orders" })).toBeVisible();
   await expect(page.getByRole("button", { name: "New order" })).toBeVisible();
 
+  await page.locator("summary[aria-label='Account menu']").click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await signInStaff(page, "radiology@medveris.local");
-  await page.getByRole("link", { name: "Diagnostics", exact: true }).click();
+  await openNavItem(page, "Diagnostics");
   await expect(page.getByRole("heading", { name: "Laboratory and imaging orders" })).toBeVisible();
 });
 
 test("pharmacist can open prescriptions, stock and catalogue", async ({ page }) => {
   await signInStaff(page, "pharmacist@medveris.local");
-  await page.getByRole("link", { name: "Pharmacy", exact: true }).click();
+  await openNavItem(page, "Pharmacy");
   await expect(page.getByRole("heading", { name: "Medication, stock and administration" })).toBeVisible();
   await page.getByRole("tab", { name: "Stock", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Stock lots" })).toBeVisible();
@@ -60,21 +62,22 @@ test("pharmacist can open prescriptions, stock and catalogue", async ({ page }) 
 
 test("finance and public-health workspaces open with their own permissions", async ({ page }) => {
   await signInStaff(page, "finance@medveris.local");
-  await page.getByRole("link", { name: "Finance", exact: true }).click();
+  await openNavItem(page, "Finance");
   await expect(page.getByRole("heading", { name: "Billing and payments" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Public health", exact: true })).toHaveCount(0);
 
+  await page.locator("summary[aria-label='Account menu']").click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await signInStaff(page, "publichealth@medveris.local");
-  await page.getByRole("link", { name: "Public health", exact: true }).click();
+  await openNavItem(page, "Public health");
   await expect(page.getByRole("heading", { name: "Aggregate reporting" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Generate report" })).toBeVisible();
 });
 
 test("clinician can place a laboratory order through the diagnostics UI", async ({ page }) => {
   await signInStaff(page, "clinician@medveris.local");
-  await page.getByRole("link", { name: "Diagnostics", exact: true }).click();
+  await openNavItem(page, "Diagnostics");
   await page.getByRole("button", { name: "New order" }).click();
   const patientSelect = page.locator("select#patient-picker");
   const encounterSelect = page.locator("select#encounter-picker");
@@ -111,7 +114,7 @@ test("clinician can place a laboratory order through the diagnostics UI", async 
 
 test("clinician can schedule and open a theatre case with safety checkpoints", async ({ page }) => {
   await signInStaff(page, "clinician@medveris.local");
-  await page.getByRole("link", { name: "Theatre", exact: true }).click();
+  await openNavItem(page, "Theatre");
   await expect(page.getByRole("heading", { name: "Operating theatre and anesthesia" })).toBeVisible();
   await page.getByRole("button", { name: "New theatre case" }).click();
   const patientSelect = page.locator("select#patient-picker");
@@ -135,7 +138,7 @@ test("clinician can schedule and open a theatre case with safety checkpoints", a
   await patientSelect.selectOption(link.patientId);
   await page.waitForTimeout(400);
   await encounterSelect.selectOption(link.encounterId);
-  await page.getByLabel("Procedure").fill("Synthetic theatre wound debridement");
+  await page.getByLabel("Procedure", { exact: true }).fill("Synthetic theatre wound debridement");
   await page.getByRole("button", { name: "Schedule case" }).click();
   await expect(page.getByText("Theatre case scheduled.")).toBeVisible();
   const row = page.getByRole("row", { name: /Synthetic theatre wound debridement/ }).first();
@@ -168,9 +171,11 @@ test.describe("mobile navigation", () => {
     await expect(menu).toBeFocused();
     await menu.click();
     await expect(nav).toBeVisible();
-    await nav.getByRole("button", { name: "Workspace" }).click();
+    const opd = nav.getByRole("button", { name: "OPD (Outpatient Care)" });
+    if ((await opd.getAttribute("aria-expanded")) === "false") await opd.click();
+    await opd.click();
     await expect(nav.getByRole("link", { name: "Clinical worklist" })).toBeHidden();
-    await nav.getByRole("button", { name: "Workspace" }).click();
+    await opd.click();
     await nav.getByRole("link", { name: "Clinical worklist" }).click();
     await expect(page).toHaveURL(/\/worklist/);
     await expect(nav).toBeHidden();
@@ -180,7 +185,7 @@ test.describe("mobile navigation", () => {
 
 test("clinician can register and triage an unidentified emergency patient", async ({ page }) => {
   await signInStaff(page, "clinician@medveris.local");
-  await page.getByRole("link", { name: "Emergency", exact: true }).click();
+  await openNavItem(page, "Emergency");
   await expect(page.getByRole("heading", { name: "Emergency care board" })).toBeVisible();
   await page.getByRole("tab", { name: "Temporary / unidentified" }).click();
   await page.getByLabel("Family name").fill(`EmergencyE2E${Date.now()}`);
@@ -201,7 +206,7 @@ test("clinician tracks a follow-up and referral through the care coordination UI
   const followUpText = `E2E follow-up ${stamp}`;
   const referralReason = `E2E referral ${stamp}`;
   await signInStaff(page, "clinician@medveris.local");
-  await page.getByRole("link", { name: "Clinical worklist", exact: true }).click();
+  await openNavItem(page, "Clinical worklist");
   const row = page.getByRole("row", { name: /Joseph Mukasa/ });
   await expect(row).toBeVisible();
   await row.getByRole("link", { name: "Open" }).click();
@@ -219,7 +224,7 @@ test("clinician tracks a follow-up and referral through the care coordination UI
   await page.getByRole("button", { name: "Record referral" }).click();
   await expect(page.getByText(referralReason)).toBeVisible();
 
-  await page.getByRole("link", { name: "Follow-ups and referrals", exact: true }).click();
+  await openNavItem(page, "Follow-ups and referrals");
   await expect(page.getByRole("heading", { name: "Follow-ups and referrals" })).toBeVisible();
   const followUpRow = page.getByRole("row", { name: new RegExp(followUpText) });
   await expect(followUpRow).toBeVisible();

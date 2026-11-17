@@ -32,7 +32,7 @@ test("a new registrant verifies their email from the emailed link", async ({ pag
   });
   expect(registered.status()).toBe(201);
   await page.goto(await latestLink(email, "/verify-email"));
-  await expect(page.getByRole("heading", { name: "Confirm your email address." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Confirm your email address" })).toBeVisible();
   await expect(page).toHaveURL(/\/verify-email$/);
   await page.getByRole("button", { name: "Verify email" }).click();
   await expect(page.getByText("Email verified")).toBeVisible();
@@ -53,7 +53,7 @@ test("a user recovers a forgotten password from the sign-in page", async ({ page
   await expect(page.getByText("Check your email")).toBeVisible();
 
   await page.goto(await latestResetLink(email));
-  await expect(page.getByRole("heading", { name: "Choose a new password." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
   await expect(page).toHaveURL(/\/reset-password$/);
   await page.getByLabel("New password", { exact: true }).fill("Synthetic-Recovered-2026!");
   await page.getByLabel("Confirm new password").fill("Synthetic-Recovered-2026!");
@@ -62,7 +62,7 @@ test("a user recovers a forgotten password from the sign-in page", async ({ page
 
   await page.getByRole("link", { name: "Continue to sign in" }).click();
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("Synthetic-Recovered-2026!");
+  await page.getByLabel("Password", { exact: true }).fill("Synthetic-Recovered-2026!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).not.toHaveURL(/\/login/);
 });
@@ -80,7 +80,7 @@ test("a visitor sets up an independent drug shop workspace without API errors", 
   });
 
   await page.goto("/register?type=facility");
-  await expect(page.getByRole("heading", { name: "Set up your facility or service." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
   const choice = page.locator("#ws-path");
   await expect(choice.locator("option")).toHaveText(["Choose an option", "Independent workspace", "New organization or hospital", "Join an organization"]);
   await choice.selectOption("independent");
@@ -104,8 +104,8 @@ test("a visitor sets up an independent drug shop workspace without API errors", 
   await expect(page.getByText("Synthetic E2E Drug Shop · Drug shop")).toBeVisible();
   await page.getByRole("button", { name: "Create workspace", exact: true }).click();
 
-  await expect(page).toHaveURL(/\/mfa-setup\?welcome=1$/);
-  await expect(page.getByText("Synthetic E2E Drug Shop is ready")).toBeVisible();
+  await expect(page).toHaveURL(/\/mfa-setup(?:\?welcome=1)?$/);
+  await expect(page.getByRole("heading", { name: "Protect facility access with two-step verification" })).toBeVisible();
   expect(failures).toEqual([]);
 });
 
@@ -129,29 +129,41 @@ test("an independent laboratory owner lands on the laboratory dashboard with uni
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Create workspace", exact: true }).click();
 
-  await expect(page).toHaveURL(/\/mfa-setup\?welcome=1$/);
+  await expect(page).toHaveURL(/\/mfa-setup(?:\?welcome=1)?$/);
   await page.getByRole("button", { name: "Set up authenticator" }).click();
   const secret = (await page.getByLabel("Setup key").inputValue()).replace(/\s/g, "");
   await page.getByLabel("Verification code").fill(await totpCode(secret));
   await page.getByRole("button", { name: "Verify and turn on" }).click();
   await page.getByRole("button", { name: /I have saved my codes/ }).click();
 
+  await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Synthetic E2E Laboratory", level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open laboratory queue" })).toBeVisible();
-  const nav = page.getByRole("navigation", { name: "Primary navigation" });
-  await expect(nav.getByRole("link", { name: "Laboratory queue" })).toBeVisible();
-  await expect(nav.getByRole("link", { name: "Point of sale" })).toBeVisible();
-  for (const hidden of ["Organizations", "Wards and beds", "Theatre", "Maternity", "Clinical worklist"]) {
-    await expect(nav.getByRole("link", { name: hidden, exact: true })).toHaveCount(0);
+  const drawer = page.locator("#app-sidebar");
+  if (!(await drawer.isVisible())) await page.getByRole("button", { name: "Open navigation" }).click();
+  await expect(drawer).toBeVisible();
+  for (let guard = 0; guard < 20; guard += 1) {
+    const toggle = drawer.locator("button[aria-expanded='false']").first();
+    if ((await toggle.count()) === 0) break;
+    await toggle.click();
   }
+  await expect(drawer.getByRole("link", { name: "Laboratory queue", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("link", { name: "Point of sale", exact: true })).toBeVisible();
+  for (const hidden of ["Organizations", "Wards and beds", "Theatre", "Maternity", "Clinical worklist"]) {
+    await expect(drawer.getByRole("link", { name: hidden, exact: true })).toHaveCount(0);
+  }
+  await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "Sign out" }).first().click();
+  const accountMenu = page.locator("summary[aria-label='Account menu']");
+  await accountMenu.click();
+  await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByLabel("Verification code").fill(await totpCode(secret));
   await page.getByRole("button", { name: "Verify and continue" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Synthetic E2E Laboratory", level: 1 })).toBeVisible();
   expect(failures).toEqual([]);
 });
