@@ -49,6 +49,8 @@ was not touched. Staging was deployed; no database migrations or purges ran.
 | DOC-1..n | Stale/contradictory documentation, one document per slice | pending |
 | REPO-1 | Branch protection | operator recommendation only |
 | REPO-2 | Repository visibility / secret history | operator recommendation only |
+| INT-1 | DICOMweb transport validation + staging non-secret config | code/config done; enablement blocked (conformance + authorization) |
+| INT-2 | Staging check green on full suite | harness fixed locally: 107 files / 964 tests green twice; gate re-run pending |
 
 ## Baseline evidence (before changes)
 
@@ -177,3 +179,139 @@ gate does not currently detect this provider mismatch. SSH key/agent access was
 unavailable, and password authentication was not used. Production remains
 blocked until the operator establishes the tunnel and records current recovery
 evidence.
+
+### INT-1 — transport-aware DICOMweb validation + staging config — 2026-11-18
+
+Status: code and configuration slice complete. DICOMweb remains **unavailable**
+(`FEATURE_DICOMWEB=false` in both environments); no integration is claimed active.
+No secret values were read or printed.
+
+Root cause: `dicomwebConfigProblems` relaxed the HTTPS rule for every
+`DICOMWEB_TRANSPORT=vpc` URL, and both deploy gates required HTTPS
+unconditionally. The documented `http://medveris-pacs/dicom-web` VPC routing
+label could therefore never pass a gate once the feature was enabled, and the
+integration registry still described the endpoint as HTTPS-only.
+
+Files changed (10):
+- `apps/api/src/integrations/dicomweb.ts` — vpc transport accepts http only for
+  the exact label `http://medveris-pacs/dicom-web`; url transport still requires
+  HTTPS outside local dev/tests; no-credentials/no-query/no-fragment rules and
+  the fingerprint are unchanged.
+- `scripts/staging-gate.mjs` — new shared `dicomwebEndpointProblems()` helper,
+  transport-specific messages, vpc requires the exact label plus a `PACS` VPC binding.
+- `scripts/production-gate.mjs` — uses the same helper; production has no PACS
+  binding, so vpc transport is fail-closed there.
+- `apps/api/src/integrations/registry.ts`, `docs/20_API_INTEGRATION_REGISTRY.md`,
+  `docs/22_PACS_DICOMWEB_RUNBOOK.md` — descriptions now reflect transport rules
+  and the conformance requirement.
+- `tests/unit/dicomweb-vpc.test.ts`, `tests/unit/staging-gate.test.ts`,
+  `tests/unit/production-gate.test.ts` — new rejection and binding cases.
+- `wrangler.jsonc` — one staging non-secret var added (below).
+- `apps/api/src/worker-support.ts` was not changed: it already fails closed when
+  `DICOMWEB_TRANSPORT=vpc` lacks the `PACS` binding; this is now covered by tests.
+
+Variables by environment (names only, no values):
+- Staging non-secret, **added**: `DICOMWEB_MODE=sandbox` (the staging PACS is
+  seeded with one synthetic study, accession `SYN001`; switch to `live` only if
+  real patient data is loaded, and only before enabling the feature).
+- Staging non-secret, already present and **unchanged**: `FEATURE_DICOMWEB=false`,
+  `DICOMWEB_TRANSPORT=vpc`, `DICOMWEB_BASE_URL=http://medveris-pacs/dicom-web`,
+  `DICOMWEB_AUTH=basic`, `DICOMWEB_TIMEOUT_MS`, `DICOMWEB_MAX_IMAGE_BYTES`,
+  `DICOMWEB_VERIFICATION_MAX_AGE_DAYS`.
+- Staging **secrets**: unchanged; no `wrangler secret put` and no edit to
+  `env.staging.secrets.required`. Existing DICOM username/password secret names are untouched.
+- Production: unchanged. `FEATURE_DICOMWEB=false`, `TERMINOLOGY_MODE=local-reference`,
+  no `DICOMWEB_BASE_URL`/`DICOMWEB_TRANSPORT`, no PACS VPC binding.
+- Terminology: no `TERMINOLOGY_PROVIDER_TOKEN`, `_URL`, or `_TIMEOUT_MS` created.
+  `WHO_ICD_CLIENT_ID`/`WHO_ICD_CLIENT_SECRET` have no runtime consumer (unused),
+  so they were not configured. ERPNext `FEATURE_ERPNEXT`, `ERPNEXT_MODE`, and
+  `ERPNEXT_COMPANY` are parsed but have no downstream runtime consumer; no ERPNext
+  credentials were created.
+
+Verification evidence:
+- Focused Vitest (`dicomweb-vpc`, `staging-gate`, `production-gate`): 3 files,
+  64 tests passed (12 + 28 + 24).
+- Related pure-unit Vitest (`integration-registry`, `worker-resilience`,
+  `no-secrets`, `ai-status`): 4 files, 17 tests passed.
+- `npm run lint` — exit 0. `npm run typecheck` — exit 0.
+- Test database target confirmed safe: `tests/setup.ts` calls `assertTestDatabase`,
+  which requires a local `*_test` database; all Vitest runs above loaded it successfully.
+- `npm run deploy:staging:check` (dry-run, read-only, no deploy/migration) was
+  attempted but did not pass: lint and typecheck stages completed, then the full
+  `npm test` stage was red with row-level-security violations in integration tests
+  (e.g. `platform-roles` 10 failed, `directory` 6, `ehmis` 4, `support-center` 3,
+  `content-feeds` 3). Orphaned/hung `rls.test.ts`/`platform-roles.test.ts` worker
+  processes were observed against the shared `*_test` database during the run.
+  No deploy, upload, migration, rollback, or production command was executed.
+
+Remaining blockers / operator-owned steps:
+- PACS conformance: a passing QIDO-RS/WADO-RS run against the configured PACS and
+  a recorded authorization review are required before `FEATURE_DICOMWEB` may be true.
+- PACS process: the Orthanc process listening on 127.0.0.1:8042 could not be
+  identified by the deploy account. No VPS/systemd/sudo changes were made; the
+  operator must identify the owning process.
+- Staging gate: the full suite must be green on a clean, shared test database
+  before `deploy:staging:check` can pass.
+- Terminology: production stays `local-reference` until a licensed provider,
+  endpoint, credentials, and license approval are supplied by the operator.
+- ERPNext: keep off until a real endpoint, service account, and approved test plan exist.
+- Production: reported last full check blocked by six unapplied migrations and 32
+  test failures; migration state could not be read (tunnel on port 55432 refused).
+  The recorded restore attestation is Aiven, not Kamatera; a fresh restore drill
+  against `medveris-prod` and Kamatera verification are operator-owned. No
+  production `wrangler secret put`, migration, deployment, rollback, or VPS edit was run.
+
+### INT-2 — deterministic test harness — 2026-11-18
+
+Status: fixed locally. Root cause, files and evidence in
+`docs/operations/FORENSICS_20261118.md` (blocker INT-2). No production or staging
+access; only the local `medveris_test` database was reset.
+
+Root cause: `scripts/seed.ts:233-242` gave the synthetic reviewer operator grant a
+fixed `now() + interval '24 hours'` expiry, so after a day the grant was revoked as
+`grant-expired` and every operator-only RLS write failed. `medveris_test` also
+carried synthetic rows from earlier hung runs, and a reset of all 88 migrations in
+one transaction exceeded the local PG `max_locks_per_transaction=64`.
+
+Files:
+- `tests/test-db.ts` (new) — asserts `MIGRATION_DATABASE_URL` is a local `*_test`
+  DB, fails fast if other sessions exist, refreshes the operator grant with a
+  fresh expiry at every test run via the bootstrap flag, and clears leftover
+  synthetic grant rows.
+- `tests/setup.ts` — runs both `*_test` assertions, the session guard and the
+  grant refresh before each worker.
+- `tests/integration/platform-operator-seed.test.ts` (new) — proves the grant is
+  active/unexpired and recognised by `app.is_platform_operator()` at run time.
+- `tests/integration/platform-roles.test.ts` — teardown deletes synthetic grants
+  through the bootstrap path so it cannot be blocked by RLS.
+- `vitest.config.ts` — `maxWorkers: 1` in addition to `fileParallelism:false`.
+- `scripts/db-reset-synthetic.ts` — schema in one transaction, migrations applied
+  in committed batches (`--batch-size=`, default 4) so the 64-lock local PG limit
+  is not exceeded; a failed batch reports partial state and can be reset again.
+- `scripts/test-process-guard.mjs` (new) — read-only `--check` (default) lists
+  orphaned vitest process trees; explicit `--reap` terminates only those PIDs.
+
+Verification (all real commands; `*_test` target re-asserted before every run):
+- `npm run lint` → `LINT_EXIT=0`. `npm run typecheck` → `TYPECHECK_EXIT=0`.
+- Reset: `tsx scripts/db-reset-synthetic.ts --yes --batch-size=4` →
+  `preflight: all safety checks passed`, `applied 130_…` through `applied 137_…`,
+  `Synthetic database medveris_test reset, migrated and seeded.`, `RESET_EXIT=0`.
+- Fresh DB, files alone:
+  `vitest run --config vitest.config.ts tests/integration/platform-roles.test.ts tests/integration/platform-operator-seed.test.ts`
+  → `Test Files 2 passed (2)`, `Tests 18 passed (18)`, exit 0.
+- Full suite run 1: `npm test` → `Test Files 107 passed (107)`, `Tests 964 passed
+  (964)`, `Duration 390.33s`, exit 0.
+- Full suite run 2: `npm test` → `Test Files 107 passed (107)`, `Tests 964 passed
+  (964)`, `Duration 333.03s`, exit 0.
+
+Disclosed failure before the two green runs: an earlier `npm test` (04:16) failed
+in `onboarding.test.ts` at `beforeAll` (`me.user.id` undefined) while two orphaned
+vitest trees from the forensic phase were still alive. `onboarding.test.ts` alone
+passed 13/13 and `billing.test.ts`+`onboarding.test.ts` passed 26/26. The orphaned
+trees were reaped with `node scripts/test-process-guard.mjs --reap` (10 PIDs
+terminated; `--check` now reports 0), after which both full runs above were green.
+No assertion or gate was weakened.
+
+Remaining dependency: re-run `npm run deploy:staging:check` (dry-run) to confirm
+the staging gate is green end to end; not run in this slice. Staging was not
+deployed. The `pre-slice-safety` stash was not applied or dropped.

@@ -59,8 +59,10 @@ async function asAuditReader<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
 async function cleanup(): Promise<void> {
   await asUser(OPERATOR, async (tx) => {
     await tx`delete from platform_role_requests where target_user_id in (${CLINICIAN}, ${CLINICIAN_B}, ${ADMIN_A}) and reason like 'Synthetic%'`;
-    await tx`delete from platform_roles where user_id in (${CLINICIAN}, ${CLINICIAN_B}, ${ADMIN_A}) and role = 'platform_operator'`;
   }, "platform_operator");
+  await asBootstrap(async (tx) => {
+    await tx`delete from platform_roles where user_id in (${CLINICIAN}, ${CLINICIAN_B}, ${ADMIN_A}) and role = 'platform_operator'`;
+  });
 }
 
 function asUser<T>(userId: string, fn: (tx: Tx) => Promise<T>, platformRole?: string): Promise<T> {
