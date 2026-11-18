@@ -20,8 +20,8 @@ was not touched. Staging was deployed; no database migrations or purges ran.
 | DATA-1 | Production reference-data loss investigation (read-only) | pending |
 | DATA-2 | Purge-script safeguards (backup verification, target guards, import safety) | pending |
 | DATA-3 | Isolated backup/restore drill | blocked: operator + isolated host |
-| RLS-1 | `clinical_entry_attachments` RLS | pending |
-| RLS-2 | Integrity check must detect tables with no RLS | pending |
+| RLS-1 | `clinical_entry_attachments` RLS | complete (slice 2026-11-18): migration 138 enables+forces RLS with `attachments_tenant` policy; verified on fresh `medveris_test` |
+| RLS-2 | Integrity check must detect tables with no RLS | complete (slice 2026-11-18): `schemaIntegrityProblems` now flags RLS-disabled public tables outside the reviewed exception allowlist; verified before/after 138 |
 | RLS-3 | Identity/tenant tables: review each exception one at a time | pending |
 | MIG-1 | Migrations 127–137, one at a time | pending |
 | MIG-2 | 132/133 bootstrap-decoupling verification | pending |
@@ -260,6 +260,53 @@ Remaining blockers / operator-owned steps:
   The recorded restore attestation is Aiven, not Kamatera; a fresh restore drill
   against `medveris-prod` and Kamatera verification are operator-owned. No
   production `wrangler secret put`, migration, deployment, rollback, or VPS edit was run.
+
+### RLS-1 / RLS-2 — clinical_entry_attachments RLS + missing-RLS detection — 2026-11-18
+
+Status: complete.
+
+Root cause: migration 117 created `clinical_entry_attachments`, granted DML to
+`medveris_runtime`, but never enabled/forced RLS or created a policy. The local
+database previously had an out-of-band `attachments_tenant` policy with no
+migration source, which masked the defect until a fresh reset wiped it. The
+integrity check in `scripts/migrations.ts:schemaIntegrityProblems` only detected
+RLS-enabled tables with no policies and RLS-enabled-but-not-forced tables; it
+never queried `relrowsecurity = false`, so missing RLS was invisible.
+
+Files changed (3):
+- `packages/db/migrations/138_clinical_entry_attachments_rls.sql` (new) —
+  enables and forces RLS on `clinical_entry_attachments`, creates
+  `attachments_tenant` policy gated on `app.current_tenant()` for ALL
+  (USING + WITH CHECK). Defensive rollback: `ALTER TABLE ... DISABLE ROW LEVEL
+  SECURITY; DROP POLICY attachments_tenant ON ...`.
+- `scripts/migrations.ts` — added `ALLOWED_NO_RLS_TABLES` allowlist of 10
+  reviewed exception tables and a `not c.relrowsecurity` query in
+  `schemaIntegrityProblems` that flags any other public table with RLS disabled.
+- `docs/operations/PR_READINESS_CHECKPOINT_20261116.md` — RLS-1/RLS-2 backlog
+  rows marked complete; new slice-log entry.
+
+Verification (local `medveris_test` only; batch reset `tsx
+scripts/db-reset-synthetic.ts --yes --batch-size=4`):
+- Before 138 applied: integrity check flagged exactly
+  `1 public tables have RLS disabled (clinical_entry_attachments)`; the other 10
+  disabled tables were suppressed by the allowlist.
+- After reset with 138: all 89 migrations applied in batches; integrity check
+  clean (`(none)`).
+- Direct catalog: `clinical_entry_attachments` now `relrowsecurity=t,
+  relforcerowsecurity=t, policy_count=1`.
+- `npx vitest run --config vitest.config.ts tests/unit/migrations-walker.test.ts`
+  → 2/2 passed.
+- `npx vitest run --config vitest.config.ts tests/integration/platform-operator-seed.test.ts tests/unit/staging-gate.test.ts tests/unit/production-gate.test.ts` → 3 files, 54/54 passed.
+
+Remaining dependency: RLS-3 (review the 10 allowed exceptions one at a time,
+especially `usage_resources` whose disposition is undecided). Staging gate rebuild
+pending. The `pre-slice-safety` stash was not applied or dropped.
+
+Note on the test-process-guard narrowing (INT-2): the narrowing committed in the
+docs-only forensics commit was split out from this RLS commit deliberately. The
+narrowed guard still has an unused-`repo` lint error that blocks `deploy:staging:check`;
+it will be committed separately once that lint error is resolved. Nothing from the
+guard narrowing is included in this commit.
 
 ### INT-2 — deterministic test harness — 2026-11-18
 

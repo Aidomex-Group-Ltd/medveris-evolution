@@ -9,6 +9,27 @@ export interface Migration {
 }
 
 const TRANSACTION_CONTROL = /^[ \t]*(BEGIN|COMMIT|ROLLBACK|START[ \t]+TRANSACTION|END[ \t]+TRANSACTION)[ \t]*;[ \t]*$/gim;
+
+// Public tables reviewed and intentionally left without RLS. The integrity
+// check below flags any other public table that has RLS disabled, so this list
+// must be revisited whenever a new foundation table is added.
+const ALLOWED_NO_RLS_TABLES = [
+  // Identity / auth — one-by-one exception review required before RLS is added.
+  "auth_challenges",
+  "email_tokens",
+  "sessions",
+  "users",
+  // Tenant / platform metadata — exempt pending per-table review (RLS-3).
+  "tenants",
+  "schema_migrations",
+  // Platform observability / integrity — exempt pending per-table review (RLS-3).
+  "integrity_checkpoints",
+  "integrity_checkpoint_events",
+  "ledger_anchors",
+  // Cross-tenant usage metering — not yet classified; flagged until decided.
+  "usage_resources",
+];
+
 const REQUIRED_APP_FUNCTIONS = [
   "app.current_tenant()",
   "app.current_user()",
@@ -155,6 +176,18 @@ export async function schemaIntegrityProblems(client: Client): Promise<string[]>
      where n.nspname = 'public' and c.relkind in ('r','p') and c.relrowsecurity and not c.relforcerowsecurity
      order by 1`);
   if (notForced.rowCount) problems.push(`RLS not forced on ${notForced.rows.map((row) => row.relname).join(", ")}`);
+  const notEnabled = await client.query<{ relname: string }>(`
+    select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind in ('r','p')
+       and not c.relrowsecurity
+       and not c.relname = any($1::text[])
+     order by 1`,
+    [ALLOWED_NO_RLS_TABLES],
+  );
+  if (notEnabled.rowCount) {
+    const names = notEnabled.rows.map((row) => row.relname);
+    problems.push(`${names.length} public tables have RLS disabled (${names.slice(0, 5).join(", ")}${names.length > 5 ? ", ..." : ""})`);
+  }
   const auditTrigger = await client.query(`
     select 1 from pg_trigger where tgrelid = to_regclass('public.audit_events') and tgname = 'audit_events_immutable' and not tgisinternal`);
   if (!auditTrigger.rowCount) problems.push("missing audit_events_immutable trigger");
