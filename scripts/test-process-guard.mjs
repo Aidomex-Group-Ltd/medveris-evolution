@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 
-const repo = process.cwd();
 const reap = process.argv.includes("--reap");
 const olderThanArg = process.argv.find((arg) => arg.startsWith("--older-than-minutes="));
 const olderThanMinutes = Number(olderThanArg?.split("=")[1] ?? 10);
@@ -26,7 +25,10 @@ for (const line of ps.stdout.split("\n")) {
 }
 
 function isTestRelated(processInfo) {
-  return processInfo.args.includes(repo) || /\bvitest\b/.test(processInfo.args) || /^\s*npm (test|exec)\b/.test(processInfo.args);
+  // Match only explicit vitest runs and `npm test` / `npm exec vitest` invocations,
+  // not any process whose args merely contain the repo path (which would also match
+  // VS Code, tsserver, eslint, dev servers, and other editor/build tooling).
+  return /\bvitest\b/.test(processInfo.args) || /^\s*npm (test|exec)\b/.test(processInfo.args);
 }
 
 const roots = [...processes.values()].filter(
