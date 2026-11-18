@@ -1,4 +1,23 @@
 name: CI
+#
+# Pull requests run the existing install, lint, test and build checks. Install Playwright’s
+# browser version using a runner OS supported by the Playwright version in the lockfile.
+#
+# Deployments are intentionally separate from this file:
+#   - Staging is automated from the repository’s established staging branch (see `.github/workflows/deploy-staging.yml`).
+#   - Production is a separate workflow with a required manual approval environment (see `.github/workflows/deploy-production.yml`).
+#
+# These deployment workflows reuse the existing Cloudflare Workers scripts and Wrangler config:
+#   - `wrangler.jsonc` top level is local `wrangler dev` only.
+#   - `env.staging` → Worker `medveris-staging`, database `medveris_staging`, origin
+#     `https://medveris-staging.aidomexgroupltd.workers.dev`, secret set rooted in
+#     `~/.config/medveris/staging/` (outside the repository).
+#   - `env.production` → Worker `medveris-production`, database `medveris-prod`, apex
+#     `medveris.online` (attached only after `npm run domain:production`), secret set rooted in
+#     `~/.config/medveris/production/` (outside the repository).
+#
+# Never commit secret values. Configure GitHub Environments and Cloudflare secrets/Wrangler tokens
+# separately for staging and production; the workflows do not pass secrets as arguments.
 
 on:
   push:
@@ -41,7 +60,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Blocking: high/critical runtime advisories must not reach the released tree.
       - name: Runtime dependency audit
         run: npm audit --omit=dev --audit-level=high
       - run: npm run db:setup
@@ -51,7 +69,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run smoke:workers
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm run build
       - uses: actions/upload-artifact@v4
@@ -78,10 +97,5 @@ jobs:
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin gitleaks
           gitleaks version
-      # Full history. The 14 findings that used to make this impossible are
-      # allowlisted in .gitleaks.toml by path AND regex, so the default rules
-      # still run everywhere: `gitleaks detect` on this history reports no
-      # leaks, and a planted credential in any of the three allowlisted files
-      # is still detected (verified locally).
       - name: Scan full history for secrets
         run: gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --exit-code 1

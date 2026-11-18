@@ -1,0 +1,73 @@
+name: Deploy staging
+#
+# Staging deploys automatically from the repository's established staging branch.
+#
+# This workspace currently uses `pr-readiness-20261116` as the staging branch, so the
+# `on.branch` below is set to that branch. Update `branch` when the repository adopts a
+# dedicated long-lived staging branch (for example `staging`). The script and Wrangler config
+# are unchanged either way: staging always targets `env.staging` in `wrangler.jsonc`.
+#
+# The release is blue-green and never runs migrations, resets data, or touches production.
+# Credentialed deploys and Cloudflare secrets remain the hosting provider's responsibility.
+
+on:
+  push:
+    branches:
+      - pr-readiness-20261116
+
+# Staging is a non-production environment. Keep the name stable so repository/branch protection
+# and GitHub Environment rules can target it consistently.
+environment:
+  name: staging
+  url: https://medveris-staging.aidomexgroupltd.workers.dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Pin the Cloudflare account so CI deploys do not depend on which account Wrangler is logged into.
+      CLOUDFLARE_ACCOUNT_ID: 6337ed24a5f8ff4ec3f74517a55a7e6b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Runtime dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Staging deployment gate
+        run: npm run deploy:staging
+        env:
+          # Secrets and protected config files live outside the repository. The script reads them
+          # from the GitHub Actions runner environment or from the protected paths it already knows.
+          # Do not pass secret values through `env:` here unless the script explicitly expects an
+          # environment variable name documented in `scripts/staging-deploy.mjs`.
+          #
+          # What you must configure separately (not committed):
+          #   - Wrangler authentication on the runner (for example `npx wrangler login` or a scoped
+          #     CLOUDFLARE_API_TOKEN) sufficient to deploy `medveris-staging`.
+          #   - Staging Worker secrets already present on the account, or the protected
+          #     `~/.config/medveris/staging/secrets.env` / `resend.env` files the script uploads
+          #     only when the Worker lacks them.
+          #   - Staging Hyperdrive configs, R2 bucket `medveris-staging-uploads` and the staging queues
+          #     referenced by `wrangler.jsonc`.
+        # Keep the protected secret files out of the CI workspace. The script refuses to read any
+        # secrets file that is inside the repository.
+        working-directory: .

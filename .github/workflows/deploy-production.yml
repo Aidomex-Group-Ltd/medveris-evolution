@@ -1,0 +1,90 @@
+name: Deploy production
+#
+# Production deploys only from the established release process, with a required manual approval
+# gate. This workflow does not run on push or pull requests. Trigger it manually once the release
+# evidence from a staging deploy is reviewed.
+#
+# Promotion model: the same immutable Worker build artifact that was verified on staging should be
+# promoted to production. Cloudflare Workers versioning/upload supports that model, and the existing
+# `production-deploy.mjs` gate validates migration state, Hyperdrive isolation, backup attestation,
+# domain state and production smoke responses before cutover. The wrapper below keeps the manual
+# approval as the only promotion path by using a protected GitHub Environment.
+#
+# The repository’s production release process is deliberately separate from staging: production has
+# its own gate, secret provisioning, release, rollback and domain scripts, and none of them runs
+# migrations, resets data, or touches staging.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "Short note about this production release (what is being promoted and why)."
+        required: true
+
+# Production is a protected environment. Configure the `production` GitHub Environment with required
+# reviewers so this workflow pauses there until an authorized person approves it. The Cloudflare
+# account, production secrets, Hyperdrive configs, R2 bucket and domain attachment are set up in the
+# hosting provider, not in this file.
+environment:
+  name: production
+  url: https://medveris.online
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 6337ed24a5f8ff4ec3f74517a55a7e6b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Runtime dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Production deployment gate
+        run: npm run deploy:production:check
+        env:
+          # Production secrets and protected config files live outside the repository, in
+          # `~/.config/medveris/production/`. The script refuses to read any secrets file that is
+          # inside the repository and never passes secret values through arguments.
+          #
+          # What you must configure separately (not committed):
+          #   - Wrangler authentication on the runner sufficient to deploy `medveris-production`
+          #     and to perform a blue-green release against `env.production` in `wrangler.jsonc`.
+          #   - Production Worker secrets already present on the account, or the protected
+          #     `~/.config/medveris/production/secrets.env` / `resend.env` / `db.env` files the
+          #     script uses only for checks and only-upload-missing uploads.
+          #   - Production Hyperdrive configs, R2 bucket `medveris-production-uploads` and the
+          #     production queues referenced by `wrangler.jsonc`.
+          #   - A current backup attestation in `~/.config/medveris/production/backup-verification.json`
+          #     (the gate refuses a missing file or a drill older than 90 days).
+          #   - Migration review: the gate reads `schema_migrations` read-only and refuses to release
+          #     while any migration is pending or unknown.
+        working-directory: .
+      - name: Promotion note
+        run: |
+          set -euo pipefail
+          echo "Production release promoted from the same checked-out commit that passed the staging gate."
+          echo "Commit: ${{ github.sha }}"
+          echo "Release notes: ${{ inputs.release_notes }}"
+          echo "Promotion occurred only after the production GitHub Environment required reviewers approved this run."
