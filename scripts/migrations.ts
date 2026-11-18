@@ -26,7 +26,17 @@ const ALLOWED_NO_RLS_TABLES = [
   "integrity_checkpoints",
   "integrity_checkpoint_events",
   "ledger_anchors",
-  // Cross-tenant usage metering — not yet classified; flagged until decided.
+  // Cross-tenant usage metering — reviewed deliberate exception.
+  // usage_resources is a platform-wide metering-dimension catalog (code, name, unit,
+  // aggregation, measurement, enabled) with no tenant column, so there is nothing to
+  // row-filter; migration 035 granted SELECT to medveris_runtime and medveris_jobs
+  // and enabled RLS on every other table in that migration but not this one. Confirmed
+  // as intentional in 035_pricing_subscriptions_usage.sql:354, :648 and the RLS block
+  // at :811-846, which lists subscriptions, usage_events, billing_notifications etc.
+  // but not usage_resources. RLS-3 review note: reconfirm on next billing review that a
+  // world-readable reference catalog is still the intended model (no tenant-scoped usage
+  // resource rows are expected); if a tenant-scoped dimension is ever added it must get
+  // RLS at that time.
   "usage_resources",
 ];
 

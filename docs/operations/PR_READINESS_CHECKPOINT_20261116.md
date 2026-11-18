@@ -21,8 +21,8 @@ was not touched. Staging was deployed; no database migrations or purges ran.
 | DATA-2 | Purge-script safeguards (backup verification, target guards, import safety) | pending |
 | DATA-3 | Isolated backup/restore drill | blocked: operator + isolated host |
 | RLS-1 | `clinical_entry_attachments` RLS | complete (slice 2026-11-18): migration 138 enables+forces RLS with `attachments_tenant` policy; verified on fresh `medveris_test` |
-| RLS-2 | Integrity check must detect tables with no RLS | complete (slice 2026-11-18): `schemaIntegrityProblems` now flags RLS-disabled public tables outside the reviewed exception allowlist; verified before/after 138 |
-| RLS-3 | Identity/tenant tables: review each exception one at a time | pending |
+| RLS-2 | Integrity check must detect tables with no RLS | complete (slice 2026-11-18): `schemaIntegrityProblems` now flags RLS-disabled public tables outside the reviewed exception allowlist; verified before/after 138. `usage_resources` moved from undecided to a documented deliberate exception with rationale (migration 035: platform-wide metering catalog, no tenant column, SELECT-granted to runtime, RLS enabled on every other table in that migration but not this one) |
+| RLS-3 | Identity/tenant tables: review each exception one at a time | in progress: 10 exception tables now documented in `ALLOWED_NO_RLS_TABLES` (9 identity/tenant/observability pending per-table review + `usage_resources` as a confirmed deliberate exception). `usage_resources` disposition resolved in this slice; the other 9 remain pending per-table review. |
 | MIG-1 | Migrations 127–137, one at a time | pending |
 | MIG-2 | 132/133 bootstrap-decoupling verification | pending |
 | MIG-3 | Recurring grant-omission detection | pending |
