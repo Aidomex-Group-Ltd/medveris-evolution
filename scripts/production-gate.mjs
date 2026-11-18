@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { checkScalingConfig } from "./staging-gate.mjs";
+import { checkScalingConfig, dicomwebEndpointProblems } from "./staging-gate.mjs";
 
 /**
  * Pure production gate rules used by scripts/production-deploy.mjs and scripts/production-domain.mjs.
@@ -146,10 +146,7 @@ export function checkProductionConfig(config) {
 
   check(["false", "true"].includes(String(vars.FEATURE_DICOMWEB ?? "false")), "FEATURE_DICOMWEB must be true or false");
   if (vars.FEATURE_DICOMWEB === "true") {
-    const baseUrl = String(vars.DICOMWEB_BASE_URL ?? "").trim();
-    check(/^https:\/\/[^/]/.test(baseUrl), "FEATURE_DICOMWEB=true requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root");
-    check(!/^https?:\/\/[^/]*@/.test(baseUrl), "DICOMWEB_BASE_URL must not embed credentials; use DICOMWEB_USERNAME and DICOMWEB_PASSWORD");
-    check(!/[?#]/.test(baseUrl), "DICOMWEB_BASE_URL must not contain a query or fragment");
+    problems.push(...dicomwebEndpointProblems(vars, production));
     check(["basic", "bearer"].includes(String(vars.DICOMWEB_AUTH ?? "")), "FEATURE_DICOMWEB=true requires DICOMWEB_AUTH=basic or bearer in production");
     for (const name of dicomwebRequiredSecrets(vars)) {
       check(required.includes(name), `FEATURE_DICOMWEB=true requires the ${name} secret to be declared`);

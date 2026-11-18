@@ -99,7 +99,11 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = Object.freeze([
     flag: "FEATURE_DICOMWEB",
     baseline: "unavailable",
     baselineReason: "No PACS is enabled for this environment (FEATURE_DICOMWEB is not set)",
-    requiredConfiguration: ["DICOMWEB_BASE_URL (HTTPS)", "DICOMWEB_AUTH with DICOMWEB_USERNAME/DICOMWEB_PASSWORD or DICOMWEB_BEARER_TOKEN", "network access from the Worker to the PACS"],
+    requiredConfiguration: [
+      "DICOMWEB_TRANSPORT=url with DICOMWEB_BASE_URL over HTTPS, or DICOMWEB_TRANSPORT=vpc with the exact internal label http://medveris-pacs/dicom-web and a PACS VPC binding",
+      "DICOMWEB_AUTH with DICOMWEB_USERNAME/DICOMWEB_PASSWORD or DICOMWEB_BEARER_TOKEN",
+      "network access from the Worker to the PACS",
+    ],
     prerequisites: ["passing QIDO-RS/WADO-RS conformance run against the configured PACS", "authorization review"],
     capabilities: ["study search", "image retrieval"],
     effectWhileUnavailable: "Studies hold metadata only; no PACS study is searched, linked, retrieved or displayed.",

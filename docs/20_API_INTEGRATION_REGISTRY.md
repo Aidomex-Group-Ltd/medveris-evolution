@@ -22,6 +22,8 @@ Specify system/version, code/display, canonical value-set URL/version or Concept
 
 ## DICOMweb contract
 
+The DICOMweb root is transport-specific: `DICOMWEB_TRANSPORT=url` requires an HTTPS endpoint, while `DICOMWEB_TRANSPORT=vpc` accepts http only for the exact internal routing label `http://medveris-pacs/dicom-web` and requires the `PACS` VPC service binding. Arbitrary http URLs and missing bindings are rejected; the endpoint must still pass a QIDO-RS/WADO-RS conformance run before the integration reports available.
+
 Typical route shapes under the chosen DICOMweb base are GET `/studies`, `/studies/{studyUID}/series`, `/studies/{studyUID}/series/{seriesUID}/instances` for queries; GET `/studies/{studyUID}` and selected series/instance/frame/metadata routes for retrieval; and POST `/studies` for storage. Use the exact standard resource semantics and negotiated MIME types supported by the PACS. Metadata responses can use `application/dicom+json`; object transfer commonly uses the specified multipart DICOM representations. Do not treat these as generic JSON CRUD or assume rendered JPEG is diagnostically equivalent.
 
 Handle STOW partial acceptance per instance, duplicate SOP instances and transport retries without duplicating work. Route signed asynchronous completion events to the platform for indexing and identity review. A store acknowledgement does not automatically attest to storage commitment, long-term preservation or successful patient reconciliation. Resolve patient binding before releasing studies to a chart or AI job.

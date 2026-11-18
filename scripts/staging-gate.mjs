@@ -17,6 +17,45 @@ export const REQUIRED_SECRETS = Object.freeze(["SESSION_SECRET", "AUDIT_SIGNING_
 /** Credentials the PACS needs once FEATURE_DICOMWEB is on; the subset depends on DICOMWEB_AUTH. */
 export const DICOMWEB_SECRETS = Object.freeze(["DICOMWEB_USERNAME", "DICOMWEB_PASSWORD", "DICOMWEB_BEARER_TOKEN"]);
 
+/** The only http DICOMweb root allowed, and only over the VPC transport's internal routing label. */
+export const DICOMWEB_VPC_BASE_URL = "http://medveris-pacs/dicom-web";
+
+/**
+ * Transport-aware DICOMweb endpoint rules shared by the staging and production gates. url transport
+ * requires HTTPS; vpc transport requires the exact internal routing label and a PACS VPC binding.
+ * Arbitrary http URLs and missing bindings are rejected in both environments.
+ * @param {Record<string, unknown>} vars env.*.vars
+ * @param {any} envConfig env.staging or env.production from wrangler.jsonc
+ * @returns {string[]}
+ */
+export function dicomwebEndpointProblems(vars, envConfig) {
+  const problems = [];
+  const check = (/** @type {unknown} */ condition, /** @type {string} */ message) => {
+    if (!condition) problems.push(message);
+  };
+  const transport = String(vars.DICOMWEB_TRANSPORT ?? "url");
+  const rawBaseUrl = String(vars.DICOMWEB_BASE_URL ?? "").trim();
+  let parsed = null;
+  try {
+    parsed = new URL(rawBaseUrl);
+  } catch {
+    parsed = null;
+  }
+  const hasPacsBinding = (envConfig?.vpc_services ?? []).some((/** @type {any} */ binding) => binding?.binding === "PACS");
+  if (transport === "vpc") {
+    check(hasPacsBinding, "DICOMWEB_TRANSPORT=vpc requires a PACS VPC service binding (vpc_services.PACS)");
+    check(parsed !== null && parsed.href.replace(/\/+$/, "") === DICOMWEB_VPC_BASE_URL,
+      `DICOMWEB_TRANSPORT=vpc requires DICOMWEB_BASE_URL to be exactly ${DICOMWEB_VPC_BASE_URL}`);
+  } else {
+    check(parsed !== null && parsed.protocol === "https:", "DICOMWEB_TRANSPORT=url requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root");
+  }
+  if (parsed) {
+    check(!parsed.username && !parsed.password, "DICOMWEB_BASE_URL must not embed credentials; use DICOMWEB_USERNAME and DICOMWEB_PASSWORD");
+    check(!parsed.search && !parsed.hash, "DICOMWEB_BASE_URL must not contain a query or fragment");
+  }
+  return problems;
+}
+
 /** @param {Record<string, unknown>} vars staging vars */
 function dicomwebRequiredSecrets(vars) {
   if (vars?.FEATURE_DICOMWEB !== "true") return [];
@@ -164,16 +203,7 @@ export function checkStagingConfig(config) {
 
   check(["false", "true"].includes(String(vars.FEATURE_DICOMWEB ?? "false")), "FEATURE_DICOMWEB must be true or false");
   if (vars.FEATURE_DICOMWEB === "true") {
-    const baseUrl = String(vars.DICOMWEB_BASE_URL ?? "").trim();
-    let parsed = null;
-    try {
-      parsed = new URL(baseUrl);
-    } catch {
-      parsed = null;
-    }
-    check(parsed !== null && parsed.protocol === "https:", "FEATURE_DICOMWEB=true requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root");
-    check(!parsed || (!parsed.username && !parsed.password), "DICOMWEB_BASE_URL must not embed credentials; use DICOMWEB_USERNAME and DICOMWEB_PASSWORD");
-    check(!parsed || (!parsed.search && !parsed.hash), "DICOMWEB_BASE_URL must not contain a query or fragment");
+    problems.push(...dicomwebEndpointProblems(vars, staging));
     check(["basic", "bearer"].includes(String(vars.DICOMWEB_AUTH ?? "")), "FEATURE_DICOMWEB=true requires DICOMWEB_AUTH=basic or bearer in staging");
   }
 
