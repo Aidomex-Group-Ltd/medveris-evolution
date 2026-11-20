@@ -1,18 +1,26 @@
 name: Deploy production
 #
-# Production deploys only from the established release process, with a required manual approval
-# gate. This workflow does not run on push or pull requests. Trigger it manually once the release
-# evidence from a staging deploy is reviewed.
+# Production deploys only through the established release process, with a required manual
+# approval gate. This workflow does not run on push or pull requests. Trigger it manually
+# after reviewing staging evidence for the same commit.
 #
-# Promotion model: the same immutable Worker build artifact that was verified on staging should be
-# promoted to production. Cloudflare Workers versioning/upload supports that model, and the existing
-# `production-deploy.mjs` gate validates migration state, Hyperdrive isolation, backup attestation,
-# domain state and production smoke responses before cutover. The wrapper below keeps the manual
-# approval as the only promotion path by using a protected GitHub Environment.
+# The repository's production release command is `npm run deploy:production`
+# (scripts/production-deploy.mjs without --dry-run). It runs the full gate, then a
+# verified blue-green release with health, readiness, version metadata and smoke checks.
+# `npm run deploy:production:check` is a read-only readiness check only and is NOT a deploy.
 #
-# The repository’s production release process is deliberately separate from staging: production has
-# its own gate, secret provisioning, release, rollback and domain scripts, and none of them runs
-# migrations, resets data, or touches staging.
+# Artifact model: Cloudflare Workers version IDs are scoped to one Worker. Staging and
+# production are separate Workers (`medveris-staging` and `medveris-production`), so a
+# staging version object cannot be promoted across Workers. Both workflows build from the
+# same checked-out commit; production rebuilds and uploads that same commit. No claim of
+# cross-Worker artifact promotion is made.
+#
+# Approval: the `production` GitHub Environment must have required reviewers configured
+# (Settings -> Environments -> production -> Required reviewers, preferably with
+# "Prevent self-review"). On a public repository this is available on all current GitHub
+# plans, including Free. If the repository is made private, required reviewers and
+# environment secrets require GitHub Pro/Team/Enterprise. The workflow cannot create these
+# rules itself; without them the job starts without approval.
 
 on:
   workflow_dispatch:
@@ -21,10 +29,6 @@ on:
         description: "Short note about this production release (what is being promoted and why)."
         required: true
 
-# Production is a protected environment. Configure the `production` GitHub Environment with required
-# reviewers so this workflow pauses there until an authorized person approves it. The Cloudflare
-# account, production secrets, Hyperdrive configs, R2 bucket and domain attachment are set up in the
-# hosting provider, not in this file.
 environment:
   name: production
   url: https://medveris.online
@@ -42,6 +46,8 @@ jobs:
     timeout-minutes: 45
     env:
       CLOUDFLARE_ACCOUNT_ID: 6337ed24a5f8ff4ec3f74517a55a7e6b
+      # Wrangler has no keyless OIDC mode for deploys; use a scoped CI API token.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +58,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Runtime dependency audit
-        run: npm audit --omit=dev --audit-level=high
+        run: npm run audit:runtime
       - name: Lint
         run: npm run lint
       - name: Typecheck
@@ -61,30 +67,35 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
-      - name: Production deployment gate
-        run: npm run deploy:production:check
+      - name: Prepare production secret files
         env:
-          # Production secrets and protected config files live outside the repository, in
-          # `~/.config/medveris/production/`. The script refuses to read any secrets file that is
-          # inside the repository and never passes secret values through arguments.
-          #
-          # What you must configure separately (not committed):
-          #   - Wrangler authentication on the runner sufficient to deploy `medveris-production`
-          #     and to perform a blue-green release against `env.production` in `wrangler.jsonc`.
-          #   - Production Worker secrets already present on the account, or the protected
-          #     `~/.config/medveris/production/secrets.env` / `resend.env` / `db.env` files the
-          #     script uses only for checks and only-upload-missing uploads.
-          #   - Production Hyperdrive configs, R2 bucket `medveris-production-uploads` and the
-          #     production queues referenced by `wrangler.jsonc`.
-          #   - A current backup attestation in `~/.config/medveris/production/backup-verification.json`
-          #     (the gate refuses a missing file or a drill older than 90 days).
-          #   - Migration review: the gate reads `schema_migrations` read-only and refuses to release
-          #     while any migration is pending or unknown.
-        working-directory: .
-      - name: Promotion note
+          PRODUCTION_SECRETS_ENV: ${{ secrets.PRODUCTION_SECRETS_ENV }}
+          PRODUCTION_RESEND_ENV: ${{ secrets.PRODUCTION_RESEND_ENV }}
+          PRODUCTION_DB_ENV: ${{ secrets.PRODUCTION_DB_ENV }}
+          PRODUCTION_BACKUP_ATTESTATION: ${{ secrets.PRODUCTION_BACKUP_ATTESTATION }}
         run: |
           set -euo pipefail
-          echo "Production release promoted from the same checked-out commit that passed the staging gate."
-          echo "Commit: ${{ github.sha }}"
+          for name in PRODUCTION_SECRETS_ENV PRODUCTION_RESEND_ENV PRODUCTION_DB_ENV PRODUCTION_BACKUP_ATTESTATION; do
+            test -n "${!name}" || { echo "$name secret is required"; exit 1; }
+          done
+          dir="$(mktemp -d)"
+          umask 077
+          printf '%s\n' "$PRODUCTION_SECRETS_ENV" > "$dir/secrets.env"
+          printf '%s\n' "$PRODUCTION_RESEND_ENV" > "$dir/resend.env"
+          printf '%s\n' "$PRODUCTION_DB_ENV" > "$dir/db.env"
+          printf '%s\n' "$PRODUCTION_BACKUP_ATTESTATION" > "$dir/backup-verification.json"
+          echo "PRODUCTION_SECRETS_DIR=$dir" >> "$GITHUB_ENV"
+      - name: Production release
+        run: npm run deploy:production
+        env:
+          # Runner-local files created above from GitHub secrets; no developer ~/.config
+          # directory is used. The script uploads only secrets the Worker lacks.
+          # Required GitHub secrets: CLOUDFLARE_API_TOKEN, PRODUCTION_SECRETS_ENV,
+          # PRODUCTION_RESEND_ENV, PRODUCTION_DB_ENV, PRODUCTION_BACKUP_ATTESTATION.
+          # Required Cloudflare resources: production Hyperdrive configs, R2 bucket
+          # medveris-production-uploads and production queues in wrangler.jsonc.
+      - name: Release note
+        run: |
+          set -euo pipefail
+          echo "Production release for commit ${{ github.sha }} after environment approval."
           echo "Release notes: ${{ inputs.release_notes }}"
-          echo "Promotion occurred only after the production GitHub Environment required reviewers approved this run."

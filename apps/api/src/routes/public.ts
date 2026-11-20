@@ -50,6 +50,12 @@ publicRoutes.get("/public/config", async (c) => {
     // Only advertise development sign-in helpers when this server actually serves them, so the
     // web app does not offer a button that would 404 on a local machine with the flag off.
     devTotpCodes: config.devShowTotpSecrets && config.appEnv !== "production",
+    /**
+     * Production deployments that still hold only synthetic demonstration data must surface a
+     * non-dismissible demo-environment warning in the web app. It is enabled by default and only
+     * turns off when an operator confirms production holds real, approved patient data.
+     */
+    syntheticData: config.appEnv === "production" && config.syntheticDataBannerEnabled,
     release: "M1 outpatient foundation",
   });
 });

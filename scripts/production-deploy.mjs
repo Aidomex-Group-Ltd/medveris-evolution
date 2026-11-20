@@ -205,7 +205,7 @@ evidence.blue = live.blue;
 step("lint", "npm", ["run", "lint"]);
 step("typecheck", "npm", ["run", "typecheck"]);
 step("tests (unit and PostgreSQL integration)", "npm", ["test"]);
-step("dependency audit (runtime, high and critical)", "npm", ["audit", "--omit=dev", "--audit-level=high"]);
+step("dependency audit (runtime, high and critical)", "npm", ["run", "audit:runtime"]);
 step("build", "npm", ["run", "build"]);
 console.log("\nproduction gate: wrangler packaging dry run (no upload)");
 const packaging = wrangler("deploy", "--env", PRODUCTION.env, "--dry-run", "--outdir", ".wrangler/dry-run-production");
