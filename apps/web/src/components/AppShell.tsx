@@ -24,6 +24,7 @@ import {
 } from "../lib/nav";
 import { workspaceProfile } from "../lib/workspace";
 import { useFocusTrap } from "../lib/focusTrap";
+import { DemoEnvironmentBanner } from "./DemoEnvironmentBanner";
 import type { MeResponse } from "../lib/types";
 
 interface BillingStatusView {
@@ -584,6 +585,7 @@ export function AppShell() {
         </header>
         {me.activeTenant ? <PrimaryNavStrip sections={sections} platform={platform} active={active} locationPathname={location.pathname} /> : null}
         <SubscriptionBanner />
+        <DemoEnvironmentBanner />
         <main className="mv-content" id="main-content">
           <Outlet />
         </main>
