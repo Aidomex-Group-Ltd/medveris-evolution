@@ -106,6 +106,12 @@ export interface PublicConfig {
   features: Record<string, boolean>;
   /** Present only when the API serves the local-development authenticator-code helper. */
   devTotpCodes?: boolean;
+  /**
+   * True when this is a production deployment that still holds only synthetic demonstration data,
+   * so the web app must show a non-dismissible demo-environment warning. It is derived from the
+   * server's APP_ENV and the FEATURE_SYNTHETIC_DATA_BANNER flag (default ON).
+   */
+  syntheticData: boolean;
   release: string;
 }
 

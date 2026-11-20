@@ -12,6 +12,8 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 const LOCAL_ENVIRONMENTS = new Set(["development", "test"]);
 const UID = /^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))+$/;
 const RENDERED_TYPES = ["image/jpeg", "image/png"] as const;
+/** The only http endpoint accepted for DICOMWEB_TRANSPORT=vpc: a private-network routing label, never resolved. */
+const VPC_BASE_URL = "http://medveris-pacs/dicom-web";
 
 export function isDicomUid(value: unknown): value is string {
   return typeof value === "string" && value.length <= 64 && UID.test(value);
@@ -33,11 +35,17 @@ export function dicomwebConfigProblems(config: Pick<AppConfig, "appEnv" | "dicom
     if (url) {
       if (url.username || url.password) problems.push("DICOMWEB_BASE_URL must not embed credentials; use DICOMWEB_USERNAME and DICOMWEB_PASSWORD");
       if (url.search || url.hash) problems.push("DICOMWEB_BASE_URL must not contain a query or fragment");
-      // A VPC binding routes the request over the private network; the host is a routing label, not an
-      // address, so scheme rules are relaxed (http is the expected shape there).
-      const relaxed = settings.transport === "vpc" || LOCAL_ENVIRONMENTS.has(config.appEnv);
-      if (url.protocol !== "https:" && !(relaxed && url.protocol === "http:")) {
-        problems.push("DICOMWEB_BASE_URL must use HTTPS outside local development and tests");
+      if (settings.transport === "vpc") {
+        // A VPC binding routes over the private network; the host is a routing label, not an address.
+        // http is allowed only for the exact internal label so an arbitrary URL cannot bypass TLS.
+        if (url.protocol === "http:" && url.href.replace(/\/+$/, "") !== VPC_BASE_URL) {
+          problems.push(`DICOMWEB_TRANSPORT=vpc with an http DICOMWEB_BASE_URL requires the exact internal routing label ${VPC_BASE_URL}`);
+        }
+      } else {
+        const relaxed = LOCAL_ENVIRONMENTS.has(config.appEnv);
+        if (url.protocol !== "https:" && !(relaxed && url.protocol === "http:")) {
+          problems.push("DICOMWEB_BASE_URL must use HTTPS outside local development and tests");
+        }
       }
     }
   }

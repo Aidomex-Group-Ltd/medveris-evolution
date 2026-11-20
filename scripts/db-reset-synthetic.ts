@@ -85,6 +85,9 @@ async function preflight(client: Client): Promise<void> {
   console.log("preflight: all safety checks passed");
 }
 
+const batchArg = process.argv.find((arg) => arg.startsWith("--batch-size="));
+const batchSize = Math.max(1, Number(batchArg?.split("=")[1] ?? 4));
+
 const client = new Client({ connectionString: migrationUrl });
 await client.connect();
 try {
@@ -92,7 +95,7 @@ try {
   try {
     await preflight(client);
     if (checkOnly) throw new CheckOnly();
-    console.warn(`Resetting synthetic database ${target} in a single transaction.`);
+    console.warn(`Resetting synthetic database ${target}; schema in one transaction, migrations in batches of ${batchSize}.`);
     await client.query("set local lock_timeout = '5s'");
     await client.query("drop schema if exists app cascade");
     await client.query("drop schema if exists public cascade");
@@ -100,19 +103,32 @@ try {
     await client.query("revoke all on schema public from public");
     await client.query(`grant usage on schema public to ${SCHEMA_USAGE_ROLES.join(", ")}`);
     await ensureMigrationTable(client);
-    for (const migration of migrations) {
-      await applyMigration(client, migration);
-      console.log(`applied ${migration.version}`);
-    }
-    const problems = await schemaIntegrityProblems(client);
-    if (problems.length) throw new Error(`schema integrity check failed: ${problems.join("; ")}`);
     await client.query("commit");
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     if (!(error instanceof CheckOnly)) {
-      console.error("Reset rolled back; the database is unchanged.");
+      console.error("Schema reset rolled back; the database is unchanged.");
       throw error;
     }
+  }
+  if (!checkOnly) {
+    for (let index = 0; index < migrations.length; index += batchSize) {
+      const batch = migrations.slice(index, index + batchSize);
+      await client.query("begin");
+      try {
+        for (const migration of batch) {
+          await applyMigration(client, migration);
+          console.log(`applied ${migration.version}`);
+        }
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback").catch(() => undefined);
+        const cause = error instanceof Error ? error.message : String(error);
+        throw new Error(`Migration batch starting at ${batch[0]?.version} failed; the database is partially reset. Re-run the reset to start over. Cause: ${cause}`);
+      }
+    }
+    const problems = await schemaIntegrityProblems(client);
+    if (problems.length) throw new Error(`schema integrity check failed: ${problems.join("; ")}`);
   }
 } finally {
   await client.end();

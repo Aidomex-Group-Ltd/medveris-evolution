@@ -1,0 +1,80 @@
+name: Deploy staging
+#
+# Staging deploys from the dedicated long-lived `staging` branch. The current PR branch
+# (`pr-readiness-20261116`) is not a staging branch and must never auto-deploy.
+# The script and Wrangler config always target `env.staging` in `wrangler.jsonc`.
+#
+# The release is blue-green and never runs migrations, resets data, or touches production.
+#
+# Artifact model: Cloudflare Workers version IDs are scoped to one Worker. Staging and
+# production are separate Workers (`medveris-staging` and `medveris-production`), so there
+# is no supported cross-Worker version promotion. Each workflow builds from the same
+# checked-out commit and uploads its own Worker version; production therefore rebuilds
+# the same commit rather than promoting a staging version object.
+
+on:
+  push:
+    branches:
+      - staging
+
+# Staging is a non-production environment. Keep the name stable so repository/branch protection
+# and GitHub Environment rules can target it consistently.
+environment:
+  name: staging
+  url: https://medveris-staging.aidomexgroupltd.workers.dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Pin the Cloudflare account so CI deploys do not depend on which account Wrangler is logged into.
+      CLOUDFLARE_ACCOUNT_ID: 6337ed24a5f8ff4ec3f74517a55a7e6b
+      # Wrangler has no keyless OIDC mode for deploys; use a scoped CI API token.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Runtime dependency audit
+        run: npm run audit:runtime
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Prepare staging secret files
+        env:
+          STAGING_SECRETS_ENV: ${{ secrets.STAGING_SECRETS_ENV }}
+          STAGING_RESEND_ENV: ${{ secrets.STAGING_RESEND_ENV }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_SECRETS_ENV" || { echo "STAGING_SECRETS_ENV secret is required"; exit 1; }
+          test -n "$STAGING_RESEND_ENV" || { echo "STAGING_RESEND_ENV secret is required"; exit 1; }
+          dir="$(mktemp -d)"
+          umask 077
+          printf '%s\n' "$STAGING_SECRETS_ENV" > "$dir/secrets.env"
+          printf '%s\n' "$STAGING_RESEND_ENV" > "$dir/resend.env"
+          echo "STAGING_SECRETS_FILE=$dir/secrets.env" >> "$GITHUB_ENV"
+          echo "STAGING_RESEND_FILE=$dir/resend.env" >> "$GITHUB_ENV"
+      - name: Staging deployment gate
+        run: npm run deploy:staging
+        env:
+          # The script now reads runner-local files created above from GitHub secrets,
+          # never a developer's ~/.config directory. Only missing Worker secrets are uploaded.
+          # Required GitHub secrets: CLOUDFLARE_API_TOKEN, STAGING_SECRETS_ENV, STAGING_RESEND_ENV.
+          # Required Cloudflare resources: staging Hyperdrive configs, R2 bucket
+          # medveris-staging-uploads and the staging queues referenced by wrangler.jsonc.

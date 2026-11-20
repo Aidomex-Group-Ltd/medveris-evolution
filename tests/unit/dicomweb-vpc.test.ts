@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../../apps/api/src/config.js";
 import { DicomwebClient, dicomwebConfigProblems, dicomwebFingerprint, PacsError } from "../../apps/api/src/integrations/dicomweb.js";
+import { bindingProblems, type WorkerEnv } from "../../apps/api/src/worker-support.js";
 
 const strong = {
   SESSION_SECRET: "a".repeat(20) + "Session-Secret-Value-1",
@@ -25,9 +26,27 @@ describe("DICOMWEB transport", () => {
     expect(problems.some((problem) => problem.includes("must use HTTPS"))).toBe(true);
   });
 
-  it("allows http for vpc transport because the host is a routing label, not an address", () => {
+  it("allows http for vpc transport only for the exact internal routing label", () => {
     const config = loadConfig({ ...staging, DICOMWEB_TRANSPORT: "vpc", DICOMWEB_BASE_URL: "http://medveris-pacs/dicom-web", DICOMWEB_AUTH: "basic", DICOMWEB_USERNAME: "orthanc", DICOMWEB_PASSWORD: "secret-value" });
     expect(dicomwebConfigProblems(config)).toEqual([]);
+  });
+
+  it("rejects an arbitrary http URL for vpc transport", () => {
+    const config = loadConfig({ ...staging, DICOMWEB_TRANSPORT: "vpc", DICOMWEB_BASE_URL: "http://pacs.example.test/dicom-web", DICOMWEB_AUTH: "basic", DICOMWEB_USERNAME: "orthanc", DICOMWEB_PASSWORD: "secret-value" });
+    expect(dicomwebConfigProblems(config).some((problem) => problem.includes("exact internal routing label"))).toBe(true);
+  });
+
+  it("still accepts HTTPS for vpc transport", () => {
+    const config = loadConfig({ ...staging, DICOMWEB_TRANSPORT: "vpc", DICOMWEB_BASE_URL: "https://pacs.example.test/dicom-web", DICOMWEB_AUTH: "basic", DICOMWEB_USERNAME: "orthanc", DICOMWEB_PASSWORD: "secret-value" });
+    expect(dicomwebConfigProblems(config)).toEqual([]);
+  });
+
+  it("requires the PACS VPC binding when transport is vpc", () => {
+    const env = { ...staging, DICOMWEB_TRANSPORT: "vpc", DICOMWEB_BASE_URL: "http://medveris-pacs/dicom-web" };
+    const config = loadConfig(env);
+    const missing = "DICOMWEB_TRANSPORT=vpc requires a PACS VPC service binding (vpc_services.PACS)";
+    expect(bindingProblems(env as WorkerEnv, config)).toContain(missing);
+    expect(bindingProblems({ ...env, PACS: { fetch: async () => new Response("{}") } } as WorkerEnv, config)).not.toContain(missing);
   });
 
   it("keeps the structural rules in vpc transport (no embedded credentials, no query)", () => {

@@ -128,11 +128,12 @@ describe("production configuration rules", () => {
     const config = readyConfig();
     Object.assign(config.env.production.vars, {
       FEATURE_DICOMWEB: "true",
+      DICOMWEB_TRANSPORT: "url",
       DICOMWEB_BASE_URL: "http://pacs.medveris.online/dicom-web",
       DICOMWEB_AUTH: "none",
     });
     expect(checkProductionConfig(config)).toEqual(expect.arrayContaining([
-      "FEATURE_DICOMWEB=true requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root",
+      "DICOMWEB_TRANSPORT=url requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root",
       "FEATURE_DICOMWEB=true requires DICOMWEB_AUTH=basic or bearer in production",
       "FEATURE_DICOMWEB=true requires the DICOMWEB_USERNAME secret to be declared",
       "FEATURE_DICOMWEB=true requires the DICOMWEB_PASSWORD secret to be declared",
@@ -147,6 +148,18 @@ describe("production configuration rules", () => {
     config.env.production.secrets.required = config.env.production.secrets.required.filter((name: string) => !name.startsWith("DICOMWEB_"));
     config.env.production.secrets.required.push("DICOMWEB_BEARER_TOKEN");
     expect(checkProductionConfig(config).filter((problem: string) => /DICOMWEB|DICOMweb/.test(problem))).toEqual([]);
+  });
+
+  it("rejects vpc transport in production because there is no PACS binding", () => {
+    const config = readyConfig();
+    Object.assign(config.env.production.vars, {
+      FEATURE_DICOMWEB: "true",
+      DICOMWEB_TRANSPORT: "vpc",
+      DICOMWEB_BASE_URL: "http://medveris-pacs/dicom-web",
+      DICOMWEB_AUTH: "basic",
+    });
+    config.env.production.secrets.required.push("DICOMWEB_USERNAME", "DICOMWEB_PASSWORD");
+    expect(checkProductionConfig(config)).toContain("DICOMWEB_TRANSPORT=vpc requires a PACS VPC service binding (vpc_services.PACS)");
   });
 
   it("enables AI only with an HTTPS Ollama endpoint, a declared AI_TOKEN secret, a non-empty AI_MODEL and no sandbox mode", () => {

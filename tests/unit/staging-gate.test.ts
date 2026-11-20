@@ -225,16 +225,17 @@ describe("staging gate email rules", () => {
 });
 
 describe("staging gate DICOMweb rules", () => {
-  it("requires an HTTPS endpoint, supported auth and declared credentials once enabled", () => {
+  it("requires an HTTPS endpoint with url transport, supported auth and declared credentials once enabled", () => {
     const config = readyConfig();
     Object.assign(config.env.staging.vars, {
       FEATURE_DICOMWEB: "true",
+      DICOMWEB_TRANSPORT: "url",
       DICOMWEB_BASE_URL: "http://pacs.medveris.test/dicom-web",
       DICOMWEB_AUTH: "none",
     });
     expect(requiredSecrets(config.env.staging)).toEqual(expect.arrayContaining(["DICOMWEB_USERNAME", "DICOMWEB_PASSWORD"]));
     expect(checkStagingConfig(config)).toEqual(expect.arrayContaining([
-      "FEATURE_DICOMWEB=true requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root",
+      "DICOMWEB_TRANSPORT=url requires DICOMWEB_BASE_URL with an HTTPS DICOMweb root",
       "FEATURE_DICOMWEB=true requires DICOMWEB_AUTH=basic or bearer in staging",
       "DICOMWEB_USERNAME must be listed in env.staging.secrets.required",
       "DICOMWEB_PASSWORD must be listed in env.staging.secrets.required",
@@ -243,6 +244,33 @@ describe("staging gate DICOMweb rules", () => {
     Object.assign(config.env.staging.vars, { DICOMWEB_BASE_URL: "https://pacs.medveris.test/dicom-web", DICOMWEB_AUTH: "basic" });
     config.env.staging.secrets.required.push("DICOMWEB_USERNAME", "DICOMWEB_PASSWORD");
     expect(checkStagingConfig(config).filter((problem: string) => /DICOMWEB|DICOMweb/.test(problem))).toEqual([]);
+  });
+
+  it("accepts the internal VPC label only with the PACS binding", () => {
+    const config = readyConfig();
+    Object.assign(config.env.staging.vars, {
+      FEATURE_DICOMWEB: "true",
+      DICOMWEB_TRANSPORT: "vpc",
+      DICOMWEB_BASE_URL: "http://medveris-pacs/dicom-web",
+      DICOMWEB_AUTH: "basic",
+    });
+    config.env.staging.secrets.required.push("DICOMWEB_USERNAME", "DICOMWEB_PASSWORD");
+    expect(checkStagingConfig(config).filter((problem: string) => /DICOMWEB|DICOMweb/.test(problem))).toEqual([]);
+
+    config.env.staging.vpc_services = [];
+    expect(checkStagingConfig(config)).toContain("DICOMWEB_TRANSPORT=vpc requires a PACS VPC service binding (vpc_services.PACS)");
+  });
+
+  it("rejects an arbitrary http URL for vpc transport", () => {
+    const config = readyConfig();
+    Object.assign(config.env.staging.vars, {
+      FEATURE_DICOMWEB: "true",
+      DICOMWEB_TRANSPORT: "vpc",
+      DICOMWEB_BASE_URL: "http://pacs.example.test/dicom-web",
+      DICOMWEB_AUTH: "basic",
+    });
+    config.env.staging.secrets.required.push("DICOMWEB_USERNAME", "DICOMWEB_PASSWORD");
+    expect(checkStagingConfig(config)).toContain("DICOMWEB_TRANSPORT=vpc requires DICOMWEB_BASE_URL to be exactly http://medveris-pacs/dicom-web");
   });
 
   it("asks for the bearer token instead of basic credentials", () => {

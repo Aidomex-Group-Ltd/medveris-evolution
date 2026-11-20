@@ -26,8 +26,10 @@ Medveris stores no pixel data and is not a diagnostic viewer. It relays rendered
 
 | Setting | Kind | Required | Notes |
 |---|---|---|---|
-| `FEATURE_DICOMWEB` | var | yes | Set `true` to request the integration. |
-| `DICOMWEB_BASE_URL` | var | yes | DICOMweb root, e.g. `https://pacs.example.org/dicom-web`. No trailing slash, credentials, query or fragment. HTTPS outside development/tests. |
+| `FEATURE_DICOMWEB` | var | yes | Set `true` to request the integration. Keep `false` until a passing conformance run and authorization review are recorded. |
+| `DICOMWEB_MODE` | var | no | `sandbox` for synthetic PACS test data, `live` for a real PACS; defaults to `live`. Never `sandbox` in production. |
+| `DICOMWEB_TRANSPORT` | var | no | `url` (default) or `vpc`. |
+| `DICOMWEB_BASE_URL` | var | yes | DICOMweb root. With `DICOMWEB_TRANSPORT=url`, must be HTTPS (e.g. `https://pacs.example.org/dicom-web`). With `DICOMWEB_TRANSPORT=vpc`, http is allowed only for the exact internal routing label `http://medveris-pacs/dicom-web`, and the `PACS` VPC binding is required. No trailing slash, credentials, query or fragment. |
 | `DICOMWEB_AUTH` | var | yes | `basic` or `bearer` outside development/tests; `none` is local-only. |
 | `DICOMWEB_USERNAME` | secret | basic | PACS account username. |
 | `DICOMWEB_PASSWORD` | secret | basic | PACS account password. |
@@ -154,7 +156,7 @@ Store the values outside the repository:
 - Staging: `~/.config/medveris/staging/secrets.env` (mode `0600`), or `npx wrangler secret put DICOMWEB_PASSWORD --env staging`.
 - Production: `~/.config/medveris/production/secrets.env` (mode `0600`), or `npx wrangler secret put DICOMWEB_PASSWORD --env production`.
 
-The deploy gates now accept `FEATURE_DICOMWEB=true` only when the endpoint is HTTPS, the auth mode is `basic` or `bearer`, and the matching secrets are declared. They still refuse `FEATURE_DICOMWEB=true` with `DICOMWEB_AUTH=none`.
+The deploy gates apply transport-specific endpoint rules: `DICOMWEB_TRANSPORT=url` requires an HTTPS root, while `DICOMWEB_TRANSPORT=vpc` requires the exact internal label `http://medveris-pacs/dicom-web` plus a `PACS` VPC binding; arbitrary http URLs and missing bindings are refused. Both gates still require auth mode `basic` or `bearer` and the matching declared secrets, and refuse `DICOMWEB_AUTH=none`.
 
 ### B3. Deploy through the gate
 

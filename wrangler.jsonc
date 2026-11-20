@@ -227,6 +227,9 @@
 				// unavailable until a platform operator records a passing conformance run.
 				// See docs/22_PACS_DICOMWEB_RUNBOOK.md.
 				"FEATURE_DICOMWEB": "false",
+				// The staging PACS is seeded with a single synthetic study, so mode is sandbox.
+				// Change to live only if real patient data is loaded, and only before enabling the feature.
+				"DICOMWEB_MODE": "sandbox",
 				"DICOMWEB_TRANSPORT": "vpc",
 				"DICOMWEB_BASE_URL": "http://medveris-pacs/dicom-web",
 				"DICOMWEB_AUTH": "basic",

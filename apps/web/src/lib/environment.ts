@@ -7,6 +7,8 @@ export interface AppEnvironment {
   appEnv: string | null;
   /** The environment holds synthetic demonstration data. False until known, so demo content never shows by default. */
   synthetic: boolean;
+  /** Production deployment still holding only synthetic demonstration data. Server-controlled; user settings cannot hide the banner. */
+  syntheticData: boolean;
   /** Local development or tests, the only environments where development sign-in helpers can be enabled. */
   local: boolean;
   /** The server serves local-development authenticator codes. False until known, so no helper is offered by default. */
@@ -25,27 +27,28 @@ function publicConfig(): Promise<PublicConfig> {
   return request;
 }
 
-export function describeEnvironment(appEnv: string | null, devTotpCodes = false): AppEnvironment {
+export function describeEnvironment(appEnv: string | null, devTotpCodes = false, syntheticData = false): AppEnvironment {
   return {
     appEnv,
     synthetic: appEnv !== null && appEnv !== "production",
+    syntheticData,
     local: appEnv !== null && LOCAL_ENVIRONMENTS.has(appEnv),
     devTotpCodes: appEnv !== null && appEnv !== "production" && devTotpCodes,
   };
 }
 
 export function useAppEnvironment(): AppEnvironment {
-  const [state, setState] = useState<{ appEnv: string | null; devTotpCodes: boolean }>({ appEnv: null, devTotpCodes: false });
+  const [state, setState] = useState<{ appEnv: string | null; devTotpCodes: boolean; syntheticData: boolean }>({ appEnv: null, devTotpCodes: false, syntheticData: false });
   useEffect(() => {
     let active = true;
     publicConfig()
       .then((config) => {
-        if (active) setState({ appEnv: config.appEnv, devTotpCodes: config.devTotpCodes === true });
+        if (active) setState({ appEnv: config.appEnv, devTotpCodes: config.devTotpCodes === true, syntheticData: config.syntheticData === true });
       })
       .catch(() => undefined);
     return () => {
       active = false;
     };
   }, []);
-  return describeEnvironment(state.appEnv, state.devTotpCodes);
+  return describeEnvironment(state.appEnv, state.devTotpCodes, state.syntheticData);
 }

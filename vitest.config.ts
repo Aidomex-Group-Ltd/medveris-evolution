@@ -14,6 +14,7 @@ export default defineConfig({
     testTimeout: 20_000,
     hookTimeout: 20_000,
     fileParallelism: false,
+    maxWorkers: 1,
     sequence: { concurrent: false },
     reporters: ["default"],
   },
