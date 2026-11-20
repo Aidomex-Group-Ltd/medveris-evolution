@@ -82,6 +82,14 @@ On `pr-readiness-20261116`:
 - `docs/operations/DEPENDENCY_AUDIT_EXCEPTIONS.md`
 - `scripts/audit-check.mjs`
 
+## Config change after baseline: FEATURE_SYNTHETIC_DATA_BANNER default flipped to false
+
+- `apps/api/src/config.ts`: `syntheticDataBannerEnabled` now defaults to `false` (was `true` at baseline).
+- `apps/api/src/routes/public.ts`: JSDoc updated to reflect the new default.
+- `apps/web/src/components/DemoEnvironmentBanner.tsx`: component JSDoc updated to note the default is off.
+- Effect: a production deployment whose `APP_ENV=production` without `FEATURE_SYNTHETIC_DATA_BANNER=true` no longer serves `syntheticData: true` in `GET /public/config`, so the web app no longer shows the demo-environment banner. Operators who still need the banner (synthetic-only production) must explicitly set `FEATURE_SYNTHETIC_DATA_BANNER=true`.
+- Tests: banner unit tests still pass (they mock `syntheticData: true/false` directly). `tests/unit/web-environment.test.ts` unchanged by this follow-up.
+
 ## Suggested commit grouping (unverified with owner; not committed yet)
 
 These are proposals only. Do not commit until approved.

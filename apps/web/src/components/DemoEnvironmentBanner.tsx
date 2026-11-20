@@ -9,7 +9,9 @@ function makeId(): string {
 
 /**
  * Non-dismissible banner shown in authenticated views of a production deployment that still
- * holds only synthetic demonstration data. It is driven by server truth
+ * holds only synthetic demonstration data. It is OFF by default (FEATURE_SYNTHETIC_DATA_BANNER
+ * defaults to false); set that env var to true when a production deployment is confirmed to still
+ * hold only synthetic demonstration data. It is driven by server truth
  * (`GET /public/config` `syntheticData`), not by any client-side preference, so a user cannot
  * hide it through settings.
  */

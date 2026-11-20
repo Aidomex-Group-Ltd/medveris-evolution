@@ -51,9 +51,10 @@ publicRoutes.get("/public/config", async (c) => {
     // web app does not offer a button that would 404 on a local machine with the flag off.
     devTotpCodes: config.devShowTotpSecrets && config.appEnv !== "production",
     /**
-     * Production deployments that still hold only synthetic demonstration data must surface a
-     * non-dismissible demo-environment warning in the web app. It is enabled by default and only
-     * turns off when an operator confirms production holds real, approved patient data.
+     * Production deployments that still hold only synthetic demonstration data surface a
+     * non-dismissible demo-environment warning in the web app. It is OFF by default; set
+     * FEATURE_SYNTHETIC_DATA_BANNER=true when a production deployment is confirmed to still hold
+     * only synthetic demonstration data.
      */
     syntheticData: config.appEnv === "production" && config.syntheticDataBannerEnabled,
     release: "M1 outpatient foundation",

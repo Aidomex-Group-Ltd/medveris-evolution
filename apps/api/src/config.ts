@@ -91,10 +91,11 @@ export interface AppConfig {
   devShowTotpSecrets: boolean;
   /**
    * When true, production deployments that still hold only synthetic demonstration data show a
-   * non-dismissible demo-environment banner in the web app. It is ON by default so an operator
-   * cannot accidentally launch a synthetic-only production environment without the warning being
-   * visible; it is intended to be turned off only when production is confirmed to hold real,
-   * approved patient data.
+   * non-dismissible demo-environment banner in the web app. Default OFF: set
+   * FEATURE_SYNTHETIC_DATA_BANNER=true when a production deployment is confirmed to still hold
+   * only synthetic demonstration data and the warning should be visible to every authenticated
+   * user. It is driven by server truth (GET /public/config.syntheticData), so users cannot hide
+   * it through client-side settings.
    */
   syntheticDataBannerEnabled: boolean;
   /** The scheduled job imports public content from the official sources in content_sources. */
@@ -713,7 +714,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     radiologyCriticalAckMinutes: Math.max(5, Math.min(integer(env.RADIOLOGY_CRITICAL_ACK_MINUTES, 60), 1440)),
     emergencyReviewDueHours: integer(env.EMERGENCY_REVIEW_DUE_HOURS, 24),
     devShowTotpSecrets: bool(env.DEV_SHOW_TOTP_SECRETS, false),
-    syntheticDataBannerEnabled: bool(env.FEATURE_SYNTHETIC_DATA_BANNER, true),
+    syntheticDataBannerEnabled: bool(env.FEATURE_SYNTHETIC_DATA_BANNER, false),
     contentFeedsEnabled: bool(env.CONTENT_FEEDS_ENABLED, false),
     map: {
       renderer: "leaflet",
