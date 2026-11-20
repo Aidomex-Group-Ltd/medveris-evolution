@@ -3,8 +3,10 @@ import { parseJsonOutput } from "./staging-gate.mjs";
 
 /**
  * Minimal Cloudflare API client for the calls Wrangler has no command for (zone lookup, Worker custom domains).
- * The token comes from CLOUDFLARE_API_TOKEN or the logged-in Wrangler session; it stays in memory and is
- * never printed or passed as a process argument.
+ * The token comes from CLOUDFLARE_API_TOKEN (the Worker observability token, set via wrangler secret put) or the
+ * logged-in Wrangler session; it stays in memory and is never printed or passed as a process argument.
+ * NOTE: the CI deploy credential is a separate secret named CLOUDFLARE_DEPLOY_TOKEN (GitHub Actions only); it is
+ * not read by this module.
  */
 
 export const ACCOUNT_ID = "6337ed24a5f8ff4ec3f74517a55a7e6b";

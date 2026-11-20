@@ -47,7 +47,8 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: 6337ed24a5f8ff4ec3f74517a55a7e6b
       # Wrangler has no keyless OIDC mode for deploys; use a scoped CI API token.
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # This is the CI deploy credential, separate from the Worker observability token (CLOUDFLARE_API_TOKEN).
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,7 +91,7 @@ jobs:
         env:
           # Runner-local files created above from GitHub secrets; no developer ~/.config
           # directory is used. The script uploads only secrets the Worker lacks.
-          # Required GitHub secrets: CLOUDFLARE_API_TOKEN, PRODUCTION_SECRETS_ENV,
+          # Required GitHub secrets: CLOUDFLARE_DEPLOY_TOKEN, PRODUCTION_SECRETS_ENV,
           # PRODUCTION_RESEND_ENV, PRODUCTION_DB_ENV, PRODUCTION_BACKUP_ATTESTATION.
           # Required Cloudflare resources: production Hyperdrive configs, R2 bucket
           # medveris-production-uploads and production queues in wrangler.jsonc.

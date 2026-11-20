@@ -38,7 +38,8 @@ jobs:
       # Pin the Cloudflare account so CI deploys do not depend on which account Wrangler is logged into.
       CLOUDFLARE_ACCOUNT_ID: 6337ed24a5f8ff4ec3f74517a55a7e6b
       # Wrangler has no keyless OIDC mode for deploys; use a scoped CI API token.
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # This is the CI deploy credential, separate from the Worker observability token (CLOUDFLARE_API_TOKEN).
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -75,6 +76,6 @@ jobs:
         env:
           # The script now reads runner-local files created above from GitHub secrets,
           # never a developer's ~/.config directory. Only missing Worker secrets are uploaded.
-          # Required GitHub secrets: CLOUDFLARE_API_TOKEN, STAGING_SECRETS_ENV, STAGING_RESEND_ENV.
+          # Required GitHub secrets: CLOUDFLARE_DEPLOY_TOKEN, STAGING_SECRETS_ENV, STAGING_RESEND_ENV.
           # Required Cloudflare resources: staging Hyperdrive configs, R2 bucket
           # medveris-staging-uploads and the staging queues referenced by wrangler.jsonc.

@@ -397,7 +397,12 @@
 				"FEATURE_LEDGER_ANCHORING": "false",
 				// Off until staging failover and WebSocket verification are signed off.
 				"REALTIME_ENABLED": "false",
-				"REQUEST_LOG_SAMPLE_RATE": "0.1"
+				"REQUEST_LOG_SAMPLE_RATE": "0.1",
+				// Demo-environment banner (exact text: "Demo environment - synthetic data only. Do not enter real patient information.").
+				// Driven by server truth (GET /api/v1/public/config syntheticData), not client/user settings; the banner is
+				// non-dismissible. Off by default; flip here to true only while production holds synthetic data, then back to
+				// false before any real patient data is present.
+				"FEATURE_SYNTHETIC_DATA_BANNER": "false"
 			},
 			"secrets": {
 				"required": [

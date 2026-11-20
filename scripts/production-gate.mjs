@@ -18,6 +18,7 @@ export const PRODUCTION = Object.freeze({
   workersDevOrigin: "https://medveris-production.aidomexgroupltd.workers.dev",
   apex: "medveris.online",
   domains: Object.freeze(["medveris.online", "www.medveris.online"]),
+  expectedBackupProvider: "Kamatera",
 });
 
 export const PRODUCTION_SECRETS = Object.freeze(["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]);
@@ -78,6 +79,25 @@ export function declaredDomains(production) {
   return (production?.routes ?? [])
     .filter((/** @type {any} */ route) => route?.custom_domain === true)
     .map((/** @type {any} */ route) => String(route.pattern));
+}
+
+/**
+ * Concatenates every string leaf value reachable from a production config node. Used only to detect
+ * staging/local/synthetic resource references in values (not in flag names such as
+ * FEATURE_SYNTHETIC_DATA_BANNER).
+ * @param {any} node
+ * @returns {string}
+ */
+function productionStringValues(node) {
+  const parts = [];
+  function walk(value) {
+    if (value === null || value === undefined) return;
+    if (typeof value === "string") { parts.push(value); return; }
+    if (Array.isArray(value)) { for (const item of value) walk(item); return; }
+    if (typeof value === "object") { for (const key of Object.keys(value)) walk(value[key]); return; }
+  }
+  walk(node);
+  return parts.join("\n");
 }
 
 /**
@@ -175,10 +195,11 @@ export function checkProductionConfig(config) {
   const routes = production.routes ?? (production.route ? [production.route] : []);
   check(routes.every((/** @type {any} */ route) => route?.custom_domain === true && PRODUCTION.domains.includes(route.pattern)),
     "production routes must be custom domains for medveris.online or www.medveris.online");
-
   const serialized = JSON.stringify(production);
   check(!serialized.includes("REPLACE_WITH"), "production config still contains REPLACE_WITH placeholders");
-  check(!NON_PRODUCTION_REFERENCE.test(serialized.replaceAll("REPLACE_WITH", "")), "production config references a staging, local or synthetic resource");
+  // Only var/binding **values** can reference a staging, local or synthetic resource; a flag name such as
+  // FEATURE_SYNTHETIC_DATA_BANNER is not a resource reference. Test the concatenated leaf string values.
+  check(!NON_PRODUCTION_REFERENCE.test(productionStringValues(production).replaceAll("REPLACE_WITH", "")), "production config references a staging, local or synthetic resource");
   check(!/migrat/i.test(JSON.stringify([config.build ?? null, production.build ?? null])), "a Wrangler build command must not run database migrations");
   problems.push(...checkScalingConfig(production, "medveris-production"));
   check(vars.REALTIME_ENABLED !== "true", "REALTIME_ENABLED must stay false in production until staging WebSocket and failover verification is signed off");
@@ -319,6 +340,8 @@ export function checkBackupAttestation(attestation, now) {
   }
   const problems = [];
   if (!attestation.provider) problems.push("backup verification must name the database provider");
+  else if (attestation.provider !== PRODUCTION.expectedBackupProvider) problems.push(`backup verification provider must be ${PRODUCTION.expectedBackupProvider}`);
+  if (attestation.targetDatabase !== PRODUCTION.database) problems.push(`backup verification must name the target database ${PRODUCTION.database}`);
   if (attestation.pointInTimeRecovery !== true) problems.push("point-in-time recovery must be enabled on the production database");
   if (attestation.encryptedBackups !== true) problems.push("encrypted backups must be enabled on the production database");
   if (!attestation.restoreDrillBy) problems.push("backup verification must name who ran the restore drill");

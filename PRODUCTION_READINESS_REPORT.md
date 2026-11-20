@@ -293,7 +293,7 @@ CONTENT_FEEDS_ENABLED=false
 
 - **Questions for the owner:**
   1. Is the GitHub `production` Environment configured with required reviewers (and is the repo public/private)?
-  2. Are `PRODUCTION_SECRETS_ENV`, `PRODUCTION_RESEND_ENV`, `PRODUCTION_DB_ENV`, `PRODUCTION_BACKUP_ATTESTATION`, `CLOUDFLARE_API_TOKEN` GitHub secrets all set, and are the values non-empty?
+  2. Are `PRODUCTION_SECRETS_ENV`, `PRODUCTION_RESEND_ENV`, `PRODUCTION_DB_ENV`, `PRODUCTION_BACKUP_ATTESTATION`, `CLOUDFLARE_DEPLOY_TOKEN` GitHub secrets all set, and are the values non-empty?
   3. Is `AI_BASE_URL` (`https://ollama.medveris.online`) the intended production Ollama endpoint, and do `AI_TOKEN`/`OLLAMA_USERNAME`/`OLLAMA_PASSWORD` exist?
   4. When (if ever) will a licensed SNOMED CT/LOINC terminology service be contracted?
   5. Is there an approved legal/privacy review for Uganda DPA 2019 and any applicable HIPAA/GDPR regime before real data?

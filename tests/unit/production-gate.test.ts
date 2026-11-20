@@ -335,7 +335,14 @@ describe("production migration and recovery rules", () => {
 
   it("requires a recent recorded restore drill with point-in-time recovery", () => {
     const now = new Date("2026-10-28T00:00:00Z");
-    const good = { provider: "managed", pointInTimeRecovery: true, encryptedBackups: true, restoreDrillAt: "2026-10-01T00:00:00Z", restoreDrillBy: "ops" };
+    const good = {
+      provider: PRODUCTION.expectedBackupProvider,
+      targetDatabase: PRODUCTION.database,
+      pointInTimeRecovery: true,
+      encryptedBackups: true,
+      restoreDrillAt: "2026-10-01T00:00:00Z",
+      restoreDrillBy: "ops",
+    };
     expect(checkBackupAttestation(good, now)).toEqual([]);
     expect(checkBackupAttestation(null, now)).toEqual([
       "no backup and restore verification is recorded in ~/.config/medveris/production/backup-verification.json",
@@ -343,6 +350,25 @@ describe("production migration and recovery rules", () => {
     expect(checkBackupAttestation({ ...good, pointInTimeRecovery: false, restoreDrillAt: "2026-01-01T00:00:00Z" }, now)).toEqual([
       "point-in-time recovery must be enabled on the production database",
       "the last restore drill is older than 90 days",
+    ]);
+  });
+
+  it("requires the backup attestation to name the expected production provider and target database", () => {
+    const now = new Date("2026-11-20T00:00:00Z");
+    const good = {
+      provider: PRODUCTION.expectedBackupProvider,
+      targetDatabase: PRODUCTION.database,
+      pointInTimeRecovery: true,
+      encryptedBackups: true,
+      restoreDrillAt: "2026-11-19T00:00:00Z",
+      restoreDrillBy: "ops",
+    };
+    expect(checkBackupAttestation(good, now)).toEqual([]);
+    expect(checkBackupAttestation({ ...good, provider: "Aiven (medverispro)" }, now)).toEqual([
+      `backup verification provider must be ${PRODUCTION.expectedBackupProvider}`,
+    ]);
+    expect(checkBackupAttestation({ ...good, targetDatabase: "medveris_staging" }, now)).toEqual([
+      `backup verification must name the target database ${PRODUCTION.database}`,
     ]);
   });
 });
