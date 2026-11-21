@@ -402,7 +402,7 @@
 				// Driven by server truth (GET /api/v1/public/config syntheticData), not client/user settings; the banner is
 				// non-dismissible. Off by default; flip here to true only while production holds synthetic data, then back to
 				// false before any real patient data is present.
-				"FEATURE_SYNTHETIC_DATA_BANNER": "false"
+				"FEATURE_SYNTHETIC_DATA_BANNER": "true"
 			},
 			"secrets": {
 				"required": [
