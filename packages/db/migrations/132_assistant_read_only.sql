@@ -57,7 +57,8 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM medveris_assistant;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM medveris_assistant;
 REVOKE ALL ON ALL TABLES IN SCHEMA app FROM medveris_assistant;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM medveris_assistant;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app FROM medveris_assistant;
+REVOKE ALL ON FUNCTION app.security_event_summary(integer) FROM medveris_assistant;
+REVOKE ALL ON FUNCTION app.outbox_backlog() FROM medveris_assistant;
 REVOKE ALL ON SCHEMA app FROM medveris_assistant;
 
 -- Schema USAGE only, on both schemas. This is deliberate: without USAGE on
