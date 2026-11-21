@@ -36,3 +36,6 @@ data/
 origin/
 
 .env.test
+
+# Background command logs (scripts/dev/bg.sh)
+.logs/
