@@ -22,10 +22,6 @@ const ALLOWED_NO_RLS_TABLES = [
   // Tenant / platform metadata — exempt pending per-table review (RLS-3).
   "tenants",
   "schema_migrations",
-  // Platform observability / integrity — exempt pending per-table review (RLS-3).
-  "integrity_checkpoints",
-  "integrity_checkpoint_events",
-  "ledger_anchors",
   // Cross-tenant usage metering — reviewed deliberate exception.
   // usage_resources is a platform-wide metering-dimension catalog (code, name, unit,
   // aggregation, measurement, enabled) with no tenant column, so there is nothing to
