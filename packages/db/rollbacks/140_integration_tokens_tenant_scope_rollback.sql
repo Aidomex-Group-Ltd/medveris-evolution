@@ -19,6 +19,7 @@ $rollback$;
 
 DROP TRIGGER IF EXISTS integration_tokens_tenant_sync ON public.integration_tokens;
 DROP FUNCTION IF EXISTS app.integration_tokens_tenant_sync();
+REVOKE SELECT ON public.integration_clients FROM medveris_exchange;
 
 ALTER TABLE public.integration_tokens DROP COLUMN IF EXISTS tenant_id;
 

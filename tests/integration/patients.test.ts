@@ -10,6 +10,9 @@ import { chooseFacility } from "./support.js";
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required for patient registration tests");
 const sql = createSql(url, { max: 5 });
+const migrationUrl = process.env.MIGRATION_DATABASE_URL;
+if (!migrationUrl) throw new Error("MIGRATION_DATABASE_URL is required for patient registration tests");
+const migrationSql = createSql(migrationUrl, { max: 1 });
 const config = loadConfig({
   ...process.env, APP_ENV: "test", APP_ORIGIN: "http://localhost:5173", DEV_SHOW_TOTP_SECRETS: "true",
 });
@@ -168,19 +171,38 @@ describe("facility enrolment of an existing patient", () => {
   it("links a patient registered elsewhere without creating a second identity", async () => {
     const familyName = `Enrol${Date.now()}`;
     const registered = await register(clinicianB, familyName);
-    const body = JSON.stringify({ publicId: registered.publicId, familyName, dateOfBirth: "1992-06-15" });
-    const enrolled = await expectOk(await call(reception, "/api/v1/patients/enroll", { method: "POST", body }), 201);
-    expect(enrolled).toMatchObject({ alreadyLinked: false, patient: { publicId: registered.publicId } });
+    // The recipient facility (tenantA/reception) must have an active exchange grant to see a
+    // patient created in another facility (tenantB/clinicianB) via the enrolment lookup.
+    // Insert via migrationSql inside a patient context so the 143 grants_insert policy
+    // (patient_id = app.current_patient(), grantor_user_id = app.current_user()) is satisfied.
+    const grantId = crypto.randomUUID();
+    await withContext(migrationSql, { tenantId: "22222222-2222-4222-8222-222222222222", userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", patientId: registered.patientId, actorKind: "patient" }, async (tx) => {
+      await tx`
+        insert into exchange_grants (id, patient_id, grantor_user_id, recipient_tenant_id, source_tenant_ids, categories,
+          purpose, legal_basis, authorization_evidence, policy_version, starts_at, expires_at)
+        values (${grantId}, ${registered.patientId}, ${"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}, ${"11111111-1111-4111-8111-111111111111"}, ARRAY[${"22222222-2222-4222-8222-222222222222"}]::uuid[], ARRAY['clinical']::text[],
+          'rls-test', 'patient-consent', 'rls-test', 'medveris-consent-1.0', now() - interval '1 day', now() + interval '30 days')
+      `;
+    });
+    try {
+      const body = JSON.stringify({ publicId: registered.publicId, familyName, dateOfBirth: "1992-06-15" });
+      const enrolled = await expectOk(await call(reception, "/api/v1/patients/enroll", { method: "POST", body }), 201);
+      expect(enrolled).toMatchObject({ alreadyLinked: false, patient: { publicId: registered.publicId } });
 
-    const replay = await expectOk(await call(reception, "/api/v1/patients/enroll", { method: "POST", body }), 200);
-    expect(replay.alreadyLinked).toBe(true);
+      const replay = await expectOk(await call(reception, "/api/v1/patients/enroll", { method: "POST", body }), 200);
+      expect(replay.alreadyLinked).toBe(true);
 
-    const resolved = await expectOk(await call(reception, "/api/v1/patients/resolve", {
-      method: "POST",
-      body: JSON.stringify({ publicId: registered.publicId, familyName, dateOfBirth: "1992-06-15" }),
-    }));
-    expect(resolved.matched).toBe(true);
-    expect(resolved.patient.linked).toBe(true);
+      const resolved = await expectOk(await call(reception, "/api/v1/patients/resolve", {
+        method: "POST",
+        body: JSON.stringify({ publicId: registered.publicId, familyName, dateOfBirth: "1992-06-15" }),
+      }));
+      expect(resolved.matched).toBe(true);
+      expect(resolved.patient.linked).toBe(true);
+    } finally {
+      await withContext(migrationSql, { tenantId: "22222222-2222-4222-8222-222222222222", userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", patientId: registered.patientId, actorKind: "patient" }, async (tx) => {
+        await tx`delete from exchange_grants where id = ${grantId}`;
+      });
+    }
   });
 
   it("refuses enrolment when the identity details do not match", async () => {

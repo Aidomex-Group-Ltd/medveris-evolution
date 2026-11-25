@@ -74,9 +74,10 @@ jobs:
           PRODUCTION_RESEND_ENV: ${{ secrets.PRODUCTION_RESEND_ENV }}
           PRODUCTION_DB_ENV: ${{ secrets.PRODUCTION_DB_ENV }}
           PRODUCTION_BACKUP_ATTESTATION: ${{ secrets.PRODUCTION_BACKUP_ATTESTATION }}
+          PRODUCTION_BACKUP_INVENTORY: ${{ secrets.PRODUCTION_BACKUP_INVENTORY }}
         run: |
           set -euo pipefail
-          for name in PRODUCTION_SECRETS_ENV PRODUCTION_RESEND_ENV PRODUCTION_DB_ENV PRODUCTION_BACKUP_ATTESTATION; do
+          for name in PRODUCTION_SECRETS_ENV PRODUCTION_RESEND_ENV PRODUCTION_DB_ENV PRODUCTION_BACKUP_ATTESTATION PRODUCTION_BACKUP_INVENTORY; do
             test -n "${!name}" || { echo "$name secret is required"; exit 1; }
           done
           dir="$(mktemp -d)"
@@ -85,6 +86,7 @@ jobs:
           printf '%s\n' "$PRODUCTION_RESEND_ENV" > "$dir/resend.env"
           printf '%s\n' "$PRODUCTION_DB_ENV" > "$dir/db.env"
           printf '%s\n' "$PRODUCTION_BACKUP_ATTESTATION" > "$dir/backup-verification.json"
+          printf '%s\n' "$PRODUCTION_BACKUP_INVENTORY" > "$dir/backup-inventory.json"
           echo "PRODUCTION_SECRETS_DIR=$dir" >> "$GITHUB_ENV"
       - name: Production release
         run: npm run deploy:production
@@ -92,7 +94,8 @@ jobs:
           # Runner-local files created above from GitHub secrets; no developer ~/.config
           # directory is used. The script uploads only secrets the Worker lacks.
           # Required GitHub secrets: CLOUDFLARE_DEPLOY_TOKEN, PRODUCTION_SECRETS_ENV,
-          # PRODUCTION_RESEND_ENV, PRODUCTION_DB_ENV, PRODUCTION_BACKUP_ATTESTATION.
+          # PRODUCTION_RESEND_ENV, PRODUCTION_DB_ENV, PRODUCTION_BACKUP_ATTESTATION,
+          # PRODUCTION_BACKUP_INVENTORY.
           # Required Cloudflare resources: production Hyperdrive configs, R2 bucket
           # medveris-production-uploads and production queues in wrangler.jsonc.
       - name: Release note

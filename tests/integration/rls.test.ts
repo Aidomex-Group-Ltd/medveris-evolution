@@ -11,11 +11,15 @@ const patientA = "a0000000-0000-4000-8000-000000000001";
 const patientB = "b0000000-0000-4000-8000-000000000001";
 
 const url = process.env.DATABASE_URL;
+const migrationUrl = process.env.MIGRATION_DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required for PostgreSQL isolation tests");
+if (!migrationUrl) throw new Error("MIGRATION_DATABASE_URL is required for PostgreSQL isolation tests");
 const sql = createSql(url, { max: 1 });
+const migrationSql = createSql(migrationUrl, { max: 1 });
 
 afterAll(async () => {
   await sql.end({ timeout: 5 });
+  await migrationSql.end({ timeout: 5 });
 });
 
 describe("PostgreSQL runtime tenant isolation", () => {
@@ -62,6 +66,41 @@ describe("PostgreSQL runtime tenant isolation", () => {
     expect(reset[0]?.user_id ?? "").toBe("");
     const noContext = await sql`select id from clinical_entry_versions limit 1`;
     expect(noContext).toHaveLength(0);
+  });
+
+  it("denies a recipient tenant reading a patient under an expired grant", async () => {
+    // Create a patient owned by tenantA so the expired-grant visibility test is self-contained.
+    const grantId = crypto.randomUUID();
+    const patientId = crypto.randomUUID();
+    const publicId = crypto.randomUUID();
+    await withContext(migrationSql, { tenantId: tenantA, userId: clinicianA, actorKind: "staff", roles: ["facility_admin"] }, async (tx) => {
+      await tx`
+        insert into patients (id, public_id, given_name, family_name, date_of_birth, sex, created_tenant_id)
+        values (${patientId}, ${publicId}, 'Synthetic', 'ExpiredGrant', '1990-01-01', 'unknown', ${tenantA})
+      `;
+    });
+    await withContext(sql, { tenantId: tenantA, userId: clinicianA, patientId, actorKind: "patient" }, async (tx) => {
+      await tx`
+        insert into exchange_grants (id, patient_id, grantor_user_id, recipient_tenant_id, source_tenant_ids, categories,
+          purpose, legal_basis, authorization_evidence, policy_version, starts_at, expires_at)
+        values (${grantId}, ${patientId}, ${clinicianA}, ${tenantB}, ARRAY[${tenantA}]::uuid[], ARRAY['clinical']::text[],
+          'rls-test', 'patient-consent', 'rls-test', 'medveris-consent-1.0', now() - interval '2 days', now() - interval '1 day')
+      `;
+    });
+    try {
+      // An expired grant must not open the patient record to the recipient tenant.
+      const rows = await withContext(sql, { tenantId: tenantB, userId: clinicianB, actorKind: "staff", roles: ["clinician"] }, async (tx) => {
+        return await tx`
+          select id from patients where id = ${patientId}
+        `;
+      });
+      expect(rows).toHaveLength(0);
+    } finally {
+      await withContext(migrationSql, { tenantId: tenantA, userId: clinicianA, patientId, actorKind: "staff" }, async (tx) => {
+        await tx`delete from exchange_grants where id = ${grantId}`;
+        await tx`delete from patients where id = ${patientId}`;
+      });
+    }
   });
 
   it("restricts audit reads to the active tenant and governance role", async () => {

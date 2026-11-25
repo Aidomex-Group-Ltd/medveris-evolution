@@ -150,9 +150,8 @@ receptionRoutes.post("/patients/enroll", async (c) => {
   const body = await parseJson(c, enrollPatientSchema);
   const result = await withStaffActor(c, async (tx) => {
     const [confirmed] = await tx`
-      select p.id, p.public_id, p.merged_into from patients p
-       where p.public_id = ${body.publicId} and lower(p.family_name) = lower(${body.familyName}) and p.date_of_birth = ${body.dateOfBirth}
-       limit 1
+      select id, public_id, merged_into, survivor_id, survivor_public_id
+        from app.patient_enrollment_lookup(${body.publicId}, ${body.familyName}, ${body.dateOfBirth}::date)
     `;
     if (!confirmed) {
       await writeAudit(tx, deps.config, {
@@ -170,9 +169,8 @@ receptionRoutes.post("/patients/enroll", async (c) => {
       });
       throw new NotFoundError("No patient matched the supplied ID, family name and date of birth");
     }
-    const targetId = String(confirmed.mergedInto ?? confirmed.id);
-    const [survivor] = await tx`select id, public_id from patients where id = ${targetId} and merged_into is null`;
-    if (!survivor) throw new NotFoundError("No patient matched the supplied ID, family name and date of birth");
+    const targetId = String(confirmed.survivorId);
+    const survivor = { id: targetId, publicId: String(confirmed.survivorPublicId) };
     await tx`select pg_advisory_xact_lock(hashtext(${`patient:enroll:${auth.activeTenant!.id}:${targetId}`}))`;
     const [existing] = await tx`
       select id from tenant_patient_links where tenant_id = ${auth.activeTenant!.id} and patient_id = ${targetId}
@@ -226,18 +224,25 @@ receptionRoutes.post("/patients/resolve", async (c) => {
   const data = await withStaffActor(c, async (tx) => {
     // Identity is confirmed against the record the ID belongs to; a merged ID then resolves to its survivor.
     const [confirmed] = await tx`
-      select p.id, p.public_id, p.merged_into from patients p
-       where p.public_id = ${body.publicId} and lower(p.family_name) = lower(${body.familyName}) and p.date_of_birth = ${body.dateOfBirth}
-       limit 1
+      select id, public_id, merged_into, survivor_id, survivor_public_id, survivor_given_name,
+             survivor_family_name, survivor_date_of_birth, survivor_sex, survivor_identity_confidence
+        from app.patient_enrollment_lookup(${body.publicId}, ${body.familyName}, ${body.dateOfBirth}::date)
     `;
-    const targetId = confirmed ? String(confirmed.mergedInto ?? confirmed.id) : null;
-    const rows = targetId ? await tx`
-      select p.id, p.public_id, p.given_name, p.family_name, to_char(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth, p.sex, p.identity_confidence,
-             EXISTS (SELECT 1 FROM tenant_patient_links l WHERE l.tenant_id = ${auth.activeTenant!.id} AND l.patient_id = p.id) as linked
-        from patients p where p.id = ${targetId} and p.merged_into is null
-    ` : [];
-    const patient: (Record<string, unknown> & { id: unknown }) | undefined = rows[0]
-      ? { ...rows[0], id: rows[0].id, mergedFrom: confirmed?.mergedInto ? String(confirmed.publicId) : null }
+    const patient: (Record<string, unknown> & { id: unknown }) | undefined = confirmed
+      ? {
+          id: confirmed.survivorId,
+          publicId: confirmed.survivorPublicId,
+          givenName: confirmed.survivorGivenName,
+          familyName: confirmed.survivorFamilyName,
+          dateOfBirth: confirmed.survivorDateOfBirth,
+          sex: confirmed.survivorSex,
+          identityConfidence: confirmed.survivorIdentityConfidence,
+          linked: Boolean((await tx`
+            select 1 from tenant_patient_links
+             where tenant_id = ${auth.activeTenant!.id} and patient_id = ${confirmed.survivorId}
+          `).length),
+          mergedFrom: confirmed.mergedInto ? String(confirmed.publicId) : null,
+        }
       : undefined;
     await writeAudit(tx, deps.config, {
       tenantId: auth.activeTenant!.id,

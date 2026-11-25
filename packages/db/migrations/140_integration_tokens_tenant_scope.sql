@@ -6,8 +6,8 @@
 -- preserved; arbitrary tenant users no longer see or write tokens.
 --
 -- tenant_id is denormalized from integration_clients.tenant_id and kept in
--- sync by a SECURITY DEFINER trigger so the service's INSERT (which omits the
--- column) still passes WITH CHECK.
+-- sync by a SECURITY DEFINER trigger, so policies can trust the trigger-populated
+-- value without giving runtime roles read access to integration_clients.
 --
 -- Rollback: packages/db/rollbacks/140_integration_tokens_tenant_scope_rollback.sql
 
@@ -46,6 +46,7 @@ BEGIN
 END
 $function$;
 ALTER FUNCTION app.integration_tokens_tenant_sync() OWNER TO medveris_exchange;
+GRANT SELECT ON public.integration_clients TO medveris_exchange;
 
 DROP TRIGGER IF EXISTS integration_tokens_tenant_sync ON public.integration_tokens;
 CREATE TRIGGER integration_tokens_tenant_sync
@@ -80,19 +81,12 @@ CREATE POLICY integration_tokens_read ON public.integration_tokens
 CREATE POLICY integration_tokens_insert ON public.integration_tokens
   FOR INSERT
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.integration_clients c
-      WHERE c.id = integration_tokens.client_id
-        AND c.tenant_id IS NOT DISTINCT FROM integration_tokens.tenant_id
-    )
-    AND (
-      app.actor_kind() = 'system'
-      OR app.is_platform_operator()
-      OR (
-        tenant_id = app.current_tenant()
-        AND app.actor_kind() = 'staff'
-        AND app.has_any_role(ARRAY['facility_admin', 'it_admin'])
-      )
+    app.actor_kind() = 'system'
+    OR app.is_platform_operator()
+    OR (
+      tenant_id = app.current_tenant()
+      AND app.actor_kind() = 'staff'
+      AND app.has_any_role(ARRAY['facility_admin', 'it_admin'])
     )
   );
 
@@ -108,19 +102,12 @@ CREATE POLICY integration_tokens_update ON public.integration_tokens
     )
   )
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.integration_clients c
-      WHERE c.id = integration_tokens.client_id
-        AND c.tenant_id IS NOT DISTINCT FROM integration_tokens.tenant_id
-    )
-    AND (
-      app.actor_kind() = 'system'
-      OR app.is_platform_operator()
-      OR (
-        tenant_id = app.current_tenant()
-        AND app.actor_kind() = 'staff'
-        AND app.has_any_role(ARRAY['facility_admin', 'it_admin'])
-      )
+    app.actor_kind() = 'system'
+    OR app.is_platform_operator()
+    OR (
+      tenant_id = app.current_tenant()
+      AND app.actor_kind() = 'staff'
+      AND app.has_any_role(ARRAY['facility_admin', 'it_admin'])
     )
   );
 

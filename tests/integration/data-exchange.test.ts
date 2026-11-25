@@ -272,8 +272,10 @@ describe("export and download", () => {
   it("refuses a facility-wide export to a department-scoped membership even when a scope is supplied", async () => {
     const departments = await h.expectOk(await h.call(admin, "/api/v1/organization/departments"));
     const departmentId = departments.departments[0].id;
+    const me = await h.expectOk(await h.call(admin, "/api/v1/me"));
+    const adminMembershipId = me.activeTenant.membershipId as string;
 
-    await withContext(h.sql, { tenantId: KAMPALA_TENANT, userId: CLINICIAN_ID, actorKind: "staff", roles: ["facility_admin"] }, (tx) =>
+    await withContext(h.sql, { tenantId: KAMPALA_TENANT, userId: CLINICIAN_ID, actorKind: "staff", roles: ["facility_admin"], membershipId: adminMembershipId }, (tx) =>
       tx`update memberships set roles = ${["department_admin", "receptionist"]}, scope_department_id = ${departmentId}
            where tenant_id = ${KAMPALA_TENANT} and user_id = (select id from users where email = 'reception@medveris.local')`);
     try {
@@ -285,7 +287,7 @@ describe("export and download", () => {
       const body = await denied.json() as { error?: { message?: string } };
       expect(body.error?.message).toMatch(/facility-wide/i);
     } finally {
-      await withContext(h.sql, { tenantId: KAMPALA_TENANT, userId: CLINICIAN_ID, actorKind: "staff", roles: ["facility_admin"] }, (tx) =>
+      await withContext(h.sql, { tenantId: KAMPALA_TENANT, userId: CLINICIAN_ID, actorKind: "staff", roles: ["facility_admin"], membershipId: adminMembershipId }, (tx) =>
         tx`update memberships set roles = ${["receptionist"]}, scope_department_id = null
              where tenant_id = ${KAMPALA_TENANT} and user_id = (select id from users where email = 'reception@medveris.local')`);
     }

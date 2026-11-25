@@ -236,7 +236,7 @@ The production gate verifies:
 - Remote production Hyperdrive configs for `HYPERDRIVE` and `HYPERDRIVE_JOBS`
 - Production isolation from staging Hyperdrive configs
 - Migration state against `packages/db/migrations`
-- Backup verification file in `~/.config/medveris/production/backup-verification.json`
+- Backup verification file in `~/.config/medveris/production/backup-verification.json` and pgBackRest stanza inventory in `~/.config/medveris/production/backup-inventory.json`
 - R2 bucket `medveris-production-uploads`
 - Required queues
 - Domain state, without attaching the domain
@@ -256,6 +256,8 @@ The production deploy script reads from:
   - `secrets.env`
   - `resend.env`
   - `db.env` with `MIGRATION_DATABASE_URL`
+  - `backup-verification.json` from the recorded restore drill
+  - `backup-inventory.json` from `pgbackrest info --stanza=medveris --output=json`
 
 These files must be mode `0600` and stored outside the repository.
 

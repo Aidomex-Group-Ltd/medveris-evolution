@@ -15,13 +15,14 @@ interface R2Like {
 
 const PUT_TIMEOUT_MS = 30_000;
 const GET_TIMEOUT_MS = 15_000;
+const MAX_OBJECT_BYTES = 5 * 1024 * 1024;
 
 /**
  * R2 calls are not retried here: an upload that timed out may still have been stored, so the
  * caller reports failure and the user retries with a new random key; orphans are harmless.
  */
 export class R2Storage implements StorageAdapter {
-  constructor(private readonly bucket: R2Like | undefined) {}
+  constructor(private readonly bucket: R2Like | undefined, private readonly maxBytes: number = MAX_OBJECT_BYTES) {}
 
   private async guarded<T>(label: string, timeoutMs: number, fn: () => Promise<T>): Promise<T> {
     const breaker = breakerFor("object-storage", { failureThreshold: 5, resetTimeoutMs: 30_000, isFailure: (error) => !(error instanceof DependencyError) });
@@ -37,6 +38,7 @@ export class R2Storage implements StorageAdapter {
   async put(key: string, bytes: Uint8Array): Promise<void> {
     const bucket = this.bucket;
     if (!bucket) throw new DependencyError("Private object storage is not configured");
+    if (bytes.byteLength > this.maxBytes) throw new DependencyError(`Object exceeds the maximum accepted size of ${this.maxBytes} bytes`);
     await this.guarded("object-storage.put", PUT_TIMEOUT_MS, async () => {
       await bucket.put(key, bytes);
     });
@@ -59,13 +61,13 @@ export class R2Storage implements StorageAdapter {
 }
 
 export class UnconfiguredStorage implements StorageAdapter {
-  async put(): Promise<void> {
+  async put(_key: string, _bytes: Uint8Array): Promise<void> {
     throw new DependencyError("Private object storage is not configured");
   }
-  async get(): Promise<Uint8Array> {
+  async get(_key: string): Promise<Uint8Array> {
     throw new DependencyError("Private object storage is not configured");
   }
-  async delete(): Promise<void> {
+  async delete(_key: string): Promise<void> {
     /* no-op */
   }
 }

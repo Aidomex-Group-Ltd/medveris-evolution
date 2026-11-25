@@ -403,14 +403,12 @@
 				// non-dismissible. Off by default; flip here to true only while production holds synthetic data, then back to
 				// false before any real patient data is present.
 				"FEATURE_SYNTHETIC_DATA_BANNER": "true"
-			},
-			"secrets": {
+			},    "secrets": {
 				"required": [
 					"SESSION_SECRET",
 					"AUDIT_SIGNING_KEY",
 					"MFA_ENCRYPTION_KEY",
 					"RESEND_API_KEY",
-					"AI_TOKEN",
 					"LIVEPAY_API_KEY",
 					"LIVEPAY_WEBHOOK_SECRET"
 				]

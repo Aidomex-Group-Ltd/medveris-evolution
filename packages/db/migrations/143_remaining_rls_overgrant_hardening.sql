@@ -84,6 +84,26 @@ FOR UPDATE TO public
 USING (app.is_platform_operator())
 WITH CHECK (app.is_platform_operator());
 
+DROP POLICY IF EXISTS sponsored_metrics_anonymous_read ON public.sponsored_daily_metrics;
+CREATE POLICY sponsored_metrics_anonymous_read ON public.sponsored_daily_metrics
+FOR SELECT TO public
+USING (
+  app.actor_kind() = 'anonymous'
+  AND app.current_tenant() IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM public.sponsored_campaigns c
+    JOIN public.directory_facilities f ON f.id = c.facility_id
+    WHERE c.id = sponsored_daily_metrics.campaign_id
+      AND c.facility_id = sponsored_daily_metrics.facility_id
+      AND c.status = 'active'
+      AND c.payment_status = 'paid'
+      AND c.editorial_status = 'approved'
+      AND f.publication_status = 'published'
+      AND f.status = 'active'
+  )
+);
+
 DROP POLICY IF EXISTS sponsored_payment_events_insert ON public.sponsored_payment_events;
 DROP POLICY IF EXISTS sponsored_payment_events_system_insert ON public.sponsored_payment_events;
 DROP POLICY IF EXISTS sponsored_payment_events_operator_insert ON public.sponsored_payment_events;

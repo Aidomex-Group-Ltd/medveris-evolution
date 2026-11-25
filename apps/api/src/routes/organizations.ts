@@ -13,7 +13,7 @@ import {
   organizationSiteSchema,
   uuidSchema,
 } from "@medveris/contracts";
-import { withContext, type Tx } from "@medveris/db";
+import { setLocalContext, withContext, type Tx } from "@medveris/db";
 import { describeLevel, rollUpLevel, type LevelStatus, type ResolvedLevel } from "@medveris/domain";
 import { requireAuth } from "../auth/middleware.js";
 import { auditMeta, parseJson, parseQuery } from "../lib/http.js";
@@ -273,6 +273,7 @@ organizationsRoutes.post("/organizations/:id/links/:linkId/decision", async (c) 
       await tx`update tenants set organization_id = ${id}, host_tenant_id = ${body.hostTenantId ?? null}, updated_at = now() where id = ${link.tenantId}`;
     }
     await recordLinkEvent(tx, { linkId, organizationId: id, tenantId: String(link.tenantId), event: next === "active" ? "approved" : "rejected", actorUserId: auth.user.id, detail: { note: body.note, duplicates: findings.length } });
+    await setLocalContext(tx, { tenantId: String(link.tenantId), userId: auth.user.id, actorKind: "staff", roles: [] });
     await writeAudit(tx, c.get("deps").config, audit(c, `organization.link.${body.decision}`, {
       organizationId: id, tenantId: String(link.tenantId), resourceType: "OrganizationLink", resourceId: linkId,
       metadata: { duplicates: findings.length, historyVisibility: link.historyVisibility, hostTenantId: body.hostTenantId ?? null },

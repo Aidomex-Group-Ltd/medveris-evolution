@@ -77,9 +77,15 @@ meRoutes.post("/me/context", async (c) => {
   });
   await deps.sql`update sessions set revoked_at = now(), revoked_reason = 'context-switch' where id = ${auth.session.id}`;
   await deps.sql`update users set last_active_tenant_id = ${body.tenantId} where id = ${auth.user.id}`;
-  await withActor(c, async (tx) => {
+  await withContext(deps.sql, {
+    tenantId: membership.tenantId,
+    userId: auth.user.id,
+    actorKind: "staff",
+    roles: membership.roles,
+    platformRole: auth.platformRoles.includes("platform_operator") ? "platform_operator" : null,
+  }, async (tx) => {
     await writeAudit(tx, deps.config, {
-      tenantId: body.tenantId,
+      tenantId: membership.tenantId,
       actorKind: "staff",
       actorUserId: auth.user.id,
       actorRoles: membership.roles,

@@ -19,6 +19,7 @@ export const PRODUCTION = Object.freeze({
   apex: "medveris.online",
   domains: Object.freeze(["medveris.online", "www.medveris.online"]),
   expectedBackupProvider: "Kamatera",
+  expectedBackupStanza: "medveris",
 });
 
 export const PRODUCTION_SECRETS = Object.freeze(["SESSION_SECRET", "AUDIT_SIGNING_KEY", "MFA_ENCRYPTION_KEY", "RESEND_API_KEY"]);
@@ -329,12 +330,13 @@ export function migrationSetDigest(files) {
 
 /**
  * Backup and restore cannot be read from every provider's API, so the operator who ran the restore drill
- * records it; the gate refuses to release without a recent one.
+ * records it; the gate refuses to release without a recent one whose label matches the real backup inventory.
  * @param {any} attestation parsed backup-verification.json
  * @param {Date} now
+ * @param {any} inventory parsed `pgbackrest info --stanza=medveris --output=json`
  * @returns {string[]}
  */
-export function checkBackupAttestation(attestation, now) {
+export function checkBackupAttestation(attestation, now, inventory) {
   if (!attestation || typeof attestation !== "object") {
     return ["no backup and restore verification is recorded in ~/.config/medveris/production/backup-verification.json"];
   }
@@ -348,7 +350,34 @@ export function checkBackupAttestation(attestation, now) {
   const drill = Date.parse(attestation.restoreDrillAt ?? "");
   if (!Number.isFinite(drill)) problems.push("backup verification must record when the restore drill ran");
   else if (now.getTime() - drill > RESTORE_DRILL_MAX_AGE_DAYS * 86_400_000) problems.push(`the last restore drill is older than ${RESTORE_DRILL_MAX_AGE_DAYS} days`);
+
+  const fullBackups = pgBackRestFullBackupLabels(inventory);
+  problems.push(...fullBackups.problems);
+  const label = attestation.backupLabel;
+  if (typeof label !== "string" || !/^\d{8}-\d{6}F$/.test(label)) {
+    problems.push("backup verification must name the pgBackRest full backup label that was restored");
+  } else if (fullBackups.labels.length) {
+    if (!fullBackups.labels.includes(label)) problems.push(`backup verification names full backup ${label} that is absent from the pgBackRest inventory`);
+    else if (label !== fullBackups.labels[fullBackups.labels.length - 1]) problems.push(`backup verification must name the latest pgBackRest full backup ${fullBackups.labels[fullBackups.labels.length - 1]}, found ${label}`);
+  }
   return problems;
+}
+
+function pgBackRestFullBackupLabels(inventory) {
+  const rows = Array.isArray(inventory) ? inventory : inventory && typeof inventory === "object" ? [inventory] : [];
+  if (!rows.length) return { labels: [], problems: ["pgBackRest inventory is missing; supply the production stanza inventory captured with `pgbackrest info --output=json`"] };
+  const problems = [];
+  const stanzas = [...new Set(rows.map((row) => String(row?.stanza?.name ?? "")).filter(Boolean))];
+  if (stanzas.length !== 1 || stanzas[0] !== PRODUCTION.expectedBackupStanza) {
+    problems.push(`pgBackRest inventory must contain only the ${PRODUCTION.expectedBackupStanza} stanza`);
+  }
+  const labels = rows
+    .flatMap((row) => (Array.isArray(row?.backup) ? row.backup : []))
+    .map((backup) => String(backup?.label ?? ""))
+    .filter((label) => /^\d{8}-\d{6}F$/.test(label))
+    .sort();
+  if (!labels.length) problems.push("pgBackRest inventory contains no full backups");
+  return { labels, problems };
 }
 
 function json(/** @type {string} */ body) {

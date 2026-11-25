@@ -17,5 +17,6 @@ FOR SELECT TO public
 USING (app.actor_kind() = 'staff');
 
 DROP FUNCTION IF EXISTS app.patient_exchange_lookup(text);
+DROP FUNCTION IF EXISTS app.patient_enrollment_lookup(text, text, date);
 
 COMMIT;

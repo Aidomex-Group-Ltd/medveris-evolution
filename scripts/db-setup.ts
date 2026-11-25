@@ -54,7 +54,8 @@ const roleSpecs = [
   },
 ];
 
-if (!/^[a-z][a-z0-9_]+$/.test(targetDatabase)) throw new Error("Unsafe database name");
+if (!/^[a-z][a-z0-9_-]+$/.test(targetDatabase)) throw new Error("Unsafe database name");
+const databaseIdent = `"${targetDatabase.replaceAll('"', '""')}"`;
 
 const admin = new Client({ connectionString: adminUrl });
 await admin.connect();
@@ -89,15 +90,15 @@ if (isLocalSynthetic) {
 
 const db = await admin.query("select 1 from pg_database where datname = $1", [targetDatabase]);
 if (db.rowCount === 0) {
-  await admin.query(`CREATE DATABASE ${targetDatabase} OWNER medveris_migrator`);
+  await admin.query(`CREATE DATABASE ${databaseIdent} OWNER medveris_migrator`);
   console.log(`created database ${targetDatabase}`);
 } else {
   console.log(`database ${targetDatabase} already exists (not reset)`);
 }
 
-await admin.query(`GRANT CONNECT ON DATABASE ${targetDatabase} TO medveris_migrator, medveris_runtime, medveris_jobs`);
+await admin.query(`GRANT CONNECT ON DATABASE ${databaseIdent} TO medveris_migrator, medveris_runtime, medveris_jobs`);
 try {
-  await admin.query(`ALTER DATABASE ${targetDatabase} OWNER TO medveris_migrator`);
+  await admin.query(`ALTER DATABASE ${databaseIdent} OWNER TO medveris_migrator`);
 } catch (error) {
   console.warn(`could not change database owner: ${(error as Error).message}`);
 }

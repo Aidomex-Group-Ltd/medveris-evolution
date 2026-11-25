@@ -184,7 +184,8 @@ CREATE POLICY memberships_insert_invitation ON public.memberships
   );
 
 -- 5. UPDATE: admin may change others; self may change only non-role/status columns
---    (enforced by app.memberships_guard).
+--    (enforced by app.memberships_guard). A valid, unaccepted invitation may reactivate
+--    the invitee's own soft-removed membership.
 CREATE POLICY memberships_update_admin ON public.memberships
   FOR UPDATE
   USING (
@@ -207,6 +208,43 @@ CREATE POLICY memberships_update_self ON public.memberships
   WITH CHECK (
     id = app.current_membership_id()
     AND tenant_id = app.current_tenant()
+  );
+
+CREATE POLICY memberships_update_invitation ON public.memberships
+  FOR UPDATE
+  USING (
+    app.actor_kind() = 'registration'
+    AND tenant_id = app.current_tenant()
+    AND user_id = app.current_user()
+    AND EXISTS (
+      SELECT 1
+      FROM public.invitations i
+      WHERE i.tenant_id = memberships.tenant_id
+        AND i.token_hash = app.invitation_token_hash()
+        AND i.accepted_at IS NULL
+        AND i.revoked_at IS NULL
+        AND i.declined_at IS NULL
+        AND i.expires_at > now()
+    )
+  )
+  WITH CHECK (
+    app.actor_kind() = 'registration'
+    AND tenant_id = app.current_tenant()
+    AND user_id = app.current_user()
+    AND status = 'active'
+    AND NOT EXISTS (
+      SELECT 1 FROM unnest(roles) AS r(role) WHERE r.role LIKE 'platform_%'
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM public.invitations i
+      WHERE i.tenant_id = memberships.tenant_id
+        AND i.token_hash = app.invitation_token_hash()
+        AND i.accepted_at IS NULL
+        AND i.revoked_at IS NULL
+        AND i.declined_at IS NULL
+        AND i.expires_at > now()
+    )
   );
 
 -- 6. DELETE: admin-only, never self. There is no application hard-delete flow.

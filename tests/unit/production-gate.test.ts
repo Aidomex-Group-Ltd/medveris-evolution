@@ -335,6 +335,10 @@ describe("production migration and recovery rules", () => {
 
   it("requires a recent recorded restore drill with point-in-time recovery", () => {
     const now = new Date("2026-10-28T00:00:00Z");
+    const inventory = [{
+      stanza: { name: PRODUCTION.expectedBackupStanza },
+      backup: [{ label: "20261001-000000F", type: "full" }, { label: "20261002-000000I", type: "incr" }],
+    }];
     const good = {
       provider: PRODUCTION.expectedBackupProvider,
       targetDatabase: PRODUCTION.database,
@@ -342,12 +346,13 @@ describe("production migration and recovery rules", () => {
       encryptedBackups: true,
       restoreDrillAt: "2026-10-01T00:00:00Z",
       restoreDrillBy: "ops",
+      backupLabel: "20261001-000000F",
     };
-    expect(checkBackupAttestation(good, now)).toEqual([]);
-    expect(checkBackupAttestation(null, now)).toEqual([
+    expect(checkBackupAttestation(good, now, inventory)).toEqual([]);
+    expect(checkBackupAttestation(null, now, inventory)).toEqual([
       "no backup and restore verification is recorded in ~/.config/medveris/production/backup-verification.json",
     ]);
-    expect(checkBackupAttestation({ ...good, pointInTimeRecovery: false, restoreDrillAt: "2026-01-01T00:00:00Z" }, now)).toEqual([
+    expect(checkBackupAttestation({ ...good, pointInTimeRecovery: false, restoreDrillAt: "2026-01-01T00:00:00Z" }, now, inventory)).toEqual([
       "point-in-time recovery must be enabled on the production database",
       "the last restore drill is older than 90 days",
     ]);
@@ -355,6 +360,10 @@ describe("production migration and recovery rules", () => {
 
   it("requires the backup attestation to name the expected production provider and target database", () => {
     const now = new Date("2026-11-20T00:00:00Z");
+    const inventory = [{
+      stanza: { name: PRODUCTION.expectedBackupStanza },
+      backup: [{ label: "20261119-000000F", type: "full" }],
+    }];
     const good = {
       provider: PRODUCTION.expectedBackupProvider,
       targetDatabase: PRODUCTION.database,
@@ -362,13 +371,43 @@ describe("production migration and recovery rules", () => {
       encryptedBackups: true,
       restoreDrillAt: "2026-11-19T00:00:00Z",
       restoreDrillBy: "ops",
+      backupLabel: "20261119-000000F",
     };
-    expect(checkBackupAttestation(good, now)).toEqual([]);
-    expect(checkBackupAttestation({ ...good, provider: "Aiven (medverispro)" }, now)).toEqual([
+    expect(checkBackupAttestation(good, now, inventory)).toEqual([]);
+    expect(checkBackupAttestation({ ...good, provider: "Aiven (medverispro)" }, now, inventory)).toEqual([
       `backup verification provider must be ${PRODUCTION.expectedBackupProvider}`,
     ]);
-    expect(checkBackupAttestation({ ...good, targetDatabase: "medveris_staging" }, now)).toEqual([
+    expect(checkBackupAttestation({ ...good, targetDatabase: "medveris_staging" }, now, inventory)).toEqual([
       `backup verification must name the target database ${PRODUCTION.database}`,
+    ]);
+  });
+
+  it("requires the attested full backup label to match the real pgBackRest inventory", () => {
+    const now = new Date("2026-11-23T00:00:00Z");
+    const inventory = [{
+      stanza: { name: PRODUCTION.expectedBackupStanza },
+      backup: [{ label: "20261120-000000F", type: "full" }, { label: "20261122-000000F", type: "full" }],
+    }];
+    const good = {
+      provider: PRODUCTION.expectedBackupProvider,
+      targetDatabase: PRODUCTION.database,
+      pointInTimeRecovery: true,
+      encryptedBackups: true,
+      restoreDrillAt: "2026-11-22T00:00:00Z",
+      restoreDrillBy: "ops",
+      backupLabel: "20261120-000000F",
+    };
+    expect(checkBackupAttestation(good, now, inventory)).toEqual([
+      "backup verification must name the latest pgBackRest full backup 20261122-000000F, found 20261120-000000F",
+    ]);
+    expect(checkBackupAttestation({ ...good, backupLabel: "20261123-000000F" }, now, inventory)).toEqual([
+      "backup verification names full backup 20261123-000000F that is absent from the pgBackRest inventory",
+    ]);
+    expect(checkBackupAttestation({ ...good, backupLabel: "" }, now, inventory)).toEqual([
+      "backup verification must name the pgBackRest full backup label that was restored",
+    ]);
+    expect(checkBackupAttestation({ ...good, backupLabel: "20261122-000000F" }, now, null)).toEqual([
+      "pgBackRest inventory is missing; supply the production stanza inventory captured with `pgbackrest info --output=json`",
     ]);
   });
 });

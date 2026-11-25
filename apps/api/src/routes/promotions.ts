@@ -9,7 +9,7 @@ import {
   promotionPaymentInitiateSchema,
 } from "@medveris/contracts";
 import { sha256Hex } from "@medveris/domain";
-import { withContext, type Tx } from "@medveris/db";
+import { setLocalContext, withContext, type Tx } from "@medveris/db";
 import { permissionsForRoles, type Permission } from "@medveris/authz";
 import {
   isPlatformOperator,
@@ -239,6 +239,7 @@ async function confirmPayment(
       'Campaign payment confirmed; editorial review still required'
       from sponsored_campaigns where id = ${payment.campaignId}
   `;
+  await setLocalContext(tx, { tenantId: null, userId, actorKind: "staff", roles: [] });
   await writeAudit(tx, c.get("deps").config, {
     actorUserId: userId, actorKind: "staff", action: "promotion.payment.confirm",
     resourceType: "SponsoredPayment", resourceId: id,

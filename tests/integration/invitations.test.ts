@@ -172,6 +172,25 @@ describe("accepting an invitation", () => {
     expect(await membershipsFor(other.tenantId, email)).toEqual([]);
   });
 
+  it("reactivates a removed membership when the invitee accepts a fresh invitation", async () => {
+    const email = uniqueEmail("reinstate");
+    const first = await invite(admin, email);
+    const invitee = await registerInvitee(first.token);
+    expect((await accept(invitee, first.token)).code).toBe(200);
+    await enrollMfa(invitee);
+
+    const staff = await h.expectOk(await h.call(admin, "/api/v1/admin/memberships"));
+    const membership = staff.memberships.find((row: any) => row.email === email);
+    expect(membership).toBeTruthy();
+    await h.expectOk(await h.call(admin, `/api/v1/admin/memberships/${membership.id}`, { method: "DELETE" }));
+    expect(await membershipsFor(KAMPALA_TENANT, email)).toEqual([expect.objectContaining({ status: "removed" })]);
+
+    const second = await invite(admin, email);
+    const accepted = await accept(invitee, second.token);
+    expect(accepted.code, JSON.stringify(accepted.body)).toBe(200);
+    expect(await membershipsFor(KAMPALA_TENANT, email)).toEqual([expect.objectContaining({ roles: ["receptionist"], status: "active" })]);
+  });
+
   it("refuses a different signed-in account and leaves the invitation pending", async () => {
     const email = uniqueEmail("intended");
     const { token } = await invite(admin, email);

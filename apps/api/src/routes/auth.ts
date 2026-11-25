@@ -649,7 +649,7 @@ authRoutes.post("/verify-email", async (c) => {
   `;
   const token = rows[0];
   if (!token) throw new ValidationError("Verification link is invalid or expired");
-  await deps.sql.begin(async (tx) => {
+  await withRegistration(deps.sql, async (tx) => {
     await tx`update users set email_verified_at = now(), updated_at = now() where id = ${token.userId}`;
     await tx`update email_tokens set consumed_at = now() where id = ${token.id}`;
     await writeAudit(tx, deps.config, {
@@ -713,7 +713,7 @@ authRoutes.post("/reset-password", async (c) => {
   const token = rows[0];
   if (!token) throw new ValidationError("Recovery link is invalid or expired");
   const passwordHash = await hashPassword(body.password);
-  await deps.sql.begin(async (tx) => {
+  await withRegistration(deps.sql, async (tx) => {
     await tx`update users set password_hash = ${passwordHash}, updated_at = now() where id = ${token.userId}`;
     const consumed = await tx`update email_tokens set consumed_at = now() where id = ${token.id} and consumed_at is null returning id`;
     if (!consumed.length) throw new ValidationError("Recovery link is invalid or expired");
@@ -758,7 +758,12 @@ authRoutes.post("/mfa/enroll/verify", async (c) => {
   if (!(await verifyTotp(secret, body.code))) throw new ValidationError("Invalid verification code");
   const recoveryCodes = Array.from({ length: 8 }, () => randomToken(9));
   const hashes = await Promise.all(recoveryCodes.map(async (code) => ({ hash: await sha256Hex(code), used: false })));
-  await deps.sql.begin(async (tx) => {
+  await withContext(deps.sql, {
+    tenantId: auth.activeTenant?.id ?? null,
+    userId: auth.user.id,
+    actorKind: "staff",
+    roles: auth.activeTenant?.roles ?? [],
+  }, async (tx) => {
     await tx`update users set mfa_enrolled_at = now(), recovery_codes = ${tx.json(hashes as never)}, updated_at = now() where id = ${auth.user.id}`;
     await tx`update sessions set mfa_verified_at = now() where id = ${auth.session.id}`;
     await writeAudit(tx, deps.config, {

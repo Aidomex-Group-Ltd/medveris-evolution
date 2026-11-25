@@ -144,8 +144,10 @@ if (!migrationUrl) {
 }
 const backupFile = join(secretDir, "backup-verification.json");
 const backup = existsSync(backupFile) ? parseJsonOutput(readFileSync(backupFile, "utf8")) : null;
-problems.push(...checkBackupAttestation(backup, new Date()));
-evidence.backupVerification = backup ? { provider: backup.provider, restoreDrillAt: backup.restoreDrillAt } : null;
+const backupInventoryFile = join(secretDir, "backup-inventory.json");
+const backupInventory = existsSync(backupInventoryFile) ? parseJsonOutput(readFileSync(backupInventoryFile, "utf8")) : null;
+problems.push(...checkBackupAttestation(backup, new Date(), backupInventory));
+evidence.backupVerification = backup ? { provider: backup.provider, restoreDrillAt: backup.restoreDrillAt, backupLabel: backup.backupLabel } : null;
 
 // 3. Private R2 bucket.
 for (const queue of requiredQueues(production)) {
