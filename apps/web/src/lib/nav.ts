@@ -1,3 +1,4 @@
+import { experienceForCategory, type FacilityExperience } from "@medveris/domain";
 import type { MeResponse, Role } from "./types";
 import { CASHIER_ROLES, DEPARTMENT_QUEUE_ROLES, INVENTORY_ROLES, PROCUREMENT_ROLES } from "./roles";
 import { DEPARTMENT_MODULES, hasModule, workspaceProfile } from "./workspace";
@@ -462,6 +463,69 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze(
   },
 ]);
 
+/**
+ * A Drugshop runs a shop, not a hospital. Its navigation contains only the tools it actually has:
+ * stock, the point of sale, its own price list, purchasing, receipts, reports and its licence.
+ * Pharmacy-only clinical queues are deliberately absent.
+ */
+export const DRUGSHOP_SECTIONS: readonly NavSection[] = Object.freeze([
+  { id: "dashboard", label: "Dashboard", icon: "dashboard", group: null },
+  { id: "pharmacy", label: "Sales & dispensing", icon: "pharmacy", group: "operations" },
+  { id: "facility", label: "Stock & suppliers", icon: "facility", group: "operations" },
+  { id: "administration", label: "Management", icon: "administration", group: "management" },
+  { id: "intelligence", label: "Reports", icon: "intelligence", group: "intelligence" },
+]);
+
+export const DRUGSHOP_DESTINATIONS: readonly NavDestination[] = Object.freeze([
+  {
+    id: "drugshop-dashboard", label: "Dashboard", to: "/drugshop", icon: "dashboard", section: "dashboard", mobile: "home",
+    description: "Licence status, stock alerts, today's sales and the active price list", quickAction: true,
+  },
+  {
+    id: "drugshop-sales", label: "Sales and dispensing", to: "/pharmacy-pos", icon: "store", section: "pharmacy", mobile: "care",
+    roles: ["pharmacist", "finance", "facility_admin", "owner"],
+    description: "Sell permitted stock and record the payment", quickAction: true,
+  },
+  {
+    id: "drugshop-inventory", label: "Inventory", to: "/inventory", icon: "inventory", section: "facility", mobile: "care",
+    roles: INVENTORY_ROLES, modules: ["inventory"],
+    description: "Stock levels, batches and expiries", quickAction: true,
+  },
+  {
+    id: "drugshop-procurement", label: "Suppliers and receipts", to: "/procurement", icon: "procurement", section: "facility", mobile: "more",
+    roles: PROCUREMENT_ROLES, modules: ["inventory"],
+    description: "Purchase orders and goods received",
+  },
+  {
+    id: "drugshop-price-lists", label: "Facility price lists", to: "/price-lists", icon: "price-list", section: "facility", mobile: "more",
+    roles: ["finance", "facility_admin"],
+    description: "This shop's own prices, approval and publication",
+  },
+  {
+    id: "drugshop-customers", label: "Customers", to: "/patients", icon: "patients", section: "facility", mobile: "care",
+    roles: ["receptionist", "nurse", "clinician", "facility_admin"], modules: ["pharmacy"],
+    description: "People the shop serves",
+  },
+  {
+    id: "drugshop-reports", label: "Reports", to: "/reports", icon: "reports", section: "intelligence", mobile: "analytics",
+    description: "Sales, stock and daily activity", quickAction: true,
+  },
+  {
+    id: "drugshop-licence", label: "Licence and compliance", to: "/workspace", icon: "credentials", section: "administration", mobile: "more",
+    staffOnly: true,
+    description: "NDA drug shop licence, registration details and verification",
+  },
+  {
+    id: "drugshop-settings", label: "Facility settings", to: "/admin", icon: "administration", section: "administration", mobile: "more",
+    roles: ["facility_admin"],
+  },
+]);
+
+/** The interface this session's active facility receives. Derived from server-held facility data. */
+export function facilityExperienceFor(me: MeResponse | null | undefined): FacilityExperience {
+  return experienceForCategory(me?.activeTenant?.workspace?.serviceCategory ?? null);
+}
+
 /** Platform Operations is a separate area and never appears in facility navigation. */
 export const PLATFORM_NAV: readonly PlatformNavItem[] = Object.freeze([
   { id: "global-catalogue", label: "Global price catalogue", to: "/global-catalogue", icon: "price-list" },
@@ -491,13 +555,22 @@ export function canSeeNavItem(item: NavDestination, me: MeResponse): boolean {
   return true;
 }
 
-export function navSectionsFor(me: MeResponse): VisibleNavSection[] {
-  return NAV_SECTIONS
+function sectionsFrom(
+  sections: readonly NavSection[],
+  destinations: readonly NavDestination[],
+  me: MeResponse,
+): VisibleNavSection[] {
+  return sections
     .map((section) => ({
       ...section,
-      items: NAV_DESTINATIONS.filter((item) => item.section === section.id && canSeeNavItem(item, me)),
+      items: destinations.filter((item) => item.section === section.id && canSeeNavItem(item, me)),
     }))
     .filter((section) => section.items.length > 0);
+}
+
+export function navSectionsFor(me: MeResponse): VisibleNavSection[] {
+  if (facilityExperienceFor(me) === "drugshop") return sectionsFrom(DRUGSHOP_SECTIONS, DRUGSHOP_DESTINATIONS, me);
+  return sectionsFrom(NAV_SECTIONS, NAV_DESTINATIONS, me);
 }
 
 export function platformNavFor(me: MeResponse): readonly PlatformNavItem[] {
@@ -510,7 +583,8 @@ export function navFor(me: MeResponse): { sections: VisibleNavSection[]; platfor
 }
 
 export function navDestinationsFor(me: MeResponse): NavDestination[] {
-  return NAV_DESTINATIONS.filter((item) => canSeeNavItem(item, me));
+  const destinations = facilityExperienceFor(me) === "drugshop" ? DRUGSHOP_DESTINATIONS : NAV_DESTINATIONS;
+  return destinations.filter((item) => canSeeNavItem(item, me));
 }
 
 export function quickActionsFor(me: MeResponse): NavDestination[] {
@@ -545,7 +619,7 @@ function matchesPath(item: NavDestination, pathname: string): boolean {
 
 /** The most specific destination for the current URL, including detail pages. */
 export function activeDestination(pathname: string): NavDestination | undefined {
-  return [...NAV_DESTINATIONS]
+  return [...NAV_DESTINATIONS, ...DRUGSHOP_DESTINATIONS]
     .sort((left, right) => right.to.length - left.to.length)
     .find((item) => matchesPath(item, pathname));
 }

@@ -291,6 +291,25 @@ function ListDetail({ id, canManage, onChanged }: { id: string; canManage: boole
     });
   }
 
+  /** The open list as a CSV file. Nothing is converted: each row keeps its own currency. */
+  function exportCsv() {
+    if (!list) return;
+    const rows = [
+      ["code", "name", "category", "price", "currency", "approval", "effective_from", "effective_to"],
+      ...items.map((item) => [
+        item.masterPriceCode ?? "", item.name, item.category, String(item.price), item.currency,
+        item.approvalStatus, item.effectiveFrom, item.effectiveTo ?? "",
+      ]),
+    ];
+    const csv = rows.map((row) => row.map((value) => (/[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value)).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${list.code}-${list.status.toLowerCase()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function removeItem(itemId: string, name: string) {
     if (!window.confirm(`Remove ${name} from this draft?`)) return;
     await action.run(itemId, async () => {
@@ -330,6 +349,7 @@ function ListDetail({ id, canManage, onChanged }: { id: string; canManage: boole
               </Button>
             )) : null}
             {canManage ? <Button size="sm" variant="ghost" onClick={() => void duplicate()} disabled={action.busy !== null}>Duplicate</Button> : null}
+            <Button size="sm" variant="ghost" onClick={exportCsv} disabled={!items.length}>Export CSV</Button>
           </div>
         }
       >

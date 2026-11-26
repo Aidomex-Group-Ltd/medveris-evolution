@@ -419,6 +419,17 @@ export const PERMISSIONS = [
   "onboarding.proxy.queue.read",
   "onboarding.proxy.request.manage",
 
+  // Granular facility price-list permissions. Read access never implies the right to change a
+  // price, and changing a price never implies the right to approve or publish it.
+  "facility_prices.read",
+  "facility_prices.create",
+  "facility_prices.update",
+  "facility_prices.submit",
+  "facility_prices.approve",
+  "facility_prices.publish",
+  "facility_prices.archive",
+  "facility_prices.history.read",
+
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -1354,4 +1365,77 @@ export function permissionsForRoles(roles: readonly Role[]): Set<Permission> {
     for (const permission of ROLE_PERMISSIONS[role] ?? []) out.add(permission);
   }
   return out;
+}
+
+// ---------------------------------------------------------------- facility price lists
+
+/**
+ * Granular facility price-list permissions.
+ *
+ * These describe a facility's own tariff only. They never grant access to the platform's global
+ * catalogue (`master_prices`) or to another facility's list; the API and the database row policies
+ * remain the authority for both.
+ */
+export const FACILITY_PRICE_PERMISSIONS = [
+  "facility_prices.read",
+  "facility_prices.create",
+  "facility_prices.update",
+  "facility_prices.submit",
+  "facility_prices.approve",
+  "facility_prices.publish",
+  "facility_prices.archive",
+  "facility_prices.history.read",
+] as const;
+
+export type FacilityPricePermission = (typeof FACILITY_PRICE_PERMISSIONS)[number];
+
+const priceRead: readonly FacilityPricePermission[] = ["facility_prices.read"];
+const priceHistory: readonly FacilityPricePermission[] = [...priceRead, "facility_prices.history.read"];
+const pricePrepare: readonly FacilityPricePermission[] = [
+  ...priceHistory,
+  "facility_prices.create",
+  "facility_prices.update",
+  "facility_prices.submit",
+  "facility_prices.archive",
+];
+const priceOwn: readonly FacilityPricePermission[] = [
+  ...pricePrepare,
+  "facility_prices.approve",
+  "facility_prices.publish",
+];
+
+/**
+ * Default allocation, reconciled with the existing role model and with the database policy that
+ * accepts only `facility_admin` and `finance` memberships for a facility's rows:
+ *  - the facility administrator prepares, approves and publishes (the lifecycle still forbids an
+ *    approver from being the only role that submitted it where the domain rule requires two);
+ *  - finance prepares and submits but cannot approve or publish on its own;
+ *  - a pharmacist, auditor, billing officer or view-only account can read and see history;
+ *  - platform price administration reads facility lists but has no facility-write grant here.
+ */
+export const FACILITY_PRICE_GRANTS: Readonly<Partial<Record<Role, readonly FacilityPricePermission[]>>> = Object.freeze({
+  facility_admin: priceOwn,
+  facility_finance_manager: pricePrepare,
+  finance: pricePrepare,
+  owner: pricePrepare,
+  pharmacist: priceHistory,
+  auditor: priceHistory,
+  billing_officer: priceHistory,
+  facility_view_only: priceRead,
+  global_system_administrator: priceHistory,
+  global_price_manager: priceHistory,
+  country_price_administrator: priceHistory,
+});
+
+/** Effective facility price permissions for a set of roles in the active facility. */
+export function facilityPricePermissionsFor(roles: readonly Role[]): Set<FacilityPricePermission> {
+  const out = new Set<FacilityPricePermission>();
+  for (const role of roles) {
+    for (const permission of FACILITY_PRICE_GRANTS[role] ?? []) out.add(permission);
+  }
+  return out;
+}
+
+export function canFacilityPrice(roles: readonly Role[], permission: FacilityPricePermission): boolean {
+  return facilityPricePermissionsFor(roles).has(permission);
 }

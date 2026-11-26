@@ -12,6 +12,7 @@ export * from "./billing.js";
 export * from "./subscription-interval.js";
 export * from "./currency.js";
 export * from "./price-catalogue.js";
+export * from "./facility-experience.js";
 export type EncounterState =
   | "planned"
   | "arrived"

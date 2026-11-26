@@ -11,6 +11,7 @@ import {
   NAV_SECTIONS,
   activeDestination,
   activeMobileTabForPath,
+  facilityExperienceFor,
   intelligenceDestinationFor,
   mobileSectionsFor,
   mobileTabsFor,
@@ -365,7 +366,7 @@ export function AppShell() {
   const activeSection = active?.section;
   const mobileTabs = me ? mobileTabsFor(me) : [];
   const activeMobileTab = activeMobileTabForPath(location.pathname);
-  const mobileHomeTarget = me?.patientId ? "/portal" : "/dashboard";
+  const mobileHomeTarget = me?.patientId ? "/portal" : facilityExperienceFor(me) === "drugshop" ? "/drugshop" : "/dashboard";
 
   useEffect(() => {
     setNavOpen(false);

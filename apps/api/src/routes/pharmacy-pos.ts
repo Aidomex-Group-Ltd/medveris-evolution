@@ -11,7 +11,13 @@ import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { ensureMatch, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
-import { ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
+import { AppError, ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
+import {
+  dispensingDecision,
+  resolveFacilityExperience,
+  type FacilityRegistrationLike,
+  type FacilityExperienceResolution,
+} from "@medveris/domain";
 import { assertLocationInScope } from "../lib/scope.js";
 import { postMovement } from "./inventory.js";
 import type { AppEnv } from "../types.js";
@@ -37,6 +43,42 @@ function requireAnyRole(c: HandlerContext, roles: readonly string[], message: st
 
 function money(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+interface DispensingDenial {
+  itemId: string;
+  itemName: string;
+  code: string;
+  reason: string;
+}
+
+/** A restricted sale is refused with a specific, actionable reason and recorded in the audit trail. */
+class DispensingBlockedError extends AppError {
+  readonly denials: DispensingDenial[];
+  constructor(denials: DispensingDenial[]) {
+    super(403, "dispensing_not_permitted", denials[0]!.reason, { denials });
+    this.denials = denials;
+  }
+}
+
+/** The active facility's experience and licence state, resolved on the server for every sale. */
+async function facilityDispensingPolicy(c: HandlerContext): Promise<FacilityExperienceResolution> {
+  const auth = requireStaff(c);
+  const tenantId = auth.activeTenant!.id;
+  const loaded = await withStaffActor(c, async (tx) => {
+    const tenant = await tx`select service_category from tenants where id = ${tenantId}`;
+    const registrations = await tx`
+      select kind, identifier, status, valid_until from facility_registrations where tenant_id = ${tenantId}
+    `;
+    return { serviceCategory: (tenant[0]?.serviceCategory as string | null) ?? null, registrations };
+  });
+  const rows: FacilityRegistrationLike[] = loaded.registrations.map((row) => ({
+    kind: String(row.kind),
+    identifier: String(row.identifier),
+    status: String(row.status),
+    validUntil: (row.validUntil as string | null) ?? null,
+  }));
+  return resolveFacilityExperience({ serviceCategory: loaded.serviceCategory, registrations: rows });
 }
 
 function optionalUuid(value: string | undefined, field: string): string | null {
@@ -368,6 +410,10 @@ pharmacyPosRoutes.post("/pharmacy/sales", async (c) => {
   const replayed = await replay();
   if (replayed) return replayed;
 
+  // Catalogue visibility is not dispensing authority: the facility's own licence and each item's
+  // recorded classification are checked before any sale line is written.
+  const policy = await facilityDispensingPolicy(c);
+
   const saleId = crypto.randomUUID();
   try {
     const result = await withStaffActor(c, async (tx) => {
@@ -397,6 +443,29 @@ pharmacyPosRoutes.post("/pharmacy/sales", async (c) => {
           throw new ValidationError("The prescription belongs to a different patient");
         }
         if (!body.patientId) body.patientId = prescription.patientId;
+      }
+
+      if (policy.experience === "drugshop") {
+        const denials: DispensingDenial[] = [];
+        for (const line of body.lines) {
+          const rows = await tx`
+            select name, prescription_only, dispensing_scope
+              from inventory_items where id = ${line.itemId} and tenant_id = ${tenantId}
+          `;
+          // A missing product is reported by the sale loop below with its own message.
+          if (!rows[0]) continue;
+          const decision = dispensingDecision({
+            experience: policy.experience,
+            licenceState: policy.licence?.state ?? null,
+            dispensingScope: rows[0].dispensingScope as string | null,
+            prescriptionOnly: Boolean(rows[0].prescriptionOnly),
+            itemName: String(rows[0].name),
+          });
+          if (!decision.allowed) {
+            denials.push({ itemId: line.itemId, itemName: String(rows[0].name), code: decision.code!, reason: decision.reason! });
+          }
+        }
+        if (denials.length) throw new DispensingBlockedError(denials);
       }
 
       const saleNumber = await nextSaleNumber(tx, tenantId);
@@ -549,6 +618,21 @@ pharmacyPosRoutes.post("/pharmacy/sales", async (c) => {
     });
     return c.json({ ok: true, sale: { id: saleId, ...result, status: "completed" } }, 201);
   } catch (error) {
+    if (error instanceof DispensingBlockedError) {
+      // The refused sale rolled back; the audit record is written separately so it survives.
+      await withStaffActor(c, async (tx) => {
+        await writeAudit(tx, c.get("deps").config, requestAudit(c, "pharmacy.dispense.blocked", {
+          subjectPatientId: body.patientId ?? null,
+          resourceType: "PharmacySale",
+          resourceId: saleId,
+          metadata: {
+            locationId: body.locationId,
+            licence: policy.licence?.identifier ?? null,
+            denials: error.denials,
+          },
+        }));
+      });
+    }
     if (uniqueViolation(error) === "pharmacy_sales_idempotency") {
       const raced = await replay();
       if (raced) return raced;

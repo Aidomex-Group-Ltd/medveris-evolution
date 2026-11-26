@@ -2,10 +2,12 @@ import type { ReactNode } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "@medveris/ui";
 import { useAuth } from "../lib/auth";
+import { facilityExperienceFor } from "../lib/nav";
 import { LegalReacceptance } from "./LegalReacceptance";
 import type { Role } from "../lib/types";
+import type { FacilityExperience } from "@medveris/domain";
 
-export function ProtectedRoute({ children, roles, platform, patient, staff, organization }: {
+export function ProtectedRoute({ children, roles, platform, patient, staff, organization, onlyExperience, excludeExperience }: {
   children: ReactNode;
   roles?: readonly Role[];
   platform?: boolean;
@@ -14,6 +16,10 @@ export function ProtectedRoute({ children, roles, platform, patient, staff, orga
   staff?: boolean;
   /** Organization pages work without an active facility but need verified MFA. */
   organization?: boolean;
+  /** Only this facility experience may open the route; others are sent to their own dashboard. */
+  onlyExperience?: FacilityExperience;
+  /** A facility experience this route is not for, e.g. a Drugshop on a Pharmacy workflow. */
+  excludeExperience?: readonly FacilityExperience[];
 }) {
   const { me, loading, error, refresh, signedOut } = useAuth();
   const location = useLocation();
@@ -28,6 +34,19 @@ export function ProtectedRoute({ children, roles, platform, patient, staff, orga
   if (organization) {
     if (!(me.user.mfaEnrolled && me.user.mfaVerified)) return <Navigate to="/mfa-setup" replace />;
     return <>{children}</>;
+  }
+  // The facility's recorded type decides the interface, not the address the user typed.
+  const experience = facilityExperienceFor(me);
+  const home = experience === "drugshop" ? "/drugshop" : "/dashboard";
+  if (onlyExperience && experience !== onlyExperience) return <Navigate to={home} replace />;
+  if (excludeExperience?.includes(experience)) {
+    return (
+      <EmptyState
+        title="Not available to this facility"
+        description="This workflow belongs to a Pharmacy or clinical facility. Your facility is registered as a Drugshop, so use the Drugshop dashboard and its sales, stock and price-list tools."
+        action={<Link to={home}>Go to the dashboard</Link>}
+      />
+    );
   }
   if (staff && !me.activeTenant) {
     return <EmptyState title="Choose a facility" description="Open a workspace you are a member of to see its profile." action={<Link to="/facility-staff">Choose a facility</Link>} />;

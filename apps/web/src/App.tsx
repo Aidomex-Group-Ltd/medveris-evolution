@@ -7,6 +7,8 @@ import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AuthComposition } from "./features/auth/AuthComposition";
 import { CASHIER_ROLES, INVENTORY_ROLES, PROCUREMENT_ROLES, VISIT_ROLES } from "./lib/roles";
+import { useAuth } from "./lib/auth";
+import { facilityExperienceFor } from "./lib/nav";
 
 function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K): ComponentType {
   const Page = lazy(async () => {
@@ -87,6 +89,7 @@ const OnboardingWorkflowPage = lazyPage(() => import("./pages/OnboardingWorkflow
 const CatalogueEditorPage = lazyPage(() => import("./pages/CatalogueEditorPage"), "CatalogueEditorPage");
 const GlobalCataloguePage = lazyPage(() => import("./pages/GlobalCataloguePage"), "GlobalCataloguePage");
 const PriceListManagerPage = lazyPage(() => import("./pages/PriceListManagerPage"), "PriceListManagerPage");
+const DrugshopDashboardPage = lazyPage(() => import("./pages/DrugshopDashboardPage"), "DrugshopDashboardPage");
 const CaregiversPage = lazyPage(() => import("./pages/CaregiversPage"), "CaregiversPage");
 const InvitationPage = lazyPage(() => import("./pages/InvitationPage"), "InvitationPage");
 const FacilityStaffPage = lazyPage(() => import("./pages/FacilityStaffPage"), "FacilityStaffPage");
@@ -123,6 +126,12 @@ function RegisterRedirect() {
   return <Navigate to={`/login?${next.toString()}`} replace state={location.state} />;
 }
 
+/** A Drugshop lands on its own dashboard; every other facility keeps the existing overview. */
+function DashboardEntry() {
+  const { me } = useAuth();
+  return facilityExperienceFor(me) === "drugshop" ? <Navigate to="/drugshop" replace /> : <DashboardPage />;
+}
+
 function NotFoundPage() {
   return (
     <div className="mv-stack">
@@ -156,7 +165,9 @@ export function App() {
       <Route path="/directory/:publicId" element={<DirectoryDetailPage />} />
       <Route path="/" element={<RootGate />} />
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
-        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="dashboard" element={<DashboardEntry />} />
+        <Route path="drugshop" element={<ProtectedRoute onlyExperience="drugshop"><DrugshopDashboardPage /></ProtectedRoute>} />
+        <Route path="drugshop/price-lists" element={<ProtectedRoute onlyExperience="drugshop" roles={["finance", "facility_admin"]}><PriceListManagerPage /></ProtectedRoute>} />
         <Route path="patients" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><PatientsPage /></ProtectedRoute>} />
         <Route path="queues" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><QueuesPage /></ProtectedRoute>} />
         <Route path="appointments" element={<ProtectedRoute roles={["receptionist", "nurse", "clinician", "facility_admin"]}><AppointmentsPage /></ProtectedRoute>} />
@@ -182,7 +193,7 @@ export function App() {
         <Route path="radiology" element={<ProtectedRoute roles={["nurse", "clinician", "radiology", "radiographer", "radiologist"]}><RadiologyPage /></ProtectedRoute>} />
         <Route path="radiology/reports/:id" element={<ProtectedRoute roles={["nurse", "clinician", "radiology", "radiographer", "radiologist"]}><RadiologyReportPage /></ProtectedRoute>} />
         <Route path="diagnostics/orders/:id" element={<ProtectedRoute roles={["nurse", "clinician", "laboratory", "lab_validator", "radiology", "radiographer", "radiologist"]}><OrderDetailPage /></ProtectedRoute>} />
-        <Route path="pharmacy" element={<ProtectedRoute roles={["nurse", "clinician", "pharmacist", "facility_admin"]}><PharmacyPage /></ProtectedRoute>} />
+        <Route path="pharmacy" element={<ProtectedRoute roles={["nurse", "clinician", "pharmacist", "facility_admin"]} excludeExperience={["drugshop"]}><PharmacyPage /></ProtectedRoute>} />
         <Route path="pharmacy-pos" element={<ProtectedRoute roles={["pharmacist", "finance", "facility_admin", "owner", "clinician", "specialist_clinician"]}><PharmacyPosPage /></ProtectedRoute>} />
         <Route path="finance" element={<ProtectedRoute roles={["finance", "facility_admin"]}><FinancePage /></ProtectedRoute>} />
         <Route path="finance/invoices/:id" element={<ProtectedRoute roles={["finance", "facility_admin"]}><InvoiceDetailPage /></ProtectedRoute>} />

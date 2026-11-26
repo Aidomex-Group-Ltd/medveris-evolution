@@ -11,7 +11,7 @@ import {
   availablePriceListActions,
   type PriceListAction,
 } from "@medveris/domain";
-import { PRICE_LIST_READ_ROLES, PRICE_LIST_ROLES } from "@medveris/authz";
+import { PRICE_LIST_READ_ROLES, PRICE_LIST_ROLES, canFacilityPrice, facilityPricePermissionsFor, type FacilityPricePermission } from "@medveris/authz";
 import type { Tx } from "@medveris/db";
 import { isPlatformOperator, requireAuth, requireStaff, withPlatformActor, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
@@ -50,20 +50,34 @@ function requireOperator(c: Context<AppEnv>): void {
   if (!isPlatformOperator(c)) throw new ForbiddenError("Platform operator permission is required to change the global catalogue");
 }
 
-function requirePriceReader(c: Context<AppEnv>): void {
+function requirePricePermission(c: Context<AppEnv>, permission: FacilityPricePermission): void {
   requireStaff(c);
-  if (!hasRole(c, ...PRICE_LIST_READ_ROLES)) throw new ForbiddenError("A price-list role is required to read price lists");
+  if (!c.get("auth")?.activeTenant) throw new ForbiddenError("An active facility is required for facility price lists");
+  if (!canFacilityPrice(requestActor(c).roles, permission)) {
+    throw new ForbiddenError("Your role does not permit this price-list action");
+  }
+}
+
+function requirePriceReader(c: Context<AppEnv>): void {
+  requirePricePermission(c, "facility_prices.read");
 }
 
 /** These are exactly the roles the database's price-list write policies accept for a facility. */
 const PRICE_LIST_WRITE_ROLES = ["facility_admin", "finance"] as const;
 
-function requirePriceWriter(c: Context<AppEnv>): void {
-  requireStaff(c);
+function requirePriceWriter(c: Context<AppEnv>, permission: FacilityPricePermission = "facility_prices.update"): void {
+  requirePricePermission(c, permission);
+  // The database still requires a facility_admin or finance membership for the row; refuse here
+  // with a clear message rather than letting the insert fail after the request is accepted.
   if (!hasRole(c, ...PRICE_LIST_WRITE_ROLES)) {
-    throw new ForbiddenError("Price lists are maintained by facility administrators and finance");
+    throw new ForbiddenError("Facility prices are maintained by facility administrators and finance");
   }
-  if (!c.get("auth")?.activeTenant) throw new ForbiddenError("An active facility is required to maintain a price list");
+}
+
+/** DATE columns arrive as `Date` objects from the driver; the API works in plain calendar days. */
+function isoDay(value: unknown): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value ?? "").slice(0, 10);
 }
 
 function minorDigitsFor(currency: string): number {
@@ -330,12 +344,13 @@ globalCatalogueRoutes.get("/global-catalogue/lists", async (c) => {
   return c.json({
     lists,
     canManage: hasRole(c, ...PRICE_LIST_WRITE_ROLES),
+    permissions: [...facilityPricePermissionsFor(requestActor(c).roles)],
     statuses: { readRoles: PRICE_LIST_READ_ROLES, writeRoles: PRICE_LIST_ROLES },
   });
 });
 
 globalCatalogueRoutes.post("/global-catalogue/lists", async (c) => {
-  requirePriceWriter(c);
+  requirePriceWriter(c, "facility_prices.create");
   const body = await parseJson(c, createListInput);
   const auth = c.get("auth")!;
   const id = crypto.randomUUID();
@@ -420,7 +435,7 @@ globalCatalogueRoutes.get("/global-catalogue/lists/:id", async (c) => {
 });
 
 globalCatalogueRoutes.patch("/global-catalogue/lists/:id", async (c) => {
-  requirePriceWriter(c);
+  requirePriceWriter(c, "facility_prices.update");
   const id = z.string().uuid().parse(c.req.param("id"));
   const body = await parseJson(c, patchListInput);
   const auth = c.get("auth")!;
@@ -430,8 +445,8 @@ globalCatalogueRoutes.patch("/global-catalogue/lists/:id", async (c) => {
     if (!priceListIsEditable(status)) {
       throw new ConflictError(`A ${status.toLowerCase()} price list can no longer be edited`);
     }
-    const effectiveFrom = body.effectiveFrom ?? String(list.effectiveFrom);
-    const effectiveTo = body.effectiveTo === undefined ? (list.effectiveTo as string | null) : body.effectiveTo;
+    const effectiveFrom = body.effectiveFrom ?? isoDay(list.effectiveFrom);
+    const effectiveTo = body.effectiveTo === undefined ? (list.effectiveTo ? isoDay(list.effectiveTo) : null) : body.effectiveTo;
     if (effectiveTo && effectiveTo <= effectiveFrom) throw new ValidationError("The end date must be after the start date");
     await tx`
       update price_lists
@@ -453,7 +468,7 @@ globalCatalogueRoutes.patch("/global-catalogue/lists/:id", async (c) => {
 });
 
 globalCatalogueRoutes.post("/global-catalogue/lists/:id/duplicate", async (c) => {
-  requirePriceWriter(c);
+  requirePriceWriter(c, "facility_prices.create");
   const id = z.string().uuid().parse(c.req.param("id"));
   const auth = c.get("auth")!;
   const newId = crypto.randomUUID();
@@ -470,8 +485,8 @@ globalCatalogueRoutes.post("/global-catalogue/lists/:id/duplicate", async (c) =>
       insert into price_lists (id, code, name, description, facility_id, tenant_id, source_type, source_reference, status,
                                effective_from, effective_to, active, created_by)
       values (${newId}, ${code}, ${`${String(list.name)} (copy)`}, ${list.description ?? null}, ${auth.activeTenant!.id},
-              ${auth.activeTenant!.id}, 'copy', ${String(list.code)}, 'DRAFT', ${String(list.effectiveFrom)},
-              ${(list.effectiveTo as string | null) ?? null}, true, ${auth.user.id})
+              ${auth.activeTenant!.id}, 'copy', ${String(list.code)}, 'DRAFT', ${isoDay(list.effectiveFrom)},
+              ${list.effectiveTo ? isoDay(list.effectiveTo) : null}, true, ${auth.user.id})
     `;
     for (const item of items) {
       await tx`
@@ -481,7 +496,7 @@ globalCatalogueRoutes.post("/global-catalogue/lists/:id/duplicate", async (c) =>
         values (${crypto.randomUUID()}, ${newId}, ${item.masterPriceCode ?? null}, ${String(item.name)},
                 ${item.description ?? null}, ${String(item.category)}, ${String(item.unitType)}, ${Boolean(item.isService)},
                 ${Number(item.price)}, ${String(item.currency)}, true, true, 'pending',
-                ${String(item.effectiveFrom)}, ${(item.effectiveTo as string | null) ?? null}, ${auth.user.id})
+                ${isoDay(item.effectiveFrom)}, ${item.effectiveTo ? isoDay(item.effectiveTo) : null}, ${auth.user.id})
       `;
     }
     await writeAudit(tx, c.get("deps").config, requestAudit(c, "price.list.duplicate", {
@@ -495,7 +510,7 @@ globalCatalogueRoutes.post("/global-catalogue/lists/:id/duplicate", async (c) =>
 });
 
 globalCatalogueRoutes.post("/global-catalogue/lists/:id/items", async (c) => {
-  requirePriceWriter(c);
+  requirePriceWriter(c, "facility_prices.update");
   const id = z.string().uuid().parse(c.req.param("id"));
   const body = await parseJson(c, listItemInput);
   const auth = c.get("auth")!;
@@ -511,7 +526,7 @@ globalCatalogueRoutes.post("/global-catalogue/lists/:id/items", async (c) => {
     }
     const created = await insertListItem(tx, {
       listId: id,
-      listEffectiveFrom: String(list.effectiveFrom),
+      listEffectiveFrom: isoDay(list.effectiveFrom),
       userId: auth.user.id,
       item: body,
     });
@@ -534,7 +549,7 @@ const patchItemInput = z.object({
 });
 
 globalCatalogueRoutes.patch("/global-catalogue/lists/:id/items/:itemId", async (c) => {
-  requirePriceWriter(c);
+  requirePriceWriter(c, "facility_prices.update");
   const id = z.string().uuid().parse(c.req.param("id"));
   const itemId = z.string().uuid().parse(c.req.param("itemId"));
   const body = await parseJson(c, patchItemInput);
@@ -572,7 +587,7 @@ globalCatalogueRoutes.patch("/global-catalogue/lists/:id/items/:itemId", async (
 });
 
 globalCatalogueRoutes.delete("/global-catalogue/lists/:id/items/:itemId", async (c) => {
-  requirePriceWriter(c);
+  requirePriceWriter(c, "facility_prices.update");
   const id = z.string().uuid().parse(c.req.param("id"));
   const itemId = z.string().uuid().parse(c.req.param("itemId"));
   const auth = c.get("auth")!;
@@ -598,7 +613,16 @@ globalCatalogueRoutes.delete("/global-catalogue/lists/:id/items/:itemId", async 
 });
 
 globalCatalogueRoutes.post("/global-catalogue/lists/:id/transition", async (c) => {
-  requirePriceWriter(c);
+  const permissionForAction: Record<string, FacilityPricePermission> = {
+    validate: "facility_prices.update",
+    submit: "facility_prices.submit",
+    approve: "facility_prices.approve",
+    reject: "facility_prices.approve",
+    publish: "facility_prices.publish",
+    expire: "facility_prices.archive",
+    archive: "facility_prices.archive",
+  };
+  requirePriceWriter(c, "facility_prices.update");
   const id = z.string().uuid().parse(c.req.param("id"));
   const body = await parseJson(c, transitionInput);
   const auth = c.get("auth")!;
@@ -608,6 +632,9 @@ globalCatalogueRoutes.post("/global-catalogue/lists/:id/transition", async (c) =
     const status = normalizePriceListStatus(String(list.status));
     const action = body.action as PriceListAction;
     assertPriceListActionRole(action, requestActor(c).roles, operator);
+    if (!operator && !canFacilityPrice(requestActor(c).roles, permissionForAction[action]!)) {
+      throw new ForbiddenError(`Your role cannot ${action} a price list`);
+    }
 
     let next;
     try {
@@ -622,8 +649,8 @@ globalCatalogueRoutes.post("/global-catalogue/lists/:id/transition", async (c) =
       const issues = validatePriceList({
         code: String(list.code),
         name: String(list.name),
-        effectiveFrom: String(list.effectiveFrom),
-        effectiveTo: (list.effectiveTo as string | null) ?? null,
+        effectiveFrom: isoDay(list.effectiveFrom),
+        effectiveTo: list.effectiveTo ? isoDay(list.effectiveTo) : null,
         items: active.map((item) => ({
           masterPriceCode: (item.masterPriceCode as string | null) ?? null,
           name: String(item.name),
@@ -667,7 +694,7 @@ globalCatalogueRoutes.post("/global-catalogue/lists/:id/transition", async (c) =
 });
 
 globalCatalogueRoutes.get("/global-catalogue/lists/:id/history", async (c) => {
-  requirePriceReader(c);
+  requirePricePermission(c, "facility_prices.history.read");
   const id = z.string().uuid().parse(c.req.param("id"));
   const auth = c.get("auth")!;
   const result = await withStaffActor(c, async (tx) => {

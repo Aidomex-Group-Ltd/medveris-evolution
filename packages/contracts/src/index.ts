@@ -2017,6 +2017,8 @@ export const inventoryItemSchema = z.object({
   sellingPrice: z.number().min(0).max(1000000000).default(0),
   taxRate: z.number().min(0).max(100).default(0),
   prescriptionOnly: z.boolean().default(false),
+  /** Lawful dispensing classification; `unverified` (the default) permits no Drugshop dispensing. */
+  dispensingScope: z.enum(["otc","prescription-only","pharmacy-only","not-dispensable","unverified"]).default("unverified"),
   reorderThreshold: z.number().min(0).max(1000000000).optional().nullable(),
   units: z.array(inventoryItemUnitSchema).min(1),
 });
@@ -2038,6 +2040,7 @@ export const inventoryItemUpdateSchema = z.object({
   sellingPrice: z.number().min(0).max(1000000000).optional(),
   taxRate: z.number().min(0).max(100).optional(),
   prescriptionOnly: z.boolean().optional(),
+  dispensingScope: z.enum(["otc","prescription-only","pharmacy-only","not-dispensable","unverified"]).optional(),
   reorderThreshold: z.number().min(0).max(1000000000).optional().nullable(),
 });
 

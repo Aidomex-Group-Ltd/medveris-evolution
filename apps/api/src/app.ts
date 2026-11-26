@@ -47,6 +47,7 @@ import { inventoryRoutes } from "./routes/inventory.js";
 import { directoryRoutes } from "./routes/directory.js";
 import { promotionRoutes } from "./routes/promotions.js";
 import { globalCatalogueRoutes } from "./routes/global-catalogue.js";
+import { facilityExperienceRoutes } from "./routes/facility-experience.js";
 import { globalMedicinesRoutes } from "./routes/global-medicines.js";
 import { integrationRoutes } from "./routes/integrations.js";
 import { radiologyRoutes } from "./routes/radiology.js";
@@ -243,6 +244,7 @@ export function createApp(deps: AppBaseDeps): Hono<AppEnv> {
   app.route("/api/v1", integrationRoutes);
   app.route("/api/v1", globalMedicinesRoutes);
   app.route("/api/v1", globalCatalogueRoutes);
+  app.route("/api/v1", facilityExperienceRoutes);
   app.route("/api/v1", radiologyRoutes);
   app.route("/api/v1", patientMergeRoutes);
   app.route("/api/v1", reportRoutes);

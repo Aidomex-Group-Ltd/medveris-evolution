@@ -375,7 +375,8 @@ inventoryRoutes.get("/inventory/items", async (c) => {
            i.expiry_tracked, i.storage_requirements, i.criticality, i.unit_cost::float8 as unit_cost,
            i.currency, i.status, i.updated_at, m.name as medicine_name,
            i.generic_name, i.brand_name, i.strength, i.form, i.selling_price::float8 as selling_price,
-           i.tax_rate::float8 as tax_rate, i.prescription_only, i.reorder_threshold::float8 as reorder_threshold,
+           i.tax_rate::float8 as tax_rate, i.prescription_only, i.dispensing_scope,
+           i.reorder_threshold::float8 as reorder_threshold,
            (select json_agg(json_build_object('unit', u.unit, 'conversionFactor', u.conversion_factor::float8,
               'isBase', u.is_base, 'purchasingUnit', u.purchasing_unit, 'issuingUnit', u.issuing_unit))
              from inventory_item_units u where u.item_id = i.id) as units
@@ -412,7 +413,7 @@ inventoryRoutes.post("/inventory/items", async (c) => {
         id, tenant_id, item_code, name, description, category, subcategory, classification, base_unit,
         medicine_id, manufacturer, supplier_name, barcode, lot_tracked, serial_tracked, expiry_tracked,
         storage_requirements, criticality, unit_cost, currency, generic_name, brand_name, strength, form,
-        selling_price, tax_rate, prescription_only, reorder_threshold, created_by
+        selling_price, tax_rate, prescription_only, dispensing_scope, reorder_threshold, created_by
       ) values (
         ${id}, ${auth.activeTenant!.id}, ${body.itemCode}, ${body.name}, ${body.description || null},
         ${body.category}, ${body.subcategory || null}, ${body.classification}, ${body.baseUnit},
@@ -420,7 +421,8 @@ inventoryRoutes.post("/inventory/items", async (c) => {
         ${body.barcode || null}, ${body.lotTracked}, ${body.serialTracked}, ${body.expiryTracked},
         ${body.storageRequirements || null}, ${body.criticality}, ${body.unitCost}, ${body.currency},
         ${body.genericName || null}, ${body.brandName || null}, ${body.strength || null}, ${body.form || null},
-        ${body.sellingPrice}, ${body.taxRate}, ${body.prescriptionOnly}, ${body.reorderThreshold ?? null}, ${auth.user.id}
+        ${body.sellingPrice}, ${body.taxRate}, ${body.prescriptionOnly}, ${body.dispensingScope},
+        ${body.reorderThreshold ?? null}, ${auth.user.id}
       )
     `;
     for (const unit of body.units) {
@@ -465,6 +467,7 @@ inventoryRoutes.patch("/inventory/items/:id", async (c) => {
         selling_price = coalesce(${body.sellingPrice ?? null}, selling_price),
         tax_rate = coalesce(${body.taxRate ?? null}, tax_rate),
         prescription_only = coalesce(${body.prescriptionOnly ?? null}, prescription_only),
+        dispensing_scope = coalesce(${body.dispensingScope ?? null}, dispensing_scope),
         reorder_threshold = case when ${body.reorderThreshold !== undefined} then ${body.reorderThreshold ?? null} else reorder_threshold end,
         updated_at = now()
       where id = ${id} and tenant_id = ${auth.activeTenant!.id}
