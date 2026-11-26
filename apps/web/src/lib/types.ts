@@ -39,7 +39,13 @@ export type Role =
   | "department_admin"
   | "unit_lead"
   | "staff"
-  | "report_viewer";
+  | "report_viewer"
+  | "global_system_administrator"
+  | "global_price_manager"
+  | "country_price_administrator"
+  | "facility_view_only"
+  | "facility_finance_manager"
+  | "billing_officer";
 
 export interface SessionUser {
   id: string;

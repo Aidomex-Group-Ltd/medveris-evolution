@@ -348,17 +348,22 @@ export const RECEPTION_ROLES: readonly Role[] = ["receptionist", "facility_admin
 /** Cashiers: build bills from a visit, take cash and mobile money, issue receipts. */
 export const CASHIER_ROLES: readonly Role[] = ["finance", "facility_admin"];
 
-/** Price-list maintenance roles with granular permissions. */
+/** Price-list maintenance (write) roles. Read-only and billing roles are deliberately absent. */
 export const PRICE_LIST_ROLES: readonly Role[] = [
   "finance",
   "facility_admin",
   "global_system_administrator",
   "global_price_manager",
   "country_price_administrator",
-  "facility_view_only",
   "facility_finance_manager",
+];
+
+/** Roles that may read price lists and published tariffs but never change them. */
+export const PRICE_LIST_READ_ROLES: readonly Role[] = [
+  ...PRICE_LIST_ROLES,
   "billing_officer",
-  "auditor"
+  "facility_view_only",
+  "auditor",
 ];
 
 export type QueueDepartment = keyof typeof DEPARTMENT_QUEUE_ROLES;
@@ -390,7 +395,7 @@ export function assertCashier(actor: ActorContext): void {
 }
 
 export function assertPriceListManager(actor: ActorContext): void {
-  if (!hasRole(actor, ...PRICE_LIST_ROLES)) throw new AuthzError("Price list management requires appropriate administrator privileges.");
+  if (!hasRole(actor, ...PRICE_LIST_ROLES)) throw new AuthzError("Price list management requires a finance, facility administration or price administration role");
 }
 
 export class AuthzError extends Error {

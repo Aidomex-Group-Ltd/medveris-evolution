@@ -1,18 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select } from "@medveris/ui";
-import { api } from "../lib/api";
-import { useAuth } from "../lib/auth";
+import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { Field, Input, Select } from "@medveris/ui";
+import { api } from "../../lib/api";
 
+/**
+ * Medicine picker backed by the global price catalogue (`/global-medicines/medicines`).
+ *
+ * The rows are catalogue entries with a code, name, category and unit; strength, form and route
+ * are optional because the price catalogue does not always carry them. This component never
+ * implies a regulatory approval — that data lives in the medicine master catalogue.
+ */
 interface Medicine {
   id: string;
   code: string;
   name: string;
-  description?: string;
-  category?: string;
-  subcategory?: string;
-  strength?: string;
-  form?: string;
-  route?: string;
+  description?: string | null;
+  category?: string | null;
+  subcategory?: string | null;
+  strength?: string | null;
+  form?: string | null;
+  route?: string | null;
 }
 
 interface MedicineDropdownProps {
@@ -22,107 +28,78 @@ interface MedicineDropdownProps {
   minimumSearchLength?: number;
 }
 
-export function MedicineDropdown({ 
+export function MedicineDropdown({
   defaultValue,
   onSelect,
   showSearch = true,
-  minimumSearchLength = 2
+  minimumSearchLength = 2,
 }: MedicineDropdownProps) {
-  const { me } = useAuth();
-  const [value, setValue] = useState<string>("");
+  const [value, setValue] = useState<string>(defaultValue ?? "");
   const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [searchTerm, setSearchTerm] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState<string>("");
-  const [isSearching, setIsSearching] = useState(false);
 
-  const loadMedicines = useCallback(async (search = "") => {
-    if (search.length < (minimumSearchLength || 2) && !defaultValue) {
-      setMedicines([]);
-      return;
-    }
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await api("/api/v1/global-medicines/medicines", {
-        method: "GET",
-      });
-      const data = await response.json();
-      let filtered = data.medicines || [];
-
-      if (searchTerm && searchTerm.trim()) {
-        const term = searchTerm.trim().toLowerCase();
-        filtered = data.medicines.filter(
-          (m: Medicine) =>
-            m.name.toLowerCase().includes(term) ||
-            m.code.toLowerCase().includes(term) ||
-            (m.description && m.description.toLowerCase().includes(term))
-        );
-      }
-
-      setMedicines(filtered);
-      setValue("");
-    } catch (err) {
-      setError("Failed to load medicines");
+      const data = await api<{ medicines: Medicine[] }>("/global-medicines");
+      setMedicines(data.medicines ?? []);
+    } catch (cause) {
       setMedicines([]);
+      setError(cause instanceof Error ? cause.message : "The medicine catalogue could not be loaded");
     } finally {
       setLoading(false);
     }
-  }, [searchTerm]);
+  }, []);
 
   useEffect(() => {
-    loadMedicines();
-  }, [loadMedicines]);
+    if (defaultValue) setValue(defaultValue);
+  }, [defaultValue]);
 
   useEffect(() => {
-    loadMedicines(searchTerm);
-  }, [searchTerm, loadMedicines]);
+    if (!showSearch) return;
+    if (searchTerm.trim().length < minimumSearchLength) return;
+    void load();
+  }, [load, minimumSearchLength, searchTerm, showSearch]);
 
-  const handleChange = (event: any) => {
-    const newValue = event.target.value;
-    setValue(newValue);
-    setSearchTerm(newValue);
-    if (newValue.length >= (minimumSearchLength || 2)) {
-      loadMedicines(newValue);
-    } else {
-      setMedicines([]);
-    }
-  };
+  const term = searchTerm.trim().toLowerCase();
+  const visible = term.length < minimumSearchLength
+    ? medicines
+    : medicines.filter((medicine) =>
+        medicine.name.toLowerCase().includes(term)
+        || medicine.code.toLowerCase().includes(term)
+        || (medicine.description ?? "").toLowerCase().includes(term));
 
-  const handleSelect = (optionValue: string) => {
-    onSelect(
-      medicines.find((m) => m.id === optionValue) || null
-    );
-    setValue(optionValue);
-    setSearchTerm("");
-    setMedicines([]);
-    setIsSearching(false);
+  function handleChange(event: ChangeEvent<HTMLSelectElement>) {
+    const next = event.target.value;
+    setValue(next);
+    onSelect(medicines.find((medicine) => medicine.id === next) ?? null);
+  }
+
+  const label = (medicine: Medicine) => {
+    const details = [medicine.strength, medicine.form].filter(Boolean).join(" · ");
+    return details ? `${medicine.name} — ${details}` : medicine.name;
   };
 
   return (
-    <Field label="Medicine">
-      <Select
-        value={value}
-        onChange={handleChange}
-        placeholder="Search medicines..."
-        onSearch={showSearch ? (trigger: string) => setSearchTerm(trigger) : undefined}
-        loading={loading}
-        error={error}
-      >
+    <Field label="Medicine" error={error ?? undefined} hint={loading ? "Loading the catalogue…" : undefined}>
+      {showSearch ? (
+        <Input
+          type="search"
+          placeholder="Search by name or code"
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          aria-label="Search medicines"
+        />
+      ) : null}
+      <Select value={value} onChange={handleChange} aria-label="Medicine">
         <option value="">Select a medicine…</option>
-        {medicines.map((med) => (
-          <option key={med.id} value={med.id}>
-            <span>
-              <strong>{med.name}</strong>
-              {med.strength ? ` · ${med.strength}` : ""}
-              {med.form ? ` ({med.form})` : ""}
-            </span>
-            {med.category && <span className="mv-small mv-muted">[{med.category}]</span>}
-          </option>
+        {visible.map((medicine) => (
+          <option key={medicine.id} value={medicine.id}>{label(medicine)}</option>
         ))}
-        {isSearching && loading && <option value="">Loading…</option>}
       </Select>
-      {error && <ErrorState message={error} /> }
     </Field>
   );
 }

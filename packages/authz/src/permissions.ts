@@ -1243,6 +1243,17 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
   research: ["public_health.aggregate.read", "content.read", "dashboard.public_health.read"],
   auditor: [...inventoryRead, "directory.read", "audit.read", "care_team.read", "content.read", "dashboard.administration.read", "emergency.access.revoke"],
+  // Global catalogue and price administration. These are workspace roles, not platform-operator
+  // grants: the role decides what a signed-in account may do inside its workspace, while the
+  // platform grant still gates the operator console and the platform API routes.
+  global_system_administrator: [...inventoryRead, ...inventoryGapRead, "inventory.catalogue.manage", "organization.catalogue.manage", "onboarding.catalogue.read", "directory.read", "audit.read", "content.read", "dashboard.administration.read"],
+  global_price_manager: [...inventoryRead, ...inventoryGapRead, "inventory.catalogue.manage", "onboarding.catalogue.read", "directory.read", "content.read", "dashboard.administration.read"],
+  country_price_administrator: [...inventoryRead, "inventory.catalogue.manage", "onboarding.catalogue.read", "content.read", "dashboard.administration.read"],
+  // Read-only and billing roles never receive a catalogue or price mutation permission; the
+  // price-list write path stays closed to them by role check as well as by permission.
+  facility_view_only: [...inventoryRead, "onboarding.catalogue.read", "content.read", "dashboard.operations.read"],
+  facility_finance_manager: [...inventoryRead, "audit.read", "onboarding.catalogue.read", "content.read", "dashboard.administration.read"],
+  billing_officer: [...inventoryRead, "onboarding.catalogue.read", "content.read", "dashboard.operations.read"],
   credential_reviewer: ["credential.review", "content.read", "dashboard.administration.read",
     "credential.content.read",
     "credential.facility.queue.read",

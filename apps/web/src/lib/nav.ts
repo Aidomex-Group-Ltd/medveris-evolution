@@ -185,23 +185,24 @@ export const MOBILE_TABS: readonly MobileTab[] = Object.freeze([
   { id: "more", label: "More", icon: "more" },
 ]);
 
-export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze([
+export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze(
+  [
   // Dashboard -----------------------------------------------------------------
   {
     id: "dashboard", label: "Dashboard", to: "/dashboard", icon: "dashboard", section: "dashboard", mobile: "home",
     description: "Facility overview, daily priorities and quick actions", quickAction: true,
-  /* Drugshop */
-  {
+  },
+{
     id: "drugshop-dashboard",
     label: "Drugshop Dashboard",
     to: "/drugshop",
     icon: "pharmacy",
     section: "dashboard",
+    mobile: "care",
     roles: ["global_system_administrator", "global_price_manager", "facility_view_only"],
     description: "Drugshop overview and operational metrics",
     quickAction: true,
-  },
-  },
+},
 
   // Reception & Billing ------------------------------------------------------
   {
