@@ -13,7 +13,7 @@ import {
 } from "@medveris/domain";
 import { PRICE_LIST_READ_ROLES, PRICE_LIST_ROLES } from "@medveris/authz";
 import type { Tx } from "@medveris/db";
-import { isPlatformOperator, requireStaff, withPlatformActor, withStaffActor } from "../auth/middleware.js";
+import { isPlatformOperator, requireAuth, requireStaff, withPlatformActor, withStaffActor } from "../auth/middleware.js";
 import { requestActor, requestAudit, requireRows } from "../lib/actor.js";
 import { writeAudit } from "../lib/audit.js";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../lib/errors.js";
@@ -111,8 +111,7 @@ const itemQuery = z.object({
 
 /** Every catalogue row, including withdrawn ones, with duplicate-name detection. */
 globalCatalogueRoutes.get("/global-catalogue/items", async (c) => {
-  const auth = c.get("auth");
-  if (!auth) throw new ForbiddenError("Authentication required");
+  requireAuth(c);
   if (!isPlatformOperator(c)) {
     requireStaff(c);
     const rows = await withStaffActor(c, async (tx) => tx`
