@@ -263,6 +263,16 @@
 				{
 					"pattern": "medveris.online",
 					"custom_domain": true
+				},
+				// observability.medveris.online keeps an externally managed CNAME, so it is served by a
+				// route instead of a Worker custom domain: Cloudflare refuses to attach a custom domain
+				// while that record exists, and a proxied CNAME to *.workers.dev makes the edge fetch
+				// workers.dev as an origin (HTTP 522). A route intercepts the hostname first, so no
+				// DNS record has to change. Replace this with custom_domain entries only after the
+				// CNAME is removed deliberately (needs Zone.DNS edit).
+				{
+					"pattern": "observability.medveris.online/*",
+					"zone_name": "medveris.online"
 				}
 			],
 			// Kamatera PostgreSQL production database (medveris-prod) via Workers VPC tunnel (medveris-pg18)
@@ -356,6 +366,10 @@
 			"vars": {
 				"APP_ENV": "production",
 				"APP_ORIGIN": "https://medveris.online",
+				// Enables the /platform/observability proxy. Without CLOUDFLARE_API_TOKEN and
+				// CLOUDFLARE_ACCOUNT_ID (Worker secrets) the Cloudflare panels report "unavailable"
+				// envelopes; the local database, outbox, integration and latency panels stay live.
+				"CLOUDFLARE_OBSERVABILITY_ENABLED": "true",
 				"EXPECTED_DATABASE_NAME": "medveris-prod",
 				"AUDIT_SIGNING_KEY_ID": "production-key-1",
 				"EMAIL_ADAPTER": "resend",

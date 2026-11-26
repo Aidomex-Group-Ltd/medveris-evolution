@@ -39,3 +39,4 @@ origin/
 
 # Background command logs (scripts/dev/bg.sh)
 .logs/
+.env.production.local

@@ -8,6 +8,7 @@ import { PatientSignUpForm } from "./PatientSignUpForm";
 import { ProviderSignUpForm } from "./ProviderSignUpForm";
 import { AuthLegalNotice } from "./AuthLegalNotice";
 import { useAuth } from "../../lib/auth";
+import { isOperatorConsoleHost } from "../../lib/host";
 import { safeReturnPath } from "../../lib/navigation";
 import { destination, readMode, readRole, type AuthMode } from "./auth-params";
 
@@ -27,8 +28,11 @@ export function AuthComposition() {
   const navigate = useNavigate();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
-  const role = readRole(params);
-  const mode = readMode(params);
+  // The operator console hostname has one audience: platform operators. It offers no account-type
+  // switch and no sign-up, and a completed sign-in always returns to the console.
+  const operatorConsole = isOperatorConsoleHost();
+  const role: AuthRole = operatorConsole ? "provider" : readRole(params);
+  const mode: Mode = operatorConsole ? "signin" : readMode(params);
   const returnTo = safeReturnPath((location.state as { from?: unknown } | null)?.from);
 
   function update(next: { role?: AuthRole; mode?: Mode }) {
@@ -40,39 +44,46 @@ export function AuthComposition() {
   }
 
   useEffect(() => {
-    if (me) navigate(destination(me, role, returnTo), { replace: true });
-  }, [me, role, returnTo, navigate]);
+    if (!me) return;
+    navigate(operatorConsole ? returnTo ?? "/platform-observability" : destination(me, role, returnTo), { replace: true });
+  }, [me, role, returnTo, navigate, operatorConsole]);
 
-  const title = mode === "signin" ? "Welcome back" : "Create your account";
-  const subtitle = mode === "signin"
-    ? role === "provider"
-      ? "Sign in to your healthcare or facility account."
-      : "Sign in to your patient account."
-    : role === "provider"
-      ? "Set up your organization or join an existing one."
-      : "Set up your free patient account to access Medveris.";
+  const title = operatorConsole ? "Platform operator sign-in" : mode === "signin" ? "Welcome back" : "Create your account";
+  const subtitle = operatorConsole
+    ? "This console is restricted to MedVeris platform operators. Sign in with an authorized operator account."
+    : mode === "signin"
+      ? role === "provider"
+        ? "Sign in to your healthcare or facility account."
+        : "Sign in to your patient account."
+      : role === "provider"
+        ? "Set up your organization or join an existing one."
+        : "Set up your free patient account to access Medveris.";
 
   const switchLink = mode === "signin" ? { to: `/login?role=${role}&mode=signup`, label: "Don't have an account? Create one" } : { to: `/login?role=${role}&mode=signin`, label: "Already have an account? Sign in" };
 
   return (
     <AuthLayout>
       <AuthBrand />
-      <AuthAccountTypeSelector role={role} onRoleChange={(nextRole) => update({ role: nextRole })} />
+      {operatorConsole ? null : (
+        <AuthAccountTypeSelector role={role} onRoleChange={(nextRole) => update({ role: nextRole })} />
+      )}
       <div className="mv-authx__card" aria-labelledby="authx-title">
         <header>
           <h1 id="authx-title" className="mv-authx__title">{title}</h1>
           <p className="mv-authx__subtitle">{subtitle}</p>
         </header>
         {mode === "signin" ? (
-          <SignInForm role={role} />
+          <SignInForm role={role} operator={operatorConsole} />
         ) : role === "patient" ? (
           <PatientSignUpForm />
         ) : (
           <ProviderSignUpForm />
         )}
-        <p className="mv-authx__consent mv-authx__inline">
-          <Link to={switchLink.to}>{switchLink.label}</Link>
-        </p>
+        {operatorConsole ? null : (
+          <p className="mv-authx__consent mv-authx__inline">
+            <Link to={switchLink.to}>{switchLink.label}</Link>
+          </p>
+        )}
       </div>
       <AuthLegalNotice />
     </AuthLayout>

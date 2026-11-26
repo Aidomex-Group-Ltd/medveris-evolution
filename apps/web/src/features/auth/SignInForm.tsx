@@ -14,7 +14,7 @@ import type { AuthRole } from "./AuthAccountTypeSelector";
  * Distinct post-auth destinations: providers land on the staff workspace flow,
  * patients land on the portal. MFA challenge is preserved end-to-end.
  */
-export function SignInForm({ role }: { role: AuthRole }): ReactElement {
+export function SignInForm({ role, operator = false }: { role: AuthRole; operator?: boolean }): ReactElement {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,7 +43,11 @@ export function SignInForm({ role }: { role: AuthRole }): ReactElement {
   return (
     <form className="mv-stack" onSubmit={submitPassword} noValidate={false}>
       {error ? <ErrorState message={error} /> : null}
-      {role === "provider" ? <p className="mv-small mv-muted">Healthcare staff sign in with their verified account. New staff should use the invitation link from their facility administrator.</p> : null}
+      {operator ? (
+        <p className="mv-small mv-muted">Platform operator accounts are issued by MedVeris. There is no self-registration for this console.</p>
+      ) : role === "provider" ? (
+        <p className="mv-small mv-muted">Healthcare staff sign in with their verified account. New staff should use the invitation link from their facility administrator.</p>
+      ) : null}
       <Field label="Email" htmlFor="auth-email">
         <Input id="auth-email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Enter your email address" icon={<FieldIcon name="mail" />} required />
       </Field>
