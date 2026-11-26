@@ -174,7 +174,9 @@ const origin = verificationOrigin({ declared, attached: attached ?? [] });
 evidence.verificationOrigin = origin;
 
 // 5. Secrets: names only; values come from the protected production files and only missing names are uploaded.
-const secretList = wrangler("secret", "list", "--env", PRODUCTION.env, "--format", "json");
+// Target the script name explicitly: with --env, this account's token is refused on the secrets
+// endpoint even though the same call with --name succeeds against the identical script and account.
+const secretList = wrangler("secret", "list", "--name", PRODUCTION.worker, "--format", "json");
 let remoteSecretNames;
 if (secretList.status === 0 && Array.isArray(parseJsonOutput(secretList.stdout))) {
   remoteSecretNames = parseJsonOutput(secretList.stdout).map((secret) => secret.name);
