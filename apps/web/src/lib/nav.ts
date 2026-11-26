@@ -464,6 +464,7 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = Object.freeze(
 
 /** Platform Operations is a separate area and never appears in facility navigation. */
 export const PLATFORM_NAV: readonly PlatformNavItem[] = Object.freeze([
+  { id: "global-catalogue", label: "Global price catalogue", to: "/global-catalogue", icon: "price-list" },
   { id: "directory-governance", label: "Directory governance", to: "/directory-governance", icon: "organizations" },
   { id: "platform-integrations", label: "Integrations", to: "/platform-integrations", icon: "iot" },
   { id: "reviewer", label: "Credential review", to: "/reviewer", icon: "credentials" },

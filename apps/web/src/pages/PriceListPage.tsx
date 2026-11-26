@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { BILLABLE_ITEM_TYPE_LABELS, BILLABLE_ITEM_TYPES, CATALOGUE_CATEGORIES, departmentForCategory } from "@medveris/domain";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Tabs, Textarea } from "@medveris/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
@@ -88,7 +89,12 @@ export function PriceListPage() {
 
   return (
     <div className="mv-stack">
-      <PageHeader eyebrow="Billing" title="Price list" description="What this workspace charges for. A recommendation, department work and supplied items are billed at these prices, once each." />
+      <PageHeader
+        eyebrow="Billing"
+        title="Price list"
+        description="What this workspace charges for. A recommendation, department work and supplied items are billed at these prices, once each."
+        actions={canManage ? <Link className="mv-button mv-button--md mv-button--secondary" to="/price-lists">Draft, approve and publish price lists</Link> : undefined}
+      />
       {action.error ? <ErrorState message={action.error} /> : null}
       {action.message ? <Notice tone="success">{action.message}</Notice> : null}
       <Notice tone="info" title="Test prices cannot be charged">

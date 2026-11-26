@@ -85,6 +85,8 @@ const DirectoryGovernancePage = lazyPage(() => import("./pages/DirectoryGovernan
 const OnboardingPage = lazyPage(() => import("./pages/OnboardingPage"), "OnboardingPage");
 const OnboardingWorkflowPage = lazyPage(() => import("./pages/OnboardingWorkflowPage"), "OnboardingWorkflowPage");
 const CatalogueEditorPage = lazyPage(() => import("./pages/CatalogueEditorPage"), "CatalogueEditorPage");
+const GlobalCataloguePage = lazyPage(() => import("./pages/GlobalCataloguePage"), "GlobalCataloguePage");
+const PriceListManagerPage = lazyPage(() => import("./pages/PriceListManagerPage"), "PriceListManagerPage");
 const CaregiversPage = lazyPage(() => import("./pages/CaregiversPage"), "CaregiversPage");
 const InvitationPage = lazyPage(() => import("./pages/InvitationPage"), "InvitationPage");
 const FacilityStaffPage = lazyPage(() => import("./pages/FacilityStaffPage"), "FacilityStaffPage");
@@ -214,6 +216,8 @@ export function App() {
         <Route path="caregiver-requests" element={<ProtectedRoute roles={["facility_admin", "records"]}><CaregiversPage /></ProtectedRoute>} />
         <Route path="onboarding-workflow" element={<ProtectedRoute><OnboardingWorkflowPage /></ProtectedRoute>} />
         <Route path="catalogue-editor" element={<ProtectedRoute><CatalogueEditorPage /></ProtectedRoute>} />
+        <Route path="global-catalogue" element={<ProtectedRoute platform><GlobalCataloguePage /></ProtectedRoute>} />
+        <Route path="price-lists" element={<ProtectedRoute roles={["finance", "facility_admin"]}><PriceListManagerPage /></ProtectedRoute>} />
         <Route path="reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
         <Route path="patient-merges" element={<ProtectedRoute roles={["facility_admin", "records"]}><PatientMergesPage /></ProtectedRoute>} />
         <Route path="admin" element={<ProtectedRoute roles={["facility_admin"]}><AdminPage /></ProtectedRoute>} />

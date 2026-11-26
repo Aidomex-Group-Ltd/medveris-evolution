@@ -6,6 +6,7 @@ import { formatDate, formatDateTime, futureIso, todayInput } from "../lib/format
 import { useAction } from "../lib/useAction";
 import { useQuery } from "../lib/useQuery";
 import { EncounterPicker, MemberPicker, PatientPicker } from "../components/Pickers";
+import { MedicineDropdown, type MedicineSelection } from "../components/medicine-dropdown/MedicineDropdown";
 
 interface Medicine { id: string; name: string; strength: string; form: string; route: string; stockQuantity: number }
 interface Review { decision: string; note: string }
@@ -290,6 +291,19 @@ function Catalogue({ pharmacist }: { pharmacist: boolean }) {
   const [codeSystem, setCodeSystem] = useState("");
   const [codeVersion, setCodeVersion] = useState("");
   const [knowledgeSource, setKnowledgeSource] = useState("");
+  const [fromCatalogue, setFromCatalogue] = useState<MedicineSelection | null>(null);
+
+  function prefill(medicine: MedicineSelection | null) {
+    setFromCatalogue(medicine);
+    if (!medicine) return;
+    setName(medicine.name);
+    setCode(medicine.code);
+    setStrength(medicine.strength ?? "");
+    setForm(medicine.form ?? "");
+    setRoute(medicine.route ?? "");
+    setCodeSystem("");
+    setKnowledgeSource("");
+  }
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -297,6 +311,7 @@ function Catalogue({ pharmacist }: { pharmacist: boolean }) {
       await api("/medicines", { method: "POST", body: { name, strength, form, route, code, codeSystem, codeVersion, knowledgeSource } });
       setName("");
       setStrength("");
+      setFromCatalogue(null);
       medicines.reload();
       return "Medicine added to the local catalogue.";
     });
@@ -316,6 +331,17 @@ function Catalogue({ pharmacist }: { pharmacist: boolean }) {
       {pharmacist ? (
         <Card title="Add a medicine">
           <form className="mv-stack" onSubmit={create}>
+            <MedicineDropdown
+              label="Find in the global catalogue (optional)"
+              placeholder="Search the global catalogue by name or code"
+              onSelect={prefill}
+            />
+            {fromCatalogue ? (
+              <Notice tone="info" title="Prefilled from the global catalogue">
+                The catalogue supplies the name and code {fromCatalogue.code}. It does not assert a regulatory approval,
+                so confirm the strength, form and route locally before saving.
+              </Notice>
+            ) : null}
             <div className="mv-form-grid">
               <Field label="Name" htmlFor="med-name"><Input id="med-name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} /></Field>
               <Field label="Strength" htmlFor="med-strength"><Input id="med-strength" value={strength} onChange={(event) => setStrength(event.target.value)} required placeholder="Enter the strength" /></Field>
