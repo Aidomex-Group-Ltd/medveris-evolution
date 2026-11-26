@@ -194,7 +194,13 @@ export function checkProductionConfig(config) {
   check(observability?.enabled === true && observability?.redact_query_string === true, "production observability must be enabled with query strings redacted");
 
   const routes = production.routes ?? (production.route ? [production.route] : []);
-  check(routes.every((/** @type {any} */ route) => route?.custom_domain === true && PRODUCTION.domains.includes(route.pattern)),
+  // The operator console is the only hostname served by a plain route: its externally managed
+  // CNAME cannot be attached as a Worker custom domain, so the route intercepts it instead.
+  // Every other route must still be a Worker custom domain of the production zone.
+  const OPERATOR_CONSOLE_ROUTE = "observability.medveris.online/*";
+  check(routes.every((/** @type {any} */ route) =>
+    (route?.custom_domain === true && PRODUCTION.domains.includes(route.pattern)) ||
+    (route?.pattern === OPERATOR_CONSOLE_ROUTE && route?.zone_name === "medveris.online" && route?.custom_domain !== true)),
     "production routes must be custom domains for medveris.online or www.medveris.online");
   const serialized = JSON.stringify(production);
   check(!serialized.includes("REPLACE_WITH"), "production config still contains REPLACE_WITH placeholders");

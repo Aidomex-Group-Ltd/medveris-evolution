@@ -40,6 +40,12 @@ export const ROLES = [
   "unit_lead",
   "staff",
   "report_viewer",
+  "global_system_administrator",
+  "global_price_manager",
+  "country_price_administrator",
+  "facility_view_only",
+  "facility_finance_manager",
+  "billing_officer",
 ] as const;
 
 export type Role = (typeof ROLES)[number];
