@@ -15,6 +15,7 @@ import { parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
 import { ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
+import { facilityDispensingPolicy } from "../lib/facility-policy.js";
 import type { AppEnv } from "../types.js";
 
 export const pharmacyRoutes = new Hono<AppEnv>();
@@ -195,6 +196,19 @@ pharmacyRoutes.post("/stock/movements", async (c) => {
 pharmacyRoutes.post("/dispenses", async (c) => {
   requireStaff(c);
   if (!hasRole(c, "pharmacist")) throw new ForbiddenError("Dispensing requires the pharmacist role");
+  // A Drugshop sells retail stock through its point of sale. The clinical pharmacy dispensing
+  // workflow is not its licence scope, so a direct call must not become a bypass.
+  const policy = await facilityDispensingPolicy(c);
+  if (policy.experience === "drugshop") {
+    await withStaffActor(c, async (tx) => {
+      await writeAudit(tx, c.get("deps").config, requestAudit(c, "pharmacy.dispense.blocked", {
+        resourceType: "Dispense",
+        resourceId: null,
+        metadata: { reason: "drugshop-clinical-dispense", licence: policy.licence?.identifier ?? null },
+      }));
+    });
+    throw new ForbiddenError("A Drugshop dispenses retail stock through its point of sale and cannot use the pharmacy dispensing workflow");
+  }
   const auth = c.get("auth")!;
   const body = await parseJson(c, dispenseSchema);
   const key = idempotencyKey(c);

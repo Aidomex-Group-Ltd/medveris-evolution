@@ -12,12 +12,8 @@ import { ensureMatch, parseJson } from "../lib/http.js";
 import { writeAudit, writeOutbox } from "../lib/audit.js";
 import { idempotencyKey, uniqueViolation } from "../lib/idempotency.js";
 import { AppError, ConflictError, ForbiddenError, ValidationError } from "../lib/errors.js";
-import {
-  dispensingDecision,
-  resolveFacilityExperience,
-  type FacilityRegistrationLike,
-  type FacilityExperienceResolution,
-} from "@medveris/domain";
+import { dispensingDecision } from "@medveris/domain";
+import { facilityDispensingPolicy } from "../lib/facility-policy.js";
 import { assertLocationInScope } from "../lib/scope.js";
 import { postMovement } from "./inventory.js";
 import type { AppEnv } from "../types.js";
@@ -61,25 +57,6 @@ class DispensingBlockedError extends AppError {
   }
 }
 
-/** The active facility's experience and licence state, resolved on the server for every sale. */
-async function facilityDispensingPolicy(c: HandlerContext): Promise<FacilityExperienceResolution> {
-  const auth = requireStaff(c);
-  const tenantId = auth.activeTenant!.id;
-  const loaded = await withStaffActor(c, async (tx) => {
-    const tenant = await tx`select service_category from tenants where id = ${tenantId}`;
-    const registrations = await tx`
-      select kind, identifier, status, valid_until from facility_registrations where tenant_id = ${tenantId}
-    `;
-    return { serviceCategory: (tenant[0]?.serviceCategory as string | null) ?? null, registrations };
-  });
-  const rows: FacilityRegistrationLike[] = loaded.registrations.map((row) => ({
-    kind: String(row.kind),
-    identifier: String(row.identifier),
-    status: String(row.status),
-    validUntil: (row.validUntil as string | null) ?? null,
-  }));
-  return resolveFacilityExperience({ serviceCategory: loaded.serviceCategory, registrations: rows });
-}
 
 function optionalUuid(value: string | undefined, field: string): string | null {
   if (!value) return null;

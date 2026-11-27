@@ -217,6 +217,26 @@ describe("Drugshop dispensing restrictions", () => {
     expect(overview.today.transactions).toBe(1);
     expect(overview.today.total).toBe(1000);
   });
+
+  it("cannot reach the clinical pharmacy dispensing workflow by calling it directly", async () => {
+    // Give this Drugshop the pharmacist role so the only remaining reason to refuse is the facility type.
+    await withContext(h.sql, { tenantId, userId: ownerId, actorKind: "staff", roles: ["facility_admin"] }, async (tx) => {
+      await tx`
+        update memberships set roles = array['owner', 'facility_admin', 'pharmacist']::text[]
+         where user_id = ${ownerId} and tenant_id = ${tenantId}
+      `;
+    });
+
+    const blocked = await h.call(session, "/api/v1/dispenses", {
+      method: "POST",
+      body: JSON.stringify({ orderId: crypto.randomUUID(), lotId: crypto.randomUUID(), quantity: 1 }),
+    });
+    expect(blocked.status).toBe(403);
+    expect((await h.json(blocked)).error.message).toMatch(/Drugshop dispenses retail stock/i);
+
+    const actions = await auditActions();
+    expect(actions).toContain("pharmacy.dispense.blocked");
+  });
 });
 
 describe("facility price list by default", () => {
