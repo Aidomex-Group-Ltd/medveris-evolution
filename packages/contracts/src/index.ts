@@ -2741,6 +2741,12 @@ export const workspaceModulesSchema = z.object({ modules: z.array(z.enum(MODULE_
 
 export const registrationStatusSchema = z.object({ status: z.enum(["withdrawn", "expired"]) });
 
+/** A platform reviewer's outcome for a facility's optional licence documentation. */
+export const facilityLicenceDecisionSchema = z.object({
+  decision: z.enum(["verified", "rejected"]),
+  notes: z.string().trim().min(5).max(2000),
+});
+
 export const organizationSiteSchema = workspaceDetailsSchema.extend({
   hostTenantId: uuidSchema.nullable().optional(),
 });

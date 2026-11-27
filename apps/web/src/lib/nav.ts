@@ -531,7 +531,7 @@ export const PLATFORM_NAV: readonly PlatformNavItem[] = Object.freeze([
   { id: "global-catalogue", label: "Global price catalogue", to: "/global-catalogue", icon: "price-list" },
   { id: "directory-governance", label: "Directory governance", to: "/directory-governance", icon: "organizations" },
   { id: "platform-integrations", label: "Integrations", to: "/platform-integrations", icon: "iot" },
-  { id: "reviewer", label: "Credential review", to: "/reviewer", icon: "credentials" },
+  { id: "reviewer", label: "Credential and licence review", to: "/reviewer", icon: "credentials" },
   { id: "platform-billing", label: "Platform billing", to: "/platform-billing", icon: "finance" },
   { id: "platform-observability", label: "Observability", to: "/platform-observability", icon: "reports" },
 ]);

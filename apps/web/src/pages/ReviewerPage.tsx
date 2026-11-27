@@ -5,6 +5,21 @@ import { useAuth } from "../lib/auth";
 import { useQuery } from "../lib/useQuery";
 import { EhmisEligibilityReview } from "./EhmisPage";
 
+interface LicenceRow {
+  id: string;
+  facilityName: string;
+  serviceCategory: string | null;
+  kind: string;
+  issuer: string | null;
+  identifier: string;
+  validFrom: string | null;
+  validUntil: string | null;
+  documentReference: string | null;
+  status: string;
+  verificationNotes: string | null;
+  updatedAt: string;
+}
+
 interface ReviewRow {
   id: string;
   subjectType: string;
@@ -67,7 +82,57 @@ export function ReviewerPage() {
           </Table>
         )}
       </Card>
+      {me?.platformRoles.includes("platform_operator") ? <LicenceReview /> : null}
       {me?.platformRoles.includes("platform_operator") ? <EhmisEligibilityReview /> : null}
     </div>
+  );
+}
+
+/**
+ * Reviewing a facility's optional licence documentation. A decision records whether the
+ * submitted details were checked; it never changes whether the facility can use MedVeris.
+ */
+function LicenceReview() {
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const queue = useQuery<{ queue: LicenceRow[]; rule: string }>("/facility-licences/queue");
+
+  async function decide(row: LicenceRow, decision: "verified" | "rejected") {
+    const note = window.prompt(
+      decision === "verified" ? "What did you check, and where? (minimum 5 characters)" : "Why was the licence not verified? (minimum 5 characters)",
+      decision === "verified" ? "Compared the recorded number, issuer and expiry with the submitted document" : "The submitted details did not match the issuing authority's record",
+    );
+    if (!note || note.trim().length < 5) return;
+    setError(null);
+    setMessage(null);
+    try {
+      await api(`/facility-licences/${row.id}/decision`, { method: "POST", body: { decision, notes: note.trim() } });
+      setMessage(`${row.facilityName}: licence ${decision}. Platform access is unaffected either way.`);
+      queue.reload();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }
+
+  return (
+    <Card title="Facility licence review" description="Licence details are optional documentation. Reviewing them never grants or removes platform access, and an expired licence cannot be verified.">
+      {error ? <ErrorState message={error} /> : null}
+      {message ? <Notice tone="success">{message}</Notice> : null}
+      {queue.data?.rule ? <Notice tone="info">{queue.data.rule}</Notice> : null}
+      {queue.loading ? <LoadingState /> : queue.error ? <ErrorState message={queue.error} onRetry={queue.reload} /> : !queue.data?.queue.length ? <EmptyState title="No licences awaiting review" description="A facility's licence appears here once it is recorded and stays until a reviewer decides it." /> : (
+        <Table head={["Facility", "Licence", "Validity", "Document", "Status", "Decision"]}>
+          {queue.data.queue.map((row) => (
+            <tr key={row.id}>
+              <td><strong>{row.facilityName}</strong><div className="mv-small mv-muted">{row.serviceCategory?.replaceAll("-", " ") ?? "no service type recorded"}</div></td>
+              <td><strong>{row.kind.replaceAll("-", " ")}</strong><div className="mv-small mv-muted">{row.issuer ?? "issuer not recorded"} · {row.identifier}</div></td>
+              <td className="mv-small">{row.validFrom ?? "—"} to {row.validUntil ?? "—"}</td>
+              <td className="mv-small">{row.documentReference ?? <Badge tone="warning">none</Badge>}</td>
+              <td><Badge tone={row.status === "rejected" ? "danger" : "warning"}>{row.status}</Badge>{row.verificationNotes ? <div className="mv-small mv-muted">{row.verificationNotes}</div> : null}</td>
+              <td><div className="mv-row"><Button size="sm" onClick={() => void decide(row, "verified")}>Verify</Button><Button size="sm" variant="danger" onClick={() => void decide(row, "rejected")}>Reject</Button></div></td>
+            </tr>
+          ))}
+        </Table>
+      )}
+    </Card>
   );
 }
