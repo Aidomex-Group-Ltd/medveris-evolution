@@ -433,7 +433,7 @@ pharmacyPosRoutes.post("/pharmacy/sales", async (c) => {
           if (!rows[0]) continue;
           const decision = dispensingDecision({
             experience: policy.experience,
-            licenceState: policy.licence?.state ?? null,
+            licenceStatus: policy.licenceStatus,
             dispensingScope: rows[0].dispensingScope as string | null,
             prescriptionOnly: Boolean(rows[0].prescriptionOnly),
             itemName: String(rows[0].name),

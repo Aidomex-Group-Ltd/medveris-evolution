@@ -49,7 +49,7 @@ async function loadContext(c: Parameters<typeof requireStaff>[0]) {
       status: String(rows[0].status),
     };
     const registrations = await tx`
-      select kind, issuer, identifier, valid_from, valid_until, status, verified_at
+      select kind, issuer, identifier, valid_from, valid_until, status, verified_at, verification_notes, document_reference
         from facility_registrations where tenant_id = ${tenantId} order by created_at
     `;
     const licenceRows: FacilityRegistrationLike[] = registrations.map((row) => ({
@@ -57,6 +57,9 @@ async function loadContext(c: Parameters<typeof requireStaff>[0]) {
       identifier: String(row.identifier),
       status: String(row.status),
       validUntil: (row.validUntil as string | null) ?? null,
+      issuer: (row.issuer as string | null) ?? null,
+      verifiedAt: (row.verifiedAt as Date | null)?.toISOString() ?? null,
+      documentReference: (row.documentReference as string | null) ?? null,
     }));
     return { tenant, registrations, resolution: resolveFacilityExperience({ serviceCategory: tenant.serviceCategory, registrations: licenceRows }) };
   });
@@ -79,8 +82,12 @@ facilityExperienceRoutes.get("/facility/experience", async (c) => {
     },
     experience: resolution.experience,
     access: resolution.access,
+    // A licence is optional documentation: its absence changes nothing about platform access.
     licence: resolution.licence,
-    requiredLicenceKinds: resolution.requiredLicenceKinds,
+    licenceStatus: resolution.licenceStatus,
+    licenceNotice: resolution.licenceNotice,
+    licenceOptional: true,
+    licenceKinds: resolution.licenceKinds,
     registrations,
     routes: {
       home: resolution.experience === "drugshop" ? "/drugshop" : "/dashboard",
@@ -90,10 +97,12 @@ facilityExperienceRoutes.get("/facility/experience", async (c) => {
     },
     dispensing: {
       // Catalogue visibility is not dispensing authority. A Drugshop's licence and each item's
-      // recorded classification are both checked on the server at the point of sale.
+      // recorded classification are both checked on the server at the point of sale. This is a
+      // transaction-level control; it does not restrict the rest of the workspace.
       catalogueVisibilityImpliesDispensing: false,
       classificationField: "dispensingScope",
       unclassifiedItemsDispensable: false,
+      requiresVerifiedLicence: true,
     },
   });
 });
@@ -188,6 +197,8 @@ facilityExperienceRoutes.get("/drugshop/overview", async (c) => {
   return c.json({
     facility: { id: tenant.id, name: tenant.name, slug: tenant.slug, status: tenant.status, city: tenant.city, district: tenant.district, country: tenant.country },
     licence: resolution.licence,
+    licenceStatus: resolution.licenceStatus,
+    licenceNotice: resolution.licenceNotice,
     access: resolution.access,
     generatedAt: now,
     stock: {

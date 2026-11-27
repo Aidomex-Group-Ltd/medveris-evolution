@@ -64,9 +64,9 @@ export async function insertRegistration(tx: Tx, tenantId: string, registration:
   try {
     await tx`savepoint registration_insert`;
     await tx`
-      insert into facility_registrations (id, tenant_id, kind, issuer, identifier, valid_from, valid_until, recorded_by)
+      insert into facility_registrations (id, tenant_id, kind, issuer, identifier, valid_from, valid_until, document_reference, recorded_by)
       values (${id}, ${tenantId}, ${registration.kind}, ${registration.issuer || null}, ${registration.identifier},
-        ${registration.validFrom || null}, ${registration.validUntil || null}, ${userId})
+        ${registration.validFrom || null}, ${registration.validUntil || null}, ${registration.documentReference || null}, ${userId})
     `;
     await tx`release savepoint registration_insert`;
   } catch (error) {

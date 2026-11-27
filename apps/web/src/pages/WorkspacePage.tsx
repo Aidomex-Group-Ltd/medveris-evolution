@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { MODULES, OWNERSHIP_TYPES, REGISTRATION_KINDS, serviceCategory, type LevelStatus } from "@medveris/domain";
 import { Badge, Button, Card, DataList, EmptyState, ErrorState, Field, Input, LoadingState, Notice, PageHeader, Select, Table, Tabs, Textarea } from "@medveris/ui";
-import { LevelFields, OWNERSHIP_LABELS, RegistrationFields, classificationPayload, registrationsPayload, type ClassificationValue, type RegistrationValue } from "../components/LevelFields";
+import { LevelFields, OWNERSHIP_LABELS, RegistrationFields, classificationPayload, emptyRegistration, registrationsPayload, type ClassificationValue, type RegistrationValue } from "../components/LevelFields";
 import { WORKSPACE_KIND_LABELS } from "../components/WorkspaceSignup";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -23,7 +23,11 @@ interface WorkspaceResponse {
   level: LevelDisplay;
   rollUpLevel: (LevelDisplay & { hostName: string }) | null;
   recommendations: { modules: string[]; reports: string[]; hmisCandidates: string[]; notes: string[] };
-  registrations: Array<{ id: string; kind: string; issuer: string | null; identifier: string; status: string; validUntil: string | null }>;
+  registrations: Array<{
+    id: string; kind: string; issuer: string | null; identifier: string; status: string;
+    validFrom: string | null; validUntil: string | null; verifiedAt: string | null;
+    verificationNotes: string | null; documentReference: string | null;
+  }>;
   levelHistory: Array<{ recordedAt: string; reason: string | null; recordedByName: string | null; display: LevelDisplay }>;
   organizationLink: { organizationName: string; status: string } | null;
   permissions: { manage: boolean; link: boolean };
@@ -164,19 +168,53 @@ function Profile({ data, onSaved }: { data: WorkspaceResponse; onSaved: () => vo
   );
 }
 
+const REGISTRATION_STATUS_LABELS: Record<string, string> = {
+  recorded: "Provided — pending verification",
+  verified: "Verified",
+  rejected: "Verification rejected",
+  expired: "Expired",
+  withdrawn: "Withdrawn",
+};
+
+function registrationTone(status: string): "success" | "warning" | "danger" | "neutral" | "info" {
+  if (status === "verified") return "success";
+  if (status === "recorded" || status === "rejected") return "warning";
+  if (status === "expired") return "danger";
+  return "neutral";
+}
+
 function Registrations({ data, onSaved }: { data: WorkspaceResponse; onSaved: () => void }) {
   const [entries, setEntries] = useState<RegistrationValue[]>([]);
+  const [editing, setEditing] = useState<{ id: string; value: RegistrationValue } | null>(null);
   const action = useAction();
   const kindLabel = (code: string) => REGISTRATION_KINDS.find((kind) => kind.code === code)?.label ?? code;
+  const day = (value: string | null) => (value ? value.slice(0, 10) : "—");
 
   async function add(event: FormEvent) {
     event.preventDefault();
     const ok = await action.run("add", async () => {
       for (const entry of registrationsPayload(entries)) await api("/workspace/registrations", { method: "POST", body: entry });
-      return "Identifiers recorded. They are shown as recorded until verified.";
+      return "Licence details saved. They are shown as provided and awaiting verification until they have been checked.";
     });
     if (ok) {
       setEntries([]);
+      onSaved();
+    }
+  }
+
+  async function saveEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!editing) return;
+    const [payload] = registrationsPayload([editing.value]);
+    if (!payload) return;
+    const ok = await action.run("edit", async () => {
+      const result = await api<{ status: string }>(`/workspace/registrations/${editing.id}`, { method: "PUT", body: payload });
+      return result.status === "recorded"
+        ? "Licence details updated. Changed details need verification again, so the record is back to awaiting verification."
+        : "Licence details updated.";
+    });
+    if (ok) {
+      setEditing(null);
       onSaved();
     }
   }
@@ -190,27 +228,60 @@ function Registrations({ data, onSaved }: { data: WorkspaceResponse; onSaved: ()
     <div className="mv-stack">
       {action.error ? <ErrorState message={action.error} /> : null}
       {action.message ? <Notice tone="success">{action.message}</Notice> : null}
-      <Notice tone="info" title="Recorded, not verified">Medveris has no approved National Health Facility Registry interface yet, so NHFR IDs and licences are entered by hand and are not checked against the registry.</Notice>
-      <Card title="Licences and registry identifiers">
-        {!data.registrations.length ? <EmptyState title="No identifiers recorded" description="Add the regulator licence or NHFR ID that applies to this workspace." /> : (
-          <Table head={["Type", "Identifier", "Issuer", "Status", ""]} caption="Recorded identifiers">
+      <Notice tone="info" title="Licence details are optional">
+        You can use MedVeris, including the catalogue, inventory, price lists and reporting, without recording a licence, and add or correct it whenever it becomes available.
+        A recorded licence stays “provided, pending verification” until it has been checked; only a regulated medicine sale needs the verified state.
+        Medveris has no approved National Health Facility Registry interface yet, so licence and NHFR details are entered by hand.
+      </Notice>
+      <Card title="Licences and registry identifiers" description="Optional regulatory documentation for this workspace.">
+        {!data.registrations.length ? <EmptyState title="No licence details recorded" description="Nothing is missing: this is optional. Add a regulator licence or NHFR ID if you have one." /> : (
+          <Table head={["Type", "Identifier", "Issuer", "Valid until", "Status", ""]} caption="Recorded identifiers">
             {data.registrations.map((entry) => (
               <tr key={entry.id}>
                 <td>{kindLabel(entry.kind)}</td>
                 <td className="mv-id">{entry.identifier}</td>
                 <td className="mv-small">{entry.issuer ?? "—"}</td>
-                <td><Badge tone={entry.status === "verified" ? "success" : entry.status === "recorded" ? "info" : "neutral"}>{entry.status}</Badge></td>
-                <td>{data.permissions.manage && entry.status !== "withdrawn" ? <Button size="sm" variant="ghost" onClick={() => void withdraw(entry.id)}>Withdraw</Button> : null}</td>
+                <td className="mv-small">{day(entry.validUntil)}</td>
+                <td>
+                  <Badge tone={registrationTone(entry.status)}>{REGISTRATION_STATUS_LABELS[entry.status] ?? entry.status}</Badge>
+                  {entry.verificationNotes ? <div className="mv-small mv-muted">{entry.verificationNotes}</div> : null}
+                </td>
+                <td>
+                  {data.permissions.manage && entry.status !== "withdrawn" ? (
+                    <div className="mv-row mv-wrap">
+                      <Button size="sm" variant="secondary" onClick={() => setEditing({
+                        id: entry.id,
+                        value: {
+                          kind: entry.kind, identifier: entry.identifier, issuer: entry.issuer ?? "",
+                          validFrom: entry.validFrom ?? "", validUntil: entry.validUntil ?? "", documentReference: entry.documentReference ?? "",
+                        },
+                      })}>Edit</Button>
+                      <Button size="sm" variant="ghost" onClick={() => void withdraw(entry.id)}>Withdraw</Button>
+                    </div>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </Table>
         )}
       </Card>
+      {editing && data.permissions.manage ? (
+        <Card title="Edit licence details" description="Changing details on a verified record returns it to awaiting verification.">
+          <form className="mv-stack" onSubmit={saveEdit}>
+            <RegistrationFields idPrefix="wre" category={data.workspace.serviceCategory} value={[editing.value]} onChange={(next) => setEditing(next[0] ? { ...editing, value: next[0] } : null)} />
+            <div className="mv-row">
+              <Button type="submit" disabled={action.busy !== null}>{action.busy ? "Saving…" : "Save changes"}</Button>
+              <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+            </div>
+          </form>
+        </Card>
+      ) : null}
       {data.permissions.manage ? (
-        <Card title="Add identifiers">
+        <Card title="Add a licence or registry identifier" description="All fields except the identifier are optional.">
           <form className="mv-stack" onSubmit={add}>
             <RegistrationFields idPrefix="wr" category={data.workspace.serviceCategory} value={entries} onChange={setEntries} />
             {entries.length ? <div><Button type="submit" disabled={action.busy !== null}>Save identifiers</Button></div> : null}
+            {!entries.length ? <div><Button type="button" variant="secondary" size="sm" onClick={() => setEntries([emptyRegistration(REGISTRATION_KINDS[0]?.code ?? "other")])}>Add an identifier</Button></div> : null}
           </form>
         </Card>
       ) : null}

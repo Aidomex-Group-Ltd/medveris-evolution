@@ -2659,12 +2659,18 @@ export const levelSelectionSchema = z.object({
   equivalentJustification: z.string().trim().max(2000).nullable().optional(),
 });
 
+/**
+ * A regulator or licence record. Every field except the identifier and its kind is optional:
+ * a facility can record what it has and add the rest whenever it becomes available.
+ */
 export const facilityRegistrationSchema = z.object({
   kind: z.enum(REGISTRATION_KINDS.map((kind) => kind.code) as [string, ...string[]]),
   issuer: optionalText(200),
   identifier: z.string().trim().min(1).max(120),
   validFrom: z.string().date().optional().or(z.literal("")),
   validUntil: z.string().date().optional().or(z.literal("")),
+  /** A reference or link to the supporting document, when the facility has one. */
+  documentReference: optionalText(2000),
 });
 
 export const workspaceDetailsSchema = z.object({

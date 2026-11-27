@@ -391,9 +391,12 @@ export function ErrorState({ title = "Something needs another look", message, on
   return <FriendlyError title={title} message={message} onRetry={onRetry} />;
 }
 
-export function Notice({ tone = "info", title, children }: { tone?: Tone; title?: string; children: ReactNode }) {
+export function Notice({ tone = "info", title, children, onDismiss }: { tone?: Tone; title?: string; children: ReactNode; onDismiss?: () => void }) {
   return (
     <div className={`mv-alert mv-alert--${tone}`} role={tone === "danger" ? "alert" : "status"}>
+      {onDismiss ? (
+        <button type="button" className="mv-alert-dismiss" aria-label="Dismiss notice" onClick={onDismiss}>×</button>
+      ) : null}
       {title ? <strong>{title}</strong> : null}
       <div>{children}</div>
     </div>

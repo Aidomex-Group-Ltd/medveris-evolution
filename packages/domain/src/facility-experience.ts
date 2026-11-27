@@ -1,10 +1,14 @@
 /**
  * Which application experience a workspace receives, and what it may lawfully dispense.
  *
- * The decision is made from the facility's recorded service category and its verified
- * registration (licence) records — never from its name, and never from a frontend preference.
- * A Drugshop is only a Drugshop when the workspace category says `drug-shop`; it is only
- * allowed to trade when an NDA drug-shop licence is recorded, verified and unexpired.
+ * The decision is made from the facility's recorded service category and its registration
+ * (licence) records — never from its name, and never from a frontend preference. A Drugshop is
+ * only a Drugshop when the workspace category says `drug-shop`.
+ *
+ * A regulatory licence is optional documentation. Its absence, or a pending or rejected
+ * verification, never locks a facility out of MedVeris: the workspace, catalogue, inventory,
+ * price lists and reporting stay available. Only the regulated transaction that legally needs a
+ * verified licence is restricted, and that decision is made at the transaction.
  *
  * This module deliberately invents no regulatory classification. An item whose dispensing
  * scope has not been recorded is treated as `unverified`, and a Drugshop may not dispense it.
@@ -13,7 +17,7 @@
 export const FACILITY_EXPERIENCES = ["drugshop", "pharmacy", "facility"] as const;
 export type FacilityExperience = (typeof FACILITY_EXPERIENCES)[number];
 
-/** Registration kinds each experience must hold. Mirrors REGISTRATION_KINDS in facility-classification. */
+/** Registration kinds that document each experience. Mirrors REGISTRATION_KINDS in facility-classification. */
 export const EXPERIENCE_LICENCE_KINDS: Readonly<Record<FacilityExperience, readonly string[]>> = Object.freeze({
   drugshop: ["nda-drug-shop"],
   pharmacy: ["nda-pharmacy", "psu-registration"],
@@ -31,16 +35,56 @@ export interface FacilityRegistrationLike {
   identifier: string;
   status: string;
   validUntil?: string | null;
+  issuer?: string | null;
+  verifiedAt?: string | null;
+  documentReference?: string | null;
 }
 
-export type LicenceState = "verified" | "not-recorded" | "unverified" | "expired" | "withdrawn";
+/**
+ * Regulatory documentation progress. None of these states, except `verified`, allows a regulated
+ * dispensing transaction for a Drugshop — and none of them restricts ordinary platform use.
+ */
+export const LICENCE_STATUSES = [
+  "not-provided",
+  "pending-verification",
+  "verified",
+  "rejected",
+  "expired",
+  "withdrawn",
+] as const;
+export type LicenceStatus = (typeof LICENCE_STATUSES)[number];
+
+export const LICENCE_STATUS_LABELS: Readonly<Record<LicenceStatus, string>> = Object.freeze({
+  "not-provided": "Not provided",
+  "pending-verification": "Provided — pending verification",
+  verified: "Verified",
+  rejected: "Verification rejected",
+  expired: "Expired",
+  withdrawn: "Withdrawn",
+});
+
+/**
+ * Non-blocking wording for each state. These are informational: they describe the documentation,
+ * never a lockout. A facility may keep working while any of them applies.
+ */
+export const LICENCE_STATUS_MESSAGES: Readonly<Record<LicenceStatus, string>> = Object.freeze({
+  "not-provided": "Licence details have not been provided. You can continue using MedVeris and add your regulatory licence information whenever available.",
+  "pending-verification": "Licence details have been submitted and are awaiting verification. Your platform access remains active.",
+  verified: "Licence details are verified.",
+  rejected: "The licence details provided could not be verified. You can correct and resubmit them. Your platform access remains active.",
+  expired: "The recorded licence has expired. Renew it and update the record when you can. Your platform access remains active.",
+  withdrawn: "The licence record was withdrawn. Your platform access remains active.",
+});
 
 export interface LicenceSummary {
   kind: string;
   label: string;
   identifier: string;
-  state: LicenceState;
+  status: LicenceStatus;
   validUntil: string | null;
+  issuer: string | null;
+  verifiedAt: string | null;
+  documentReference: string | null;
 }
 
 export interface FacilityExperienceInput {
@@ -55,13 +99,17 @@ export interface FacilityExperienceResolution {
   serviceCategory: string | null;
   access: {
     status: "ready" | "restricted";
-    /** Why access is restricted. Empty when ready. */
+    /** Why access is restricted. Empty when ready. Never a licence reason. */
     reasons: string[];
-    /** Non-blocking matters the facility should resolve, e.g. a pharmacy with no recorded licence. */
+    /** Non-blocking licence documentation notices. */
     warnings: string[];
   };
   licence: LicenceSummary | null;
-  requiredLicenceKinds: string[];
+  /** Documentation progress; `not-provided` when no licence is on record. */
+  licenceStatus: LicenceStatus;
+  /** The informational notice for that status, safe to show anywhere in the workspace. */
+  licenceNotice: string;
+  licenceKinds: string[];
 }
 
 function isoToday(): string {
@@ -84,17 +132,19 @@ export function licenceKindLabel(kind: string): string {
   return LICENCE_KIND_LABELS[kind] ?? kind;
 }
 
-function licenceStateOf(registration: FacilityRegistrationLike, today: string): LicenceState {
+/** Maps a stored registration row to the documentation status it represents today. */
+export function licenceStatusOf(registration: FacilityRegistrationLike, today: string): LicenceStatus {
   const status = String(registration.status ?? "").toLowerCase();
   const validUntil = registration.validUntil ?? null;
   if (status === "withdrawn") return "withdrawn";
   if (validUntil && validUntil < today) return "expired";
   if (status === "verified") return "verified";
   if (status === "expired") return "expired";
-  return "unverified";
+  if (status === "rejected") return "rejected";
+  return "pending-verification";
 }
 
-/** The strongest licence on record for the kinds that matter, and its state. */
+/** The strongest licence on record for the kinds that matter, and its status. */
 function selectLicence(
   registrations: readonly FacilityRegistrationLike[],
   kinds: readonly string[],
@@ -102,34 +152,57 @@ function selectLicence(
 ): LicenceSummary | null {
   const candidates = registrations.filter((registration) => kinds.includes(registration.kind));
   if (!candidates.length) return null;
-  const ranked: LicenceState[] = ["verified", "unverified", "expired", "withdrawn"];
+  const ranked: LicenceStatus[] = ["verified", "pending-verification", "rejected", "expired", "withdrawn"];
   const summaries = candidates
-    .map((registration) => ({
-      kind: registration.kind,
-      label: licenceKindLabel(registration.kind),
-      identifier: registration.identifier,
-      state: licenceStateOf(registration, today),
-      validUntil: registration.validUntil ?? null,
-      rank: ranked.indexOf(licenceStateOf(registration, today)),
-    }))
+    .map((registration) => {
+      const status = licenceStatusOf(registration, today);
+      return {
+        kind: registration.kind,
+        label: licenceKindLabel(registration.kind),
+        identifier: registration.identifier,
+        status,
+        validUntil: registration.validUntil ?? null,
+        issuer: registration.issuer ?? null,
+        verifiedAt: registration.verifiedAt ?? null,
+        documentReference: registration.documentReference ?? null,
+        rank: ranked.indexOf(status),
+      };
+    })
     .sort((left, right) => left.rank - right.rank || (left.validUntil ?? "9999-12-31").localeCompare(right.validUntil ?? "9999-12-31"));
   const best = summaries[0]!;
-  return { kind: best.kind, label: best.label, identifier: best.identifier, state: best.state, validUntil: best.validUntil };
+  return {
+    kind: best.kind,
+    label: best.label,
+    identifier: best.identifier,
+    status: best.status,
+    validUntil: best.validUntil,
+    issuer: best.issuer,
+    verifiedAt: best.verifiedAt,
+    documentReference: best.documentReference,
+  };
+}
+
+/** The notice for a status, with the recorded expiry date where it helps the reader. */
+function licenceNoticeFor(status: LicenceStatus, licence: LicenceSummary | null): string {
+  if (status === "expired" && licence?.validUntil) {
+    return `${LICENCE_STATUS_MESSAGES.expired.replace("has expired.", `expired on ${licence.validUntil}.`)}`;
+  }
+  return LICENCE_STATUS_MESSAGES[status];
 }
 
 /**
- * Resolves the experience and whether the workspace may enter it.
+ * Resolves the experience and how the workspace may be used.
  *
- * A Drugshop with no verified, unexpired licence is restricted: it can see why and what to
- * submit, but it cannot reach the operating dashboard. A Pharmacy keeps its existing
- * experience; a missing licence is reported as a warning rather than a lockout, because
- * breaking the current pharmacy workflow would not make it more compliant.
+ * A licence is documentation, not an access key: neither a missing, pending, rejected nor
+ * expired licence restricts the workspace. The only restriction this function reports is a
+ * workspace whose facility type was never recorded, because the interface itself cannot be
+ * chosen without it. Dispensing is decided separately, at the sale.
  */
 export function resolveFacilityExperience(input: FacilityExperienceInput): FacilityExperienceResolution {
   const today = input.today ?? isoToday();
   const category = input.serviceCategory?.trim() || null;
   const experience = experienceForCategory(category);
-  const required = [...EXPERIENCE_LICENCE_KINDS[experience]];
+  const kinds = [...EXPERIENCE_LICENCE_KINDS[experience]];
 
   if (!category) {
     return {
@@ -137,44 +210,33 @@ export function resolveFacilityExperience(input: FacilityExperienceInput): Facil
       serviceCategory: null,
       access: {
         status: "restricted",
-        reasons: ["This workspace has no recorded facility type. An administrator must record it and the facility's licence before the workspace can be used."],
+        reasons: ["This workspace has no recorded facility type. An administrator must record the facility's type before the workspace interface can be chosen."],
         warnings: [],
       },
       licence: null,
-      requiredLicenceKinds: required,
+      licenceStatus: "not-provided",
+      licenceNotice: LICENCE_STATUS_MESSAGES["not-provided"],
+      licenceKinds: kinds,
     };
   }
 
-  const licence = selectLicence(input.registrations ?? [], required, today);
-  const reasons: string[] = [];
+  const licence = selectLicence(input.registrations ?? [], kinds, today);
+  const licenceStatus = licence?.status ?? "not-provided";
+  const licenceNotice = licenceNoticeFor(licenceStatus, licence);
   const warnings: string[] = [];
 
-  if (experience === "drugshop") {
-    if (!licence) {
-      reasons.push("No NDA drug shop licence is recorded for this facility. Add the licence details for verification before dispensing.");
-    } else if (licence.state === "unverified") {
-      reasons.push(`The NDA drug shop licence ${licence.identifier} has been recorded but not verified. Dispensing stays blocked until verification is complete.`);
-    } else if (licence.state === "expired") {
-      reasons.push(`The NDA drug shop licence ${licence.identifier} expired${licence.validUntil ? ` on ${licence.validUntil}` : ""}. Renew it before dispensing.`);
-    } else if (licence.state === "withdrawn") {
-      reasons.push(`The NDA drug shop licence ${licence.identifier} has been withdrawn. Dispensing is not permitted.`);
-    }
-  }
-
-  if (experience === "pharmacy" && (!licence || licence.state !== "verified")) {
-    warnings.push(
-      licence
-        ? `The pharmacy licence ${licence.identifier} is recorded as ${licence.state}. Verify it before relying on it for controlled or prescription-only stock.`
-        : "No NDA pharmacy licence is recorded for this facility. Record it so the licence register is complete.",
-    );
-  }
+  // Documentation progress is reported, never enforced as a lockout. Pharmacy keeps its
+  // existing experience on exactly the same terms.
+  if (experience !== "facility" && licenceStatus !== "verified") warnings.push(licenceNotice);
 
   return {
     experience,
     serviceCategory: category,
-    access: { status: reasons.length ? "restricted" : "ready", reasons, warnings },
+    access: { status: "ready", reasons: [], warnings },
     licence,
-    requiredLicenceKinds: required,
+    licenceStatus,
+    licenceNotice,
+    licenceKinds: kinds,
   };
 }
 
@@ -217,7 +279,7 @@ export interface DispensingDecision {
 
 export interface DispensingEligibilityInput {
   experience: FacilityExperience;
-  licenceState?: LicenceState | null;
+  licenceStatus?: LicenceStatus | null;
   dispensingScope: DispensingScope | string | null | undefined;
   prescriptionOnly?: boolean;
   itemName?: string;
@@ -235,11 +297,13 @@ export function dispensingDecision(input: DispensingEligibilityInput): Dispensin
   if (input.experience !== "drugshop") return { allowed: true };
 
   const name = input.itemName?.trim() || "This item";
-  if (input.licenceState !== "verified") {
+  // Transaction-level control only: the workspace itself stays usable, but a regulated medicine
+  // sale requires a verified licence. A missing record never stands in for a verified one.
+  if (input.licenceStatus !== "verified") {
     return {
       allowed: false,
       code: "licence-unverified",
-      reason: `${name} cannot be dispensed: this Drugshop's NDA licence is not verified.`,
+      reason: `${name} cannot be dispensed: selling medicines requires a verified NDA drug shop licence, and this facility's licence is ${LICENCE_STATUS_LABELS[input.licenceStatus ?? "not-provided"].toLowerCase()}.`,
     };
   }
   if (input.prescriptionOnly) {

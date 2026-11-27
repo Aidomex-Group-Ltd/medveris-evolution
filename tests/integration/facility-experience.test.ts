@@ -108,16 +108,21 @@ afterAll(async () => {
 });
 
 describe("facility experience for a registered Drugshop", () => {
-  it("resolves the Drugshop experience from the active facility and blocks it until the licence is verified", async () => {
+  it("resolves the Drugshop experience from the active facility and keeps it usable while the licence is pending", async () => {
     const view = await get("/api/v1/facility/experience");
     expect(view.experience).toBe("drugshop");
     expect(view.facility.id).toBe(tenantId);
-    expect(view.access.status).toBe("restricted");
-    expect(view.access.reasons[0]).toMatch(/not verified/i);
-    expect(view.licence).toMatchObject({ kind: "nda-drug-shop", state: "unverified", identifier: `NDA-DS-${run}` });
-    expect(view.requiredLicenceKinds).toEqual(["nda-drug-shop"]);
+    // A pending licence is documentation progress, never a lockout.
+    expect(view.access.status).toBe("ready");
+    expect(view.access.reasons).toEqual([]);
+    expect(view.licence).toMatchObject({ kind: "nda-drug-shop", status: "pending-verification", identifier: `NDA-DS-${run}` });
+    expect(view.licenceStatus).toBe("pending-verification");
+    expect(view.licenceOptional).toBe(true);
+    expect(view.licenceKinds).toEqual(["nda-drug-shop"]);
+    expect(view.licenceNotice).toMatch(/awaiting verification/i);
     expect(view.dispensing.catalogueVisibilityImpliesDispensing).toBe(false);
     expect(view.dispensing.unclassifiedItemsDispensable).toBe(false);
+    expect(view.dispensing.requiresVerifiedLicence).toBe(true);
     expect(view.routes.home).toBe("/drugshop");
   });
 
@@ -131,11 +136,12 @@ describe("facility experience for a registered Drugshop", () => {
     expect(overview.activePriceList).toBeNull();
   });
 
-  it("opens the experience once the licence is verified", async () => {
+  it("reports the verified licence on the same, already-open workspace", async () => {
     await verifyLicence();
     const view = await get("/api/v1/facility/experience");
     expect(view.access.status).toBe("ready");
-    expect(view.licence.state).toBe("verified");
+    expect(view.licence.status).toBe("verified");
+    expect(view.licenceStatus).toBe("verified");
   });
 
   it("refuses the Drugshop dashboard to a pharmacy workspace", async () => {
@@ -325,5 +331,229 @@ describe("facility price list by default", () => {
     expect(write.status).toBe(404);
     const listed = await get("/api/v1/global-catalogue/lists");
     expect(listed.lists.map((list: any) => list.id)).not.toContain(other.list.id);
+  });
+});
+
+/**
+ * The acceptance case: a Drugshop registered with no NDA licence at all. It must be able to sign
+ * in, open its dashboard and run its ordinary business; only the regulated medicine sale waits for
+ * a verified licence, and it opens the moment one is verified.
+ */
+describe("a Drugshop with no licence recorded", () => {
+  const unlicensedEmail = `unlicensed.${run}@example.test`;
+  const identifier = `NDA-DS-LATE-${run}`;
+  let owner: Session;
+  let shopTenantId = "";
+  let shopOwnerId = "";
+  let shopLocationId = "";
+  let shopItemId = "";
+  let shopLicenceId = "";
+
+  const getShop = async (path: string, status = 200) => h.expectOk(await h.call(owner, path), status);
+  const postShop = async (path: string, body: unknown, status = 201) => h.post(owner, path, body, status);
+
+  async function shopAuditActions(): Promise<string[]> {
+    const rows = await withContext(h.sql, { tenantId: shopTenantId, userId: shopOwnerId, actorKind: "staff", roles: ["facility_admin"] }, async (tx) => tx`
+      select action from audit_events where tenant_id = ${shopTenantId} order by occurred_at
+    `);
+    return rows.map((row) => String(row.action));
+  }
+
+  async function sell(status: number) {
+    return h.expectOk(await h.call(owner, "/api/v1/pharmacy/sales", {
+      method: "POST",
+      body: JSON.stringify({ locationId: shopLocationId, paymentMethod: "cash", currency: "UGX", lines: [{ itemId: shopItemId, quantity: 1 }] }),
+    }), status);
+  }
+
+  beforeAll(async () => {
+    const registrationResponse = await anonymous("/api/v1/auth/register/workspace", {
+      path: "independent",
+      owner: { email: unlicensedEmail, password: PASSWORD, givenName: "Synthetic", familyName: "Unlicensed Drugshop" },
+      workspace: {
+        name: `Synthetic Unlicensed Drugshop ${run}`,
+        workspaceKind: "service-unit",
+        serviceCategory: "drug-shop",
+        ownership: "private-for-profit",
+        levelStatus: "not-applicable",
+        district: "Wakiso",
+        // Deliberately no registrations: a licence is optional documentation.
+      },
+      legal: await h.legalAcceptance(),
+    });
+    const registered = await h.json(registrationResponse);
+    expect(registrationResponse.status, JSON.stringify(registered)).toBe(201);
+    shopTenantId = registered.workspace.id;
+    owner = await signInOwner(unlicensedEmail);
+    const me = await h.expectOk(await h.call(owner, "/api/v1/me"));
+    shopOwnerId = me.user.id;
+  });
+
+  it("registers and signs in without an NDA licence number", async () => {
+    const workspace = await getShop("/api/v1/workspace");
+    expect(workspace.workspace.serviceCategory).toBe("drug-shop");
+    expect(workspace.registrations).toEqual([]);
+
+    const view = await getShop("/api/v1/facility/experience");
+    expect(view.experience).toBe("drugshop");
+    expect(view.access.status).toBe("ready");
+    expect(view.access.reasons).toEqual([]);
+    expect(view.licence).toBeNull();
+    expect(view.licenceStatus).toBe("not-provided");
+    expect(view.licenceOptional).toBe(true);
+    expect(view.licenceNotice).toMatch(/have not been provided/i);
+  });
+
+  it("loads the Drugshop dashboard without licence information", async () => {
+    const overview = await getShop("/api/v1/drugshop/overview");
+    expect(overview.facility.id).toBe(shopTenantId);
+    expect(overview.stock).toEqual({ stockedItems: 0, lowStock: 0, outOfStock: 0 });
+    expect(overview.today.transactions).toBe(0);
+    expect(overview.licenceStatus).toBe("not-provided");
+  });
+
+  it("browses the global catalogue without licence information", async () => {
+    const items = await getShop("/api/v1/global-catalogue/items");
+    expect(Array.isArray(items.items)).toBe(true);
+    const lists = await getShop("/api/v1/global-catalogue/lists");
+    expect(Array.isArray(lists.lists)).toBe(true);
+    const search = await getShop("/api/v1/global-medicines/search?q=para");
+    expect(search).toBeTruthy();
+  });
+
+  it("records and reads back inventory without licence information", async () => {
+    const location = await postShop("/api/v1/inventory/locations", { code: `UL-${run}`, name: "Unlicensed shop counter", locationType: "department-store" });
+    shopLocationId = location.location.id;
+
+    const created = await postShop("/api/v1/inventory/items", {
+      itemCode: `UL-OTC-${run}`,
+      name: `Unlicensed shop item ${run}`,
+      category: "Pharmacy",
+      classification: "consumable",
+      baseUnit: "tablet",
+      criticality: "standard",
+      lotTracked: true,
+      expiryTracked: true,
+      unitCost: 100,
+      currency: "UGX",
+      sellingPrice: 500,
+      taxRate: 0,
+      dispensingScope: "otc",
+      units: [{ unit: "tablet", conversionFactor: 1, isBase: true, purchasingUnit: true, issuingUnit: true }],
+    });
+    shopItemId = created.item.id;
+
+    await postShop("/api/v1/inventory/receipts", {
+      locationId: shopLocationId, itemId: shopItemId, lotNumber: `UL-LOT-${run}`, expiresOn: future,
+      supplier: "Synthetic wholesaler", receiptReference: `GRN-UL-${run}`,
+      quantity: 20, unit: "tablet", reason: "Synthetic stock receipt",
+    });
+
+    const listed = await getShop("/api/v1/inventory/items?classification=consumable");
+    expect(listed.items.find((entry: any) => entry.id === shopItemId)).toMatchObject({ dispensingScope: "otc" });
+  });
+
+  it("opens and edits its facility price list without licence information", async () => {
+    const created = await postShop("/api/v1/global-catalogue/lists", {
+      code: `UL-UGX-${run}`,
+      name: `Unlicensed shop prices ${run}`,
+      effectiveFrom: new Date().toISOString().slice(0, 10),
+      items: [{ name: `Unlicensed shop item ${run}`, category: "Pharmacy", price: 600, currency: "UGX" }],
+    });
+    const detail = await getShop(`/api/v1/global-catalogue/lists/${created.list.id}`);
+    expect(detail.editable).toBe(true);
+    expect(detail.items).toHaveLength(1);
+
+    const edited = await h.expectOk(await h.call(owner, `/api/v1/global-catalogue/lists/${created.list.id}/items/${detail.items[0].id}`, {
+      method: "PATCH", body: JSON.stringify({ price: 650, note: "Counter review without a licence" }),
+    }));
+    expect(edited).toBeTruthy();
+    const repriced = await getShop(`/api/v1/global-catalogue/lists/${created.list.id}`);
+    expect(Number(repriced.items[0].price)).toBe(650);
+  });
+
+  it("adds licence details later without losing existing facility data", async () => {
+    await postShop("/api/v1/workspace/registrations", {
+      kind: "nda-drug-shop",
+      identifier,
+      issuer: "National Drug Authority",
+      validUntil: future,
+      documentReference: "https://example.test/licences/late.pdf",
+    });
+
+    const workspace = await getShop("/api/v1/workspace");
+    const record = workspace.registrations.find((entry: any) => entry.identifier === identifier);
+    expect(record).toMatchObject({
+      kind: "nda-drug-shop", status: "recorded", issuer: "National Drug Authority",
+      validUntil: future, documentReference: "https://example.test/licences/late.pdf",
+    });
+    shopLicenceId = record.id;
+
+    const view = await getShop("/api/v1/facility/experience");
+    expect(view.licenceStatus).toBe("pending-verification");
+    expect(view.access.status).toBe("ready");
+    expect(view.licenceNotice).toMatch(/awaiting verification/i);
+
+    // The stock and price list recorded before the licence existed are untouched.
+    const listed = await getShop("/api/v1/inventory/items?classification=consumable");
+    expect(listed.items.some((entry: any) => entry.id === shopItemId)).toBe(true);
+    const lists = await getShop("/api/v1/global-catalogue/lists");
+    expect(lists.lists.some((entry: any) => entry.code === `UL-UGX-${run}`)).toBe(true);
+  });
+
+  it("still refuses the regulated medicine sale while the licence is unverified", async () => {
+    const blocked = await h.call(owner, "/api/v1/pharmacy/sales", {
+      method: "POST",
+      body: JSON.stringify({ locationId: shopLocationId, paymentMethod: "cash", currency: "UGX", lines: [{ itemId: shopItemId, quantity: 1 }] }),
+    });
+    expect(blocked.status).toBe(403);
+    const body = await h.json(blocked);
+    expect(body.error.code).toBe("dispensing_not_permitted");
+    expect(body.error.details.denials[0].code).toBe("licence-unverified");
+    expect(body.error.details.denials[0].reason).toMatch(/verified NDA drug shop licence/i);
+    // The refusal is recorded and the workspace is still open.
+    expect(await shopAuditActions()).toContain("pharmacy.dispense.blocked");
+    const view = await getShop("/api/v1/facility/experience");
+    expect(view.access.status).toBe("ready");
+  });
+
+  it("opens the sale once the licence is verified, and returns to pending when its details change", async () => {
+    await withContext(h.sql, { tenantId: shopTenantId, userId: shopOwnerId, actorKind: "staff", roles: ["facility_admin"] }, async (tx) => {
+      await tx`
+        update facility_registrations
+           set status = 'verified', verified_by = ${shopOwnerId}, verified_at = now(),
+               verification_notes = 'Checked against the NDA register by a reviewer', updated_at = now()
+         where id = ${shopLicenceId} and tenant_id = ${shopTenantId}
+      `;
+    });
+
+    const sold = await sell(201);
+    expect(sold.sale.status).toBe("completed");
+
+    // A material correction invalidates the verification; it never closes the workspace.
+    const edited = await h.expectOk(await h.call(owner, `/api/v1/workspace/registrations/${shopLicenceId}`, {
+      method: "PUT",
+      body: JSON.stringify({ kind: "nda-drug-shop", identifier: `${identifier}-A`, issuer: "National Drug Authority", validUntil: future }),
+    }));
+    expect(edited.status).toBe("recorded");
+
+    const view = await getShop("/api/v1/facility/experience");
+    expect(view.licenceStatus).toBe("pending-verification");
+    expect(view.access.status).toBe("ready");
+
+    const blocked = await h.call(owner, "/api/v1/pharmacy/sales", {
+      method: "POST",
+      body: JSON.stringify({ locationId: shopLocationId, paymentMethod: "cash", currency: "UGX", lines: [{ itemId: shopItemId, quantity: 1 }] }),
+    });
+    expect(blocked.status).toBe(403);
+    expect((await h.json(blocked)).error.details.denials[0].code).toBe("licence-unverified");
+  });
+
+  it("keeps this Drugshop's records isolated from the other facility", async () => {
+    const workspace = await getShop("/api/v1/workspace");
+    expect(workspace.workspace.id).toBe(shopTenantId);
+    expect(workspace.registrations).toHaveLength(1);
+    const foreign = await h.call(owner, `/api/v1/global-catalogue/lists/${priceListId}`);
+    expect(foreign.status).toBe(404);
   });
 });

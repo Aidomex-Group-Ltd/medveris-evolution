@@ -14,7 +14,8 @@ export async function facilityDispensingPolicy(c: Context<AppEnv>): Promise<Faci
   const loaded = await withStaffActor(c, async (tx) => {
     const tenant = await tx`select service_category from tenants where id = ${tenantId}`;
     const registrations = await tx`
-      select kind, identifier, status, valid_until from facility_registrations where tenant_id = ${tenantId}
+      select kind, issuer, identifier, status, valid_until, verified_at, document_reference
+        from facility_registrations where tenant_id = ${tenantId}
     `;
     return { serviceCategory: (tenant[0]?.serviceCategory as string | null) ?? null, registrations };
   });
@@ -23,6 +24,9 @@ export async function facilityDispensingPolicy(c: Context<AppEnv>): Promise<Faci
     identifier: String(row.identifier),
     status: String(row.status),
     validUntil: (row.validUntil as string | null) ?? null,
+    issuer: (row.issuer as string | null) ?? null,
+    verifiedAt: (row.verifiedAt as Date | null)?.toISOString() ?? null,
+    documentReference: (row.documentReference as string | null) ?? null,
   }));
   return resolveFacilityExperience({ serviceCategory: loaded.serviceCategory, registrations: rows });
 }

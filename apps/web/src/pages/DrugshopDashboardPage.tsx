@@ -1,20 +1,30 @@
+import { useState } from "react";
 import { Badge, Card, DataList, EmptyState, ErrorState, LoadingState, Notice, PageHeader, Table } from "@medveris/ui";
 import { Link } from "react-router-dom";
 import { useQuery } from "../lib/useQuery";
 import { formatDate, formatDateTime, formatMoney } from "../lib/format";
 
+interface LicenceView {
+  kind: string; label: string; identifier: string; status: string; validUntil: string | null;
+  issuer: string | null; verifiedAt: string | null; documentReference: string | null;
+}
+
 interface ExperienceView {
   facility: { id: string; name: string; slug: string; status: string; city: string | null; district: string | null; country: string };
   experience: "drugshop" | "pharmacy" | "facility";
   access: { status: "ready" | "restricted"; reasons: string[]; warnings: string[] };
-  licence: { kind: string; label: string; identifier: string; state: string; validUntil: string | null } | null;
+  licence: LicenceView | null;
+  licenceStatus: string;
+  licenceNotice: string;
   registrations: Array<{ kind: string; identifier: string; status: string; validUntil: string | null; issuer: string | null }>;
   routes: { home: string; priceLists: string; sales: string; licence: string };
 }
 
 interface Overview {
   facility: { id: string; name: string; status: string; city: string | null; district: string | null; country: string };
-  licence: ExperienceView["licence"];
+  licence: LicenceView | null;
+  licenceStatus: string;
+  licenceNotice: string;
   access: ExperienceView["access"];
   stock: { stockedItems: number; lowStock: number; outOfStock: number };
   classifications: Array<{ dispensingScope: string; count: number }>;
@@ -26,10 +36,11 @@ interface Overview {
   activePriceList: { id: string; code: string; name: string; status: string; itemCount: number; currency: string | null } | null;
 }
 
-const LICENCE_STATE_LABELS: Record<string, string> = {
+const LICENCE_STATUS_LABELS: Record<string, string> = {
+  "not-provided": "Not provided",
+  "pending-verification": "Provided — pending verification",
   verified: "Verified",
-  "not-recorded": "Not recorded",
-  unverified: "Recorded, not verified",
+  rejected: "Verification rejected",
   expired: "Expired",
   withdrawn: "Withdrawn",
 };
@@ -50,24 +61,26 @@ const PAYMENT_LABELS: Record<string, string> = {
   manual: "Manual",
 };
 
-function licenceTone(state: string | undefined): "success" | "warning" | "danger" | "neutral" {
-  if (state === "verified") return "success";
-  if (state === "unverified") return "warning";
-  if (state === "expired" || state === "withdrawn") return "danger";
+function licenceTone(status: string | undefined): "success" | "warning" | "danger" | "neutral" {
+  if (status === "verified") return "success";
+  if (status === "pending-verification" || status === "rejected") return "warning";
+  if (status === "expired" || status === "withdrawn") return "danger";
   return "neutral";
 }
 
 /**
  * The Drugshop's own dashboard.
  *
- * It is deliberately not the Pharmacy dashboard: it shows a shop's licence, stock, today's
- * takings, expiries, purchases and its own price list. A Drugshop whose NDA licence is not
- * verified sees a restricted state with the exact reason, not an operating desk.
+ * It is deliberately not the Pharmacy dashboard: it shows a shop's stock, today's takings,
+ * expiries, purchases and its own price list. A regulatory licence is optional documentation
+ * here: the dashboard opens whether or not one is recorded, and the licence notice is
+ * informational and dismissible. Only a regulated medicine sale needs a verified licence.
  */
 export function DrugshopDashboardPage() {
+  const [noticeDismissed, setNoticeDismissed] = useState(false);
   const experience = useQuery<ExperienceView>("/facility/experience");
-  const ready = experience.data?.experience === "drugshop" && experience.data.access.status === "ready";
-  const overview = useQuery<Overview>("/drugshop/overview", { enabled: ready });
+  const isDrugshop = experience.data?.experience === "drugshop";
+  const overview = useQuery<Overview>("/drugshop/overview", { enabled: isDrugshop });
 
   if (experience.loading) return <LoadingState label="Loading the Drugshop workspace" variant="page" />;
   if (experience.error) return <ErrorState message={experience.error} onRetry={experience.reload} />;
@@ -75,39 +88,9 @@ export function DrugshopDashboardPage() {
 
   const view = experience.data;
   const licence = view.licence;
-
-  if (view.access.status === "restricted") {
-    return (
-      <div className="mv-stack">
-        <PageHeader eyebrow="Drugshop" title={view.facility.name} description="This Drugshop cannot open its operating desk yet." />
-        <Notice tone="danger" title="Licence verification required">
-          <ul>
-            {view.access.reasons.map((reason) => <li key={reason}>{reason}</li>)}
-          </ul>
-        </Notice>
-        <Card title="What is on record" description="Only verified records are shown as verified. Nothing here is inferred from the facility name.">
-          <DataList
-            items={[
-              { label: "Facility type", value: "Drugshop" },
-              { label: "Licence", value: licence ? `${licence.label} · ${licence.identifier}` : "No NDA drug shop licence recorded" },
-              { label: "Licence state", value: <Badge tone={licenceTone(licence?.state)}>{LICENCE_STATE_LABELS[licence?.state ?? "not-recorded"] ?? licence?.state ?? "Not recorded"}</Badge> },
-              { label: "Valid until", value: licence?.validUntil ? formatDate(licence.validUntil) : "Not recorded" },
-            ]}
-          />
-        </Card>
-        <Card title="Next step" description="A facility administrator can record the licence and its verification reference.">
-          <p>
-            <Link to={view.routes.licence}>Open licence and compliance</Link>
-          </p>
-          <p className="mv-small mv-muted">
-            Dispensing stays blocked until a verified NDA drug shop licence is recorded. This is enforced on the server, not just on this page.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
+  const licenceStatus = view.licence?.status ?? view.licenceStatus ?? "not-provided";
   const data = overview.data;
+
   return (
     <div className="mv-stack">
       <PageHeader
@@ -115,20 +98,39 @@ export function DrugshopDashboardPage() {
         title={view.facility.name}
         description="Stock, sales and the shop's own price list. Only items classified for over-the-counter sale can be dispensed here."
       />
-      {view.access.warnings.map((warning) => <Notice key={warning} tone="warning">{warning}</Notice>)}
 
-      <Card title="Licence" description="The licence this workspace operates under.">
+      {!noticeDismissed && licenceStatus !== "verified" ? (
+        <Notice
+          tone="info"
+          title={`Licence details · ${LICENCE_STATUS_LABELS[licenceStatus] ?? licenceStatus}`}
+          onDismiss={() => setNoticeDismissed(true)}
+        >
+          <p>{view.licenceNotice ?? view.access.warnings[0] ?? "Licence details have not been provided. You can continue using MedVeris and add your regulatory licence information whenever available."}</p>
+          <p className="mv-small">
+            A verified licence is needed only to sell medicines; stock, catalogue, suppliers, price lists and reports stay available.{" "}
+            <Link to={view.routes.licence}>Add or update licence details</Link>
+          </p>
+        </Notice>
+      ) : null}
+
+      <Card title="Licence" description="Optional regulatory documentation for this workspace. You can use MedVeris without it.">
         <DataList
           items={[
             { label: "Facility", value: `${view.facility.name}${view.facility.district ? ` · ${view.facility.district}` : ""}${view.facility.city ? `, ${view.facility.city}` : ""}` },
             {
               label: "NDA drug shop licence",
-              value: licence ? `${licence.identifier}${licence.validUntil ? ` · valid until ${formatDate(licence.validUntil)}` : ""}` : "Not recorded",
+              value: licence ? `${licence.identifier}${licence.validUntil ? ` · valid until ${formatDate(licence.validUntil)}` : ""}` : "Not provided",
             },
-            { label: "Status", value: <Badge tone={licenceTone(licence?.state)}>{LICENCE_STATE_LABELS[licence?.state ?? "not-recorded"] ?? "Not recorded"}</Badge> },
+            { label: "Status", value: <Badge tone={licenceTone(licenceStatus)}>{LICENCE_STATUS_LABELS[licenceStatus] ?? licenceStatus}</Badge> },
+            ...(licence?.issuer ? [{ label: "Issuing authority", value: licence.issuer }] : []),
+            ...(licence?.verifiedAt ? [{ label: "Verified on", value: formatDate(licence.verifiedAt) }] : []),
+            ...(licence?.documentReference ? [{ label: "Supporting document", value: licence.documentReference }] : []),
             { label: "Registration status", value: view.facility.status },
           ]}
         />
+        <p className="mv-small mv-muted">
+          <Link to={view.routes.licence}>Manage licence details</Link>
+        </p>
       </Card>
 
       {overview.error ? <ErrorState message={overview.error} onRetry={overview.reload} /> : null}

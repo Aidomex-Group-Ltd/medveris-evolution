@@ -34,6 +34,14 @@ export interface RegistrationValue {
   kind: string;
   identifier: string;
   issuer: string;
+  validFrom: string;
+  validUntil: string;
+  documentReference: string;
+}
+
+/** A blank identifier row; every field but the identifier and its kind is optional. */
+export function emptyRegistration(kind: string): RegistrationValue {
+  return { kind, identifier: "", issuer: "", validFrom: "", validUntil: "", documentReference: "" };
 }
 
 export const OWNERSHIP_LABELS: Record<string, string> = {
@@ -226,17 +234,27 @@ export function RegistrationFields({ category, value, onChange, idPrefix }: { ca
             </Select>
           </Field>
           <Field label="Identifier" htmlFor={`${idPrefix}-id-${index}`}><Input id={`${idPrefix}-id-${index}`} value={entry.identifier} onChange={(event) => update(index, { identifier: event.target.value })} maxLength={120} required /></Field>
-          <Field label="Issuer (optional)" htmlFor={`${idPrefix}-issuer-${index}`}><Input id={`${idPrefix}-issuer-${index}`} value={entry.issuer} onChange={(event) => update(index, { issuer: event.target.value })} maxLength={200} /></Field>
+          <Field label="Issuing authority (optional)" htmlFor={`${idPrefix}-issuer-${index}`}><Input id={`${idPrefix}-issuer-${index}`} value={entry.issuer} onChange={(event) => update(index, { issuer: event.target.value })} maxLength={200} /></Field>
+          <Field label="Issue date (optional)" htmlFor={`${idPrefix}-from-${index}`}><Input id={`${idPrefix}-from-${index}`} type="date" value={entry.validFrom} onChange={(event) => update(index, { validFrom: event.target.value })} /></Field>
+          <Field label="Expiry date (optional)" htmlFor={`${idPrefix}-until-${index}`}><Input id={`${idPrefix}-until-${index}`} type="date" value={entry.validUntil} onChange={(event) => update(index, { validUntil: event.target.value })} /></Field>
+          <Field label="Supporting document (optional)" htmlFor={`${idPrefix}-document-${index}`} hint="A link or file reference, if you have one."><Input id={`${idPrefix}-document-${index}`} value={entry.documentReference} onChange={(event) => update(index, { documentReference: event.target.value })} maxLength={2000} /></Field>
           <div><Button type="button" variant="ghost" size="sm" onClick={() => onChange(value.filter((_, position) => position !== index))}>Remove</Button></div>
         </div>
       ))}
       {value.length < 10 ? (
-        <div><Button type="button" variant="secondary" size="sm" onClick={() => onChange([...value, { kind: suggested[0] ?? "other", identifier: "", issuer: "" }])}>Add an identifier</Button></div>
+        <div><Button type="button" variant="secondary" size="sm" onClick={() => onChange([...value, emptyRegistration(suggested[0] ?? "other")])}>Add an identifier</Button></div>
       ) : null}
     </div>
   );
 }
 
 export function registrationsPayload(value: RegistrationValue[]): Array<Record<string, string>> {
-  return value.filter((entry) => entry.identifier.trim()).map((entry) => ({ kind: entry.kind, identifier: entry.identifier.trim(), ...(entry.issuer.trim() ? { issuer: entry.issuer.trim() } : {}) }));
+  return value.filter((entry) => entry.identifier.trim()).map((entry) => ({
+    kind: entry.kind,
+    identifier: entry.identifier.trim(),
+    ...(entry.issuer.trim() ? { issuer: entry.issuer.trim() } : {}),
+    ...(entry.validFrom ? { validFrom: entry.validFrom } : {}),
+    ...(entry.validUntil ? { validUntil: entry.validUntil } : {}),
+    ...(entry.documentReference.trim() ? { documentReference: entry.documentReference.trim() } : {}),
+  }));
 }

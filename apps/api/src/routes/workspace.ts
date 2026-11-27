@@ -73,7 +73,9 @@ workspaceRoutes.get("/workspace", async (c) => {
         from tenants where id = ${tenantId}`;
     if (!tenant) throw new NotFoundError("Workspace not found");
     const registrations = await tx`
-      select id, kind, issuer, identifier, valid_from, valid_until, status, verified_at, created_at
+      select id, kind, issuer, identifier, to_char(valid_from, 'YYYY-MM-DD') as valid_from,
+             to_char(valid_until, 'YYYY-MM-DD') as valid_until, status, verified_at, verification_notes,
+             document_reference, created_at
         from facility_registrations where tenant_id = ${tenantId} order by created_at`;
     const history = await tx`
       select h.level_status, h.official_level, h.official_level_source, h.official_level_reference, h.equivalent_level,
@@ -164,6 +166,73 @@ workspaceRoutes.post("/workspace/registrations", async (c) => {
     return recordId;
   });
   return c.json({ ok: true, id }, 201);
+});
+
+/**
+ * Corrects the details of a recorded licence. A material change invalidates an earlier
+ * verification, so the record returns to `recorded` and a reviewer has to look at it again.
+ * The facility can never set `verified` itself.
+ */
+workspaceRoutes.put("/workspace/registrations/:id", async (c) => {
+  const auth = requireStaff(c);
+  requirePermission(c, "workspace.profile.manage", "Workspace administrator permission is required");
+  const id = uuidSchema.parse(c.req.param("id"));
+  const body = await parseJson(c, facilityRegistrationSchema);
+  const status = await withStaffActor(c, async (tx) => {
+    const [current] = await tx`
+      select kind, issuer, identifier, to_char(valid_from, 'YYYY-MM-DD') as valid_from,
+             to_char(valid_until, 'YYYY-MM-DD') as valid_until, document_reference, status
+        from facility_registrations
+       where id = ${id} and tenant_id = ${auth.activeTenant!.id} and status <> 'withdrawn'
+       for update`;
+    if (!current) throw new NotFoundError("Registration not found");
+    const next = {
+      kind: body.kind,
+      issuer: body.issuer?.trim() || null,
+      identifier: body.identifier.trim(),
+      validFrom: body.validFrom || null,
+      validUntil: body.validUntil || null,
+      documentReference: body.documentReference?.trim() || null,
+    };
+    const before = {
+      kind: String(current.kind),
+      issuer: (current.issuer as string | null) ?? null,
+      identifier: String(current.identifier),
+      validFrom: (current.validFrom as string | null) ?? null,
+      validUntil: (current.validUntil as string | null) ?? null,
+      documentReference: (current.documentReference as string | null) ?? null,
+    };
+    const changed = (Object.keys(next) as Array<keyof typeof next>).filter((key) => before[key] !== next[key]);
+    const previousStatus = String(current.status);
+    const verificationReset = changed.length > 0 && previousStatus !== "recorded";
+    await tx`savepoint registration_update`;
+    try {
+      await tx`
+        update facility_registrations
+           set kind = ${next.kind}, issuer = ${next.issuer}, identifier = ${next.identifier},
+               valid_from = ${next.validFrom}, valid_until = ${next.validUntil},
+               document_reference = ${next.documentReference},
+               status = ${verificationReset ? "recorded" : previousStatus},
+               verified_by = case when ${verificationReset} then null else verified_by end,
+               verified_at = case when ${verificationReset} then null else verified_at end,
+               verification_notes = case when ${verificationReset} then null else verification_notes end,
+               updated_at = now()
+         where id = ${id} and tenant_id = ${auth.activeTenant!.id}`;
+      await tx`release savepoint registration_update`;
+    } catch (error) {
+      await tx`rollback to savepoint registration_update`;
+      if ((error as { code?: string }).code === "23505") {
+        throw new ConflictError("This NHFR ID is already recorded for another Medveris workspace");
+      }
+      throw error;
+    }
+    await writeAudit(tx, c.get("deps").config, requestAudit(c, "workspace.registration.update", {
+      resourceType: "FacilityRegistration", resourceId: id,
+      metadata: { kind: next.kind, changed, verificationReset, previousStatus },
+    }));
+    return verificationReset ? "recorded" : previousStatus;
+  });
+  return c.json({ ok: true, status });
 });
 
 workspaceRoutes.post("/workspace/registrations/:id/status", async (c) => {
